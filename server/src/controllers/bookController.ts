@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDb } from '../db';
-import { Book, NewBook, UpdateBook } from '../types';
+import { Book, NewBook, UpdateBook } from '@enzyklopaedie/shared';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -29,10 +29,10 @@ export const createBook = asyncErrorHandler(async (req: Request, res: Response) 
   const db = await getDb();
   const newBook: NewBook = req.body;
   const result = await db.run(
-    'INSERT INTO books (title, author, subjectId, year, pages, isRead, rating, coverImageUrl, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO books (title, authorId, subjectIds, year, pages, isRead, rating, coverImageUrl, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     newBook.title,
-      newBook.author,
-      newBook.subjectId,
+      newBook.authorId,
+      JSON.stringify(newBook.subjectIds),
       newBook.year,
       newBook.pages || null,
       newBook.isRead ? 1 : 0,
@@ -52,8 +52,8 @@ export const updateBook = asyncErrorHandler(async (req: Request, res: Response) 
     const values: any[] = [];
 
     if (updatedBook.title !== undefined) { fields.push('title = ?'); values.push(updatedBook.title); }
-    if (updatedBook.author !== undefined) { fields.push('author = ?'); values.push(updatedBook.author); }
-    if (updatedBook.subjectId !== undefined) { fields.push('subjectId = ?'); values.push(updatedBook.subjectId); }
+    if (updatedBook.authorId !== undefined) { fields.push('authorId = ?'); values.push(updatedBook.authorId); }
+    if (updatedBook.subjectIds !== undefined) { fields.push('subjectIds = ?'); values.push(JSON.stringify(updatedBook.subjectIds)); }
     if (updatedBook.year !== undefined) { fields.push('year = ?'); values.push(updatedBook.year); }
     if (updatedBook.pages !== undefined) { fields.push('pages = ?'); values.push(updatedBook.pages); }
     if (updatedBook.isRead !== undefined) { fields.push('isRead = ?'); values.push(updatedBook.isRead ? 1 : 0); }

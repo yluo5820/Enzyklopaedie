@@ -6,8 +6,8 @@ export interface Subject {
 export interface Book {
     id: number;
     title: string;
-    author: string;
-    subjectId: number;
+    authorId: number;
+    subjectIds: number[];
     year: number;
     pages?: number;
     isRead: boolean;
@@ -18,11 +18,49 @@ export interface Book {
 export interface Lecture {
     id: number;
     title: string;
-    speaker: string;
-    subjectId: number;
+    speakerId: number | string;
+    subjectIds: number[];
     year: number;
     duration?: number;
     link?: string;
+}
+export interface Author {
+    id: number;
+    name: string;
+    yearOfBirth?: number;
+    yearOfDeath?: number;
+    countryId?: number;
+    description?: string;
+    imageUrl?: string;
+    link?: string;
+    subjectIds?: number[];
+}
+export interface Nation {
+    id: number;
+    name: string;
+    beginYear?: number;
+    endYear?: number;
+    description?: string;
+    imageUrl?: string;
+    link?: string;
+    authorIds?: number[];
+    civilizationId?: number;
+    eraIds?: number[];
+}
+export interface Civilization {
+    id: number;
+    name: string;
+    nationIds?: number[];
+    description?: string;
+    parentId?: number;
+}
+export interface Era {
+    id: number;
+    name: string;
+    beginYear?: number;
+    endYear?: number;
+    description?: string;
+    civilizationId?: number;
 }
 export interface Note {
     id: number;
@@ -44,6 +82,14 @@ export type NewSubject = Omit<Subject, 'id'>;
 export type UpdateSubject = Partial<Omit<Subject, 'id'>>;
 export type NewLecture = Omit<Lecture, 'id'>;
 export type UpdateLecture = Partial<Omit<Lecture, 'id'>>;
+export type NewAuthor = Omit<Author, 'id'>;
+export type UpdateAuthor = Partial<Omit<Author, 'id'>>;
+export type NewNation = Omit<Nation, 'id'>;
+export type UpdateNation = Partial<Omit<Nation, 'id'>>;
+export type NewCivilization = Omit<Civilization, 'id'>;
+export type UpdateCivilization = Partial<Omit<Civilization, 'id'>>;
+export type NewEra = Omit<Era, 'id'>;
+export type UpdateEra = Partial<Omit<Era, 'id'>>;
 export type NewNote = Omit<Note, 'id'>;
 export type UpdateNote = Partial<Omit<Note, 'id'>>;
 export type NewComment = Omit<Comment, 'id'>;

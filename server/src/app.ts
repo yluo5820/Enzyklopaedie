@@ -4,6 +4,10 @@ import subjectRoutes from './routes/subjectRoutes';
 import lectureRoutes from './routes/lectureRoutes';
 import noteRoutes from './routes/noteRoutes';
 import commentRoutes from './routes/commentRoutes';
+import authorRoutes from './routes/authorRoutes';
+import nationRoutes from './routes/nationRoutes';
+import civilizationRoutes from './routes/civilizationRoutes';
+import eraRoutes from './routes/eraRoutes';
 import cors from 'cors'; // For development, allow cross-origin requests from client
 
 const app = express();
@@ -17,5 +21,9 @@ app.use('/api/subjects', subjectRoutes);
 app.use('/api/lectures', lectureRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/comments', commentRoutes);
+app.use('/api/authors', authorRoutes);
+app.use('/api/nations', nationRoutes);
+app.use('/api/civilizations', civilizationRoutes);
+app.use('/api/eras', eraRoutes);
 
 export default app;

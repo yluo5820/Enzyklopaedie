@@ -1,4 +1,4 @@
-import { Book, NewBook, UpdateBook, Subject, NewSubject, UpdateSubject, Lecture, NewLecture, UpdateLecture, Note, NewNote, UpdateNote, Comment, NewComment, UpdateComment } from '../types';
+import { Book, NewBook, UpdateBook, Subject, NewSubject, UpdateSubject, Lecture, NewLecture, UpdateLecture, Author, NewAuthor, UpdateAuthor, Nation, NewNation, UpdateNation, Civilization, NewCivilization, UpdateCivilization, Era, NewEra, UpdateEra, Note, NewNote, UpdateNote, Comment, NewComment, UpdateComment } from '@enzyklopaedie/shared';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
@@ -240,5 +240,188 @@ export const deleteComment = async (id: number): Promise<void> => {
   });
   if (!response.ok) {
     throw new Error('Failed to delete comment');
+  }
+};
+
+// Author API functions
+export const fetchAuthors = async (): Promise<Author[]> => {
+  const response = await fetch(`${API_BASE_URL}/authors`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch authors');
+  }
+  return response.json();
+};
+
+export const createAuthor = async (authorData: NewAuthor): Promise<Author> => {
+  const response = await fetch(`${API_BASE_URL}/authors`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(authorData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create author');
+  }
+  return response.json();
+};
+
+export const updateAuthor = async (id: number, authorData: UpdateAuthor): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/authors/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(authorData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update author');
+  }
+};
+
+export const deleteAuthor = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/authors/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete author');
+  }
+};
+
+// Nation API functions
+export const fetchNations = async (): Promise<Nation[]> => {
+  const response = await fetch(`${API_BASE_URL}/nations`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch nations');
+  }
+  return response.json();
+};
+
+export const createNation = async (nationData: NewNation): Promise<Nation> => {
+  const response = await fetch(`${API_BASE_URL}/nations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(nationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create nation');
+  }
+  return response.json();
+};
+
+export const updateNation = async (id: number, nationData: UpdateNation): Promise<Nation> => {
+  const response = await fetch(`${API_BASE_URL}/nations/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(nationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update nation');
+  }
+  return response.json();
+};
+
+export const deleteNation = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/nations/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete nation');
+  }
+};
+
+// Civilization API functions
+export const fetchCivilizations = async (): Promise<Civilization[]> => {
+  const response = await fetch(`${API_BASE_URL}/civilizations`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch civilizations');
+  }
+  return response.json();
+};
+
+export const createCivilization = async (civilizationData: NewCivilization): Promise<Civilization> => {
+  const response = await fetch(`${API_BASE_URL}/civilizations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(civilizationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create civilization');
+  }
+  return response.json();
+};
+
+export const updateCivilization = async (id: number, civilizationData: UpdateCivilization): Promise<Civilization> => {
+  const response = await fetch(`${API_BASE_URL}/civilizations/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(civilizationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update civilization');
+  }
+  return response.json();
+};
+
+export const deleteCivilization = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/civilizations/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete civilization');
+  }
+};
+
+// Era API functions
+export const fetchEras = async (): Promise<Era[]> => {
+  const response = await fetch(`${API_BASE_URL}/eras`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch eras');
+  }
+  return response.json();
+};
+
+export const createEra = async (eraData: NewEra): Promise<Era> => {
+  const response = await fetch(`${API_BASE_URL}/eras`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(eraData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create era');
+  }
+  return response.json();
+};
+
+export const updateEra = async (id: number, eraData: UpdateEra): Promise<Era> => {
+  const response = await fetch(`${API_BASE_URL}/eras/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(eraData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update era');
+  }
+  return response.json();
+};
+
+export const deleteEra = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/eras/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete era');
   }
 };

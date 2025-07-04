@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDb } from '../db';
-import { Lecture, NewLecture, UpdateLecture } from '../types';
+import { Lecture, NewLecture, UpdateLecture } from '@enzyklopaedie/shared';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -29,10 +29,10 @@ export const createLecture = asyncErrorHandler(async (req: Request, res: Respons
   const db = await getDb();
   const newLecture: NewLecture = req.body;
   const result = await db.run(
-    'INSERT INTO lectures (title, speaker, subjectId, year, duration, link) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO lectures (title, speakerId, subjectIds, year, duration, link) VALUES (?, ?, ?, ?, ?, ?)',
     newLecture.title,
-    newLecture.speaker,
-    newLecture.subjectId,
+    newLecture.speakerId,
+    JSON.stringify(newLecture.subjectIds),
     newLecture.year,
     newLecture.duration || null,
     newLecture.link || null
@@ -49,8 +49,8 @@ export const updateLecture = asyncErrorHandler(async (req: Request, res: Respons
   const values: any[] = [];
 
   if (updatedLecture.title !== undefined) { fields.push('title = ?'); values.push(updatedLecture.title); }
-  if (updatedLecture.speaker !== undefined) { fields.push('speaker = ?'); values.push(updatedLecture.speaker); }
-  if (updatedLecture.subjectId !== undefined) { fields.push('subjectId = ?'); values.push(updatedLecture.subjectId); }
+  if (updatedLecture.speakerId !== undefined) { fields.push('speakerId = ?'); values.push(updatedLecture.speakerId); }
+  if (updatedLecture.subjectIds !== undefined) { fields.push('subjectIds = ?'); values.push(JSON.stringify(updatedLecture.subjectIds)); }
   if (updatedLecture.year !== undefined) { fields.push('year = ?'); values.push(updatedLecture.year); }
   if (updatedLecture.duration !== undefined) { fields.push('duration = ?'); values.push(updatedLecture.duration); }
   if (updatedLecture.link !== undefined) { fields.push('link = ?'); values.push(updatedLecture.link); }

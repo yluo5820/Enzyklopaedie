@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDb } from '../db';
-import { Subject, NewSubject, UpdateSubject } from '../types';
+import { Subject, NewSubject, UpdateSubject } from '@enzyklopaedie/shared';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
