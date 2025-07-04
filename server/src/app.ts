@@ -1,6 +1,9 @@
 import express from 'express';
 import bookRoutes from './routes/bookRoutes';
-// Import other routes (lecture, subject, note, comment)
+import subjectRoutes from './routes/subjectRoutes';
+import lectureRoutes from './routes/lectureRoutes';
+import noteRoutes from './routes/noteRoutes';
+import commentRoutes from './routes/commentRoutes';
 import cors from 'cors'; // For development, allow cross-origin requests from client
 
 const app = express();
@@ -10,9 +13,9 @@ app.use(express.json()); // Enable JSON body parsing
 
 // API Routes
 app.use('/api/books', bookRoutes);
-// app.use('/api/lectures', lectureRoutes);
-// app.use('/api/subjects', subjectRoutes);
-// app.use('/api/notes', noteRoutes);
-// app.use('/api/comments', commentRoutes);
+app.use('/api/subjects', subjectRoutes);
+app.use('/api/lectures', lectureRoutes);
+app.use('/api/notes', noteRoutes);
+app.use('/api/comments', commentRoutes);
 
 export default app;
