@@ -10,6 +10,9 @@ const openDatabase = () => {
     dbPromise = open({
       filename: DB_PATH,
       driver: sqlite3.Database,
+    }).then(async (db) => {
+      await db.exec('PRAGMA foreign_keys = ON');
+      return db;
     });
   }
 
@@ -167,6 +170,15 @@ export async function initializeDatabase() {
       FOREIGN KEY (topicId) REFERENCES topics(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS knowledge_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      knowledgeItemId INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS knowledge_relations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fromEntityType TEXT NOT NULL,
@@ -251,6 +263,7 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_knowledge_items_kind ON knowledge_items(kind);
     CREATE INDEX IF NOT EXISTS idx_knowledge_items_status ON knowledge_items(status);
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_notes_item ON knowledge_notes(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_tasks_item ON knowledge_tasks(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_item ON knowledge_reviews(knowledgeItemId);
 

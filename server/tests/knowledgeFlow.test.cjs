@@ -176,4 +176,137 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { message: 'No fields to update' });
   });
+
+  await t.test('knowledge item detail routes handle notes, tasks, and reviews', async () => {
+    const createResponse = await request('/api/knowledge-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'article',
+        title: 'Late Roman Statecraft',
+        creator: 'Test Historian',
+        status: 'active',
+      }),
+    });
+
+    assert.equal(createResponse.status, 201);
+    const createdItem = await createResponse.json();
+
+    const noteResponse = await request(`/api/knowledge-items/${createdItem.id}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: 'Track how administrative reforms changed over time.',
+      }),
+    });
+
+    assert.equal(noteResponse.status, 201);
+    const note = await noteResponse.json();
+    assert.equal(note.knowledgeItemId, createdItem.id);
+
+    const updatedNoteResponse = await request(
+      `/api/knowledge-items/${createdItem.id}/notes/${note.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: 'Track how administrative reforms changed across late antiquity.',
+        }),
+      }
+    );
+
+    assert.equal(updatedNoteResponse.status, 200);
+    const updatedNote = await updatedNoteResponse.json();
+    assert.match(updatedNote.content, /late antiquity/);
+
+    const taskResponse = await request(`/api/knowledge-items/${createdItem.id}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Write summary outline',
+        details: 'Draft a short encyclopedia entry from the notes.',
+        dueAt: '2026-04-15',
+      }),
+    });
+
+    assert.equal(taskResponse.status, 201);
+    const task = await taskResponse.json();
+    assert.equal(task.status, 'todo');
+    assert.equal(task.dueAt, '2026-04-15');
+
+    const completedTaskResponse = await request(
+      `/api/knowledge-items/${createdItem.id}/tasks/${task.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'done',
+        }),
+      }
+    );
+
+    assert.equal(completedTaskResponse.status, 200);
+    const completedTask = await completedTaskResponse.json();
+    assert.equal(completedTask.status, 'done');
+    assert.ok(completedTask.completedAt);
+
+    const reviewResponse = await request(`/api/knowledge-items/${createdItem.id}/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        score: 4,
+        summary: 'Strong synthesis',
+        body: 'Useful framing, but it still needs a more explicit comparison section.',
+      }),
+    });
+
+    assert.equal(reviewResponse.status, 201);
+    const review = await reviewResponse.json();
+    assert.equal(review.score, 4);
+
+    const notesResponse = await request(`/api/knowledge-items/${createdItem.id}/notes`);
+    const tasksResponse = await request(`/api/knowledge-items/${createdItem.id}/tasks`);
+    const reviewsResponse = await request(`/api/knowledge-items/${createdItem.id}/reviews`);
+
+    assert.equal(notesResponse.status, 200);
+    assert.equal(tasksResponse.status, 200);
+    assert.equal(reviewsResponse.status, 200);
+
+    const notes = await notesResponse.json();
+    const tasks = await tasksResponse.json();
+    const reviews = await reviewsResponse.json();
+
+    assert.equal(notes.length, 1);
+    assert.equal(tasks.length, 1);
+    assert.equal(reviews.length, 1);
+
+    const activityResponse = await request('/api/activity-events?limit=20');
+    assert.equal(activityResponse.status, 200);
+    const activityEvents = await activityResponse.json();
+    const detailEvents = activityEvents.filter(
+      (event) => event.entityType === 'knowledge_item' && event.entityId === createdItem.id
+    );
+
+    assert.deepEqual(
+      detailEvents.map((event) => event.type),
+      ['review_created', 'task_completed', 'task_created', 'note_created', 'knowledge_item_created']
+    );
+
+    const deleteNoteResponse = await request(
+      `/api/knowledge-items/${createdItem.id}/notes/${note.id}`,
+      { method: 'DELETE' }
+    );
+    const deleteTaskResponse = await request(
+      `/api/knowledge-items/${createdItem.id}/tasks/${task.id}`,
+      { method: 'DELETE' }
+    );
+    const deleteReviewResponse = await request(
+      `/api/knowledge-items/${createdItem.id}/reviews/${review.id}`,
+      { method: 'DELETE' }
+    );
+
+    assert.equal(deleteNoteResponse.status, 204);
+    assert.equal(deleteTaskResponse.status, 204);
+    assert.equal(deleteReviewResponse.status, 204);
+  });
 });

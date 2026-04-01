@@ -5,6 +5,7 @@ import type {
   KnowledgeItemStatus,
   NewKnowledgeItem,
 } from '@enzyklopaedie/shared';
+import { Link } from 'react-router-dom';
 import { createKnowledgeItem, deleteKnowledgeItem, fetchKnowledgeItems } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './KnowledgePage.css';
@@ -276,9 +277,14 @@ const KnowledgePage: React.FC = () => {
                           <span>Updated {formatDate(item.updatedAt)}</span>
                         </div>
                       </div>
-                      <button type="button" onClick={() => handleDelete(item.id)}>
-                        Remove
-                      </button>
+                      <div className="knowledge-item-actions">
+                        <Link to={`/knowledge/${item.id}`} className="knowledge-item-link">
+                          Open
+                        </Link>
+                        <button type="button" onClick={() => handleDelete(item.id)}>
+                          Remove
+                        </button>
+                      </div>
                     </div>
                     {item.summary ? <p>{item.summary}</p> : null}
                   </article>

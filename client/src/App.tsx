@@ -8,6 +8,7 @@ import CivilizationListPage from './pages/CivilizationListPage';
 import EraListPage from './pages/EraListPage';
 import WorldHistoryPage from './pages/WorldHistoryPage';
 import KnowledgePage from './pages/KnowledgePage';
+import KnowledgeDetailPage from './pages/KnowledgeDetailPage';
 // Import other pages
 
 const App: React.FC = () => {
@@ -67,6 +68,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/knowledge" element={<KnowledgePage />} />
+            <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
             <Route path="/books" element={<BookListPage />} />
             <Route path="/authors" element={<AuthorListPage />} />
             <Route path="/nations" element={<NationListPage />} />

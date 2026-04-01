@@ -74,9 +74,10 @@ After `npm start`, use this path:
 1. Open `http://localhost:5173`
 2. Check the home dashboard loads
 3. Open `Knowledge` and add a knowledge item
-4. Return to `Home` and confirm a recent activity entry appears
-5. Open `Library` and test `Add Item -> Book -> Search`
-6. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+4. Open that item from the Knowledge list and add a note, a task, and a review
+5. Return to `Home` and confirm recent activity entries appear
+6. Open `Library` and test `Add Item -> Book -> Search`
+7. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

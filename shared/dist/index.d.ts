@@ -137,6 +137,13 @@ export interface KnowledgeRelation {
     createdAt: string;
 }
 export type KnowledgeTaskStatus = 'todo' | 'doing' | 'done' | 'archived';
+export interface KnowledgeNote {
+    id: number;
+    knowledgeItemId: number;
+    content: string;
+    createdAt: string;
+    updatedAt: string;
+}
 export interface KnowledgeTask {
     id: number;
     knowledgeItemId: number;
@@ -159,7 +166,7 @@ export interface KnowledgeReview {
     createdAt: string;
     updatedAt: string;
 }
-export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'topic_created' | 'note_created' | 'review_created' | 'task_completed' | 'exhibit_published';
+export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'topic_created' | 'note_created' | 'task_created' | 'review_created' | 'task_completed' | 'exhibit_published';
 export interface ActivityEvent {
     id: number;
     type: ActivityEventType;
@@ -215,6 +222,8 @@ export type NewKnowledgeRelation = Omit<KnowledgeRelation, 'id' | 'createdAt'>;
 export type UpdateKnowledgeRelation = Partial<Omit<KnowledgeRelation, 'id' | 'createdAt'>>;
 export type NewKnowledgeTask = Omit<KnowledgeTask, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateKnowledgeTask = Partial<Omit<KnowledgeTask, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewKnowledgeNote = Omit<KnowledgeNote, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateKnowledgeNote = Partial<Omit<KnowledgeNote, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewKnowledgeReview = Omit<KnowledgeReview, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateKnowledgeReview = Partial<Omit<KnowledgeReview, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewActivityEvent = Omit<ActivityEvent, 'id' | 'occurredAt'>;

@@ -71,7 +71,15 @@ That test currently covers:
 - After creating a knowledge item, go back to `/`
 - Confirm the recent activity feed shows an entry for the item creation
 
-### 4. Legacy Library Flow
+### 4. Knowledge Item Detail
+
+- From `/knowledge`, open a knowledge item
+- Add one note and confirm it appears immediately
+- Add one task, move it to `done`, and confirm the status updates
+- Add one review and confirm it appears at the top of the review list
+- Return to `/` and confirm those actions appear in the recent activity feed
+
+### 5. Legacy Library Flow
 
 - Open `/books`
 - Click `Add Item`
@@ -81,7 +89,7 @@ That test currently covers:
 - Search for a title and confirm results appear
 - Select one or more results and confirm they are added to the library
 
-### 5. World History Prototype
+### 6. World History Prototype
 
 - Open `/world-history`
 - Confirm the map loads if `VITE_MAPTILER_API_KEY` exists in `client/.env.local`

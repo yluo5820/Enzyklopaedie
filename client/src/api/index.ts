@@ -1,4 +1,45 @@
-import { Book, NewBook, UpdateBook, Subject, NewSubject, UpdateSubject, Lecture, NewLecture, UpdateLecture, Author, NewAuthor, UpdateAuthor, Nation, NewNation, UpdateNation, Civilization, NewCivilization, UpdateCivilization, Era, NewEra, UpdateEra, Note, NewNote, UpdateNote, Comment, NewComment, UpdateComment, KnowledgeItem, NewKnowledgeItem, UpdateKnowledgeItem, ActivityEvent } from '@enzyklopaedie/shared';
+import {
+  ActivityEvent,
+  Author,
+  Book,
+  Civilization,
+  Comment,
+  Era,
+  KnowledgeItem,
+  KnowledgeNote,
+  KnowledgeReview,
+  KnowledgeTask,
+  Lecture,
+  Nation,
+  NewAuthor,
+  NewBook,
+  NewCivilization,
+  NewComment,
+  NewEra,
+  NewKnowledgeItem,
+  NewKnowledgeNote,
+  NewKnowledgeReview,
+  NewKnowledgeTask,
+  NewLecture,
+  NewNation,
+  NewNote,
+  NewSubject,
+  Note,
+  Subject,
+  UpdateAuthor,
+  UpdateBook,
+  UpdateCivilization,
+  UpdateComment,
+  UpdateEra,
+  UpdateKnowledgeItem,
+  UpdateKnowledgeNote,
+  UpdateKnowledgeReview,
+  UpdateKnowledgeTask,
+  UpdateLecture,
+  UpdateNation,
+  UpdateNote,
+  UpdateSubject,
+} from '@enzyklopaedie/shared';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
@@ -435,6 +476,14 @@ export const fetchKnowledgeItems = async (): Promise<KnowledgeItem[]> => {
   return response.json();
 };
 
+export const fetchKnowledgeItem = async (id: number): Promise<KnowledgeItem> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${id}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch knowledge item');
+  }
+  return response.json();
+};
+
 export const createKnowledgeItem = async (itemData: NewKnowledgeItem): Promise<KnowledgeItem> => {
   const response = await fetch(`${API_BASE_URL}/knowledge-items`, {
     method: 'POST',
@@ -472,6 +521,165 @@ export const deleteKnowledgeItem = async (id: number): Promise<void> => {
   });
   if (!response.ok) {
     throw new Error('Failed to delete knowledge item');
+  }
+};
+
+export const fetchKnowledgeNotes = async (knowledgeItemId: number): Promise<KnowledgeNote[]> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/notes`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch knowledge notes');
+  }
+  return response.json();
+};
+
+export const createKnowledgeNote = async (
+  knowledgeItemId: number,
+  noteData: Omit<NewKnowledgeNote, 'knowledgeItemId'>
+): Promise<KnowledgeNote> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/notes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(noteData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create knowledge note');
+  }
+  return response.json();
+};
+
+export const updateKnowledgeNote = async (
+  knowledgeItemId: number,
+  noteId: number,
+  noteData: UpdateKnowledgeNote
+): Promise<KnowledgeNote> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/notes/${noteId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(noteData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update knowledge note');
+  }
+  return response.json();
+};
+
+export const deleteKnowledgeNote = async (knowledgeItemId: number, noteId: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/notes/${noteId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete knowledge note');
+  }
+};
+
+export const fetchKnowledgeTasks = async (knowledgeItemId: number): Promise<KnowledgeTask[]> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/tasks`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch knowledge tasks');
+  }
+  return response.json();
+};
+
+export const createKnowledgeTask = async (
+  knowledgeItemId: number,
+  taskData: Omit<NewKnowledgeTask, 'knowledgeItemId'>
+): Promise<KnowledgeTask> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/tasks`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(taskData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create knowledge task');
+  }
+  return response.json();
+};
+
+export const updateKnowledgeTask = async (
+  knowledgeItemId: number,
+  taskId: number,
+  taskData: UpdateKnowledgeTask
+): Promise<KnowledgeTask> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/tasks/${taskId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(taskData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update knowledge task');
+  }
+  return response.json();
+};
+
+export const deleteKnowledgeTask = async (knowledgeItemId: number, taskId: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/tasks/${taskId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete knowledge task');
+  }
+};
+
+export const fetchKnowledgeReviews = async (knowledgeItemId: number): Promise<KnowledgeReview[]> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/reviews`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch knowledge reviews');
+  }
+  return response.json();
+};
+
+export const createKnowledgeReview = async (
+  knowledgeItemId: number,
+  reviewData: Omit<NewKnowledgeReview, 'knowledgeItemId'>
+): Promise<KnowledgeReview> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/reviews`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(reviewData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create knowledge review');
+  }
+  return response.json();
+};
+
+export const updateKnowledgeReview = async (
+  knowledgeItemId: number,
+  reviewId: number,
+  reviewData: UpdateKnowledgeReview
+): Promise<KnowledgeReview> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/reviews/${reviewId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(reviewData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update knowledge review');
+  }
+  return response.json();
+};
+
+export const deleteKnowledgeReview = async (
+  knowledgeItemId: number,
+  reviewId: number
+): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/reviews/${reviewId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete knowledge review');
   }
 };
 
