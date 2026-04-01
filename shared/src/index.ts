@@ -159,6 +159,11 @@ export interface Topic {
   updatedAt: string;
 }
 
+export interface TopicSummary extends Topic {
+  knowledgeItemCount: number;
+  childTopicCount: number;
+}
+
 export type KnowledgeRelationType =
   | 'about'
   | 'related_to'

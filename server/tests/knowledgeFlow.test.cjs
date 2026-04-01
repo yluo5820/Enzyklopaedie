@@ -311,6 +311,13 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
   });
 
   await t.test('taxonomy and relation routes classify and link knowledge items', async () => {
+    const initialTopicsResponse = await request('/api/topics');
+    assert.equal(initialTopicsResponse.status, 200);
+    const initialTopics = await initialTopicsResponse.json();
+    const ontologyTopic = initialTopics.find((topic) => topic.slug === 'ontology');
+    assert.ok(ontologyTopic);
+    assert.equal(ontologyTopic.parentTopicId, null);
+
     const sourceResponse = await request('/api/knowledge-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -347,6 +354,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(rootTopicResponse.status, 201);
     const rootTopic = await rootTopicResponse.json();
     assert.equal(rootTopic.slug, 'history');
+    assert.equal(rootTopic.parentTopicId, ontologyTopic.id);
 
     const childTopicResponse = await request('/api/topics', {
       method: 'POST',
@@ -384,6 +392,18 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const assignedTopics = await assignedTopicsResponse.json();
     assert.equal(assignedTopics.length, 1);
     assert.equal(assignedTopics[0].id, childTopic.id);
+
+    const fetchedTopicResponse = await request(`/api/topics/${childTopic.id}`);
+    assert.equal(fetchedTopicResponse.status, 200);
+    const fetchedTopic = await fetchedTopicResponse.json();
+    assert.equal(fetchedTopic.parentTopicId, rootTopic.id);
+    assert.equal(fetchedTopic.knowledgeItemCount, 1);
+
+    const topicKnowledgeItemsResponse = await request(`/api/topics/${childTopic.id}/knowledge-items`);
+    assert.equal(topicKnowledgeItemsResponse.status, 200);
+    const topicKnowledgeItems = await topicKnowledgeItemsResponse.json();
+    assert.equal(topicKnowledgeItems.length, 1);
+    assert.equal(topicKnowledgeItems[0].id, sourceItem.id);
 
     const relationResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`, {
       method: 'POST',

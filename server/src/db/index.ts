@@ -274,6 +274,35 @@ export async function initializeDatabase() {
     INSERT OR IGNORE INTO authors (id, name) VALUES (1, 'Unknown Author');
   `);
 
+  const now = new Date().toISOString();
+
+  await db.run(
+    `INSERT OR IGNORE INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    'Ontology',
+    'ontology',
+    'The root of the encyclopedia taxonomy.',
+    null,
+    '#8d5d35',
+    now,
+    now
+  );
+
+  await db.run(
+    `UPDATE topics
+     SET parentTopicId = NULL, updatedAt = ?
+     WHERE slug = 'ontology' AND parentTopicId IS NOT NULL`,
+    now
+  );
+
+  await db.run(
+    `UPDATE topics
+     SET parentTopicId = (SELECT id FROM topics WHERE slug = 'ontology'),
+         updatedAt = ?
+     WHERE slug != 'ontology' AND parentTopicId IS NULL`,
+    now
+  );
+
   console.log('Database initialized successfully with new schema.');
   return db;
 }

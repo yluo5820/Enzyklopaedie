@@ -74,11 +74,12 @@ After `npm start`, use this path:
 1. Open `http://localhost:5173`
 2. Check the home dashboard loads
 3. Open `Knowledge` and add a knowledge item
-4. Open that item from the Knowledge list, attach or create a topic, and link it to another knowledge item
-5. Add a note, a task, and a review on the same detail page
-6. Return to `Home` and confirm recent activity entries appear
-7. Open `Library` and test `Add Item -> Book -> Search`
-8. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+4. Open `Topics` and confirm the tree loads with `Ontology` as the root
+5. Open a topic page from the tree and create a child topic
+6. Open a knowledge item and attach or create a topic, then add a note, a task, and a review
+7. Return to `Home` and confirm recent activity entries appear
+8. Open `Library` and test `Add Item -> Book -> Search`
+9. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

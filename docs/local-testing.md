@@ -75,13 +75,19 @@ That test currently covers:
 
 - From `/knowledge`, open a knowledge item
 - Attach an existing topic or create a new child topic and confirm it appears in the topic list
-- Create a relation to another knowledge item and confirm it appears in the relation list
 - Add one note and confirm it appears immediately
 - Add one task, move it to `done`, and confirm the status updates
 - Add one review and confirm it appears at the top of the review list
 - Return to `/` and confirm those actions appear in the recent activity feed
 
-### 5. Legacy Library Flow
+### 5. Topic Tree
+
+- Open `/topics`
+- Confirm `Ontology` appears as the root node in the tree
+- Click a topic node and confirm its topic page opens
+- Create a child topic from the topic page and confirm it appears in the child topic list
+
+### 6. Legacy Library Flow
 
 - Open `/books`
 - Click `Add Item`
@@ -91,7 +97,7 @@ That test currently covers:
 - Search for a title and confirm results appear
 - Select one or more results and confirm they are added to the library
 
-### 6. World History Prototype
+### 7. World History Prototype
 
 - Open `/world-history`
 - Confirm the map loads if `VITE_MAPTILER_API_KEY` exists in `client/.env.local`

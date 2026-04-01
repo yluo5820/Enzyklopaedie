@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { NewTopic, Topic, slugifyTopicName } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
 import { recordActivityEvent } from '../lib/activity';
+import { getOntologyTopic, getTopicSummaryById, listKnowledgeItemsForTopic, listTopicSummaries } from '../lib/topics';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -30,9 +31,35 @@ const generateUniqueTopicSlug = async (name: string) => {
 };
 
 export const getAllTopics = asyncErrorHandler(async (_req: Request, res: Response) => {
-  const db = await getDb();
-  const topics = await db.all<Topic[]>('SELECT * FROM topics ORDER BY lower(name) ASC, createdAt ASC');
-  res.json(topics);
+  res.json(await listTopicSummaries());
+});
+
+export const getTopicById = asyncErrorHandler(async (req: Request, res: Response) => {
+  const topicId = parseId(req.params.id);
+  if (!topicId) {
+    return res.status(400).json({ message: 'Invalid topic id' });
+  }
+
+  const topic = await getTopicSummaryById(topicId);
+  if (!topic) {
+    return res.status(404).json({ message: 'Topic not found' });
+  }
+
+  res.json(topic);
+});
+
+export const getKnowledgeItemsByTopic = asyncErrorHandler(async (req: Request, res: Response) => {
+  const topicId = parseId(req.params.id);
+  if (!topicId) {
+    return res.status(400).json({ message: 'Invalid topic id' });
+  }
+
+  const topic = await getTopicSummaryById(topicId);
+  if (!topic) {
+    return res.status(404).json({ message: 'Topic not found' });
+  }
+
+  res.json(await listKnowledgeItemsForTopic(topicId));
 });
 
 export const createTopic = asyncErrorHandler(async (req: Request, res: Response) => {
@@ -44,9 +71,21 @@ export const createTopic = asyncErrorHandler(async (req: Request, res: Response)
     return res.status(400).json({ message: 'Topic name is required' });
   }
 
-  const parentTopicId = newTopic.parentTopicId ? parseId(newTopic.parentTopicId) : null;
-  if (newTopic.parentTopicId !== undefined && !parentTopicId) {
+  const requestedParentTopicId = newTopic.parentTopicId ? parseId(newTopic.parentTopicId) : null;
+  if (newTopic.parentTopicId !== undefined && !requestedParentTopicId) {
     return res.status(400).json({ message: 'Invalid parent topic id' });
+  }
+
+  const isOntologyRoot = name.toLowerCase() === 'ontology';
+  if (isOntologyRoot && requestedParentTopicId) {
+    return res.status(400).json({ message: 'Ontology must remain the root topic' });
+  }
+
+  let parentTopicId = requestedParentTopicId;
+
+  if (!parentTopicId && !isOntologyRoot) {
+    const ontologyTopic = await getOntologyTopic();
+    parentTopicId = ontologyTopic?.id ?? null;
   }
 
   if (parentTopicId) {

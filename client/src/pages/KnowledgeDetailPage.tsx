@@ -656,7 +656,7 @@ const KnowledgeDetailPage: React.FC = () => {
               ) : (
                 itemTopics.map((topic) => (
                   <div key={topic.id} className="knowledge-detail-chip">
-                    <span>{buildTopicPath(topic, topicMap)}</span>
+                    <Link to={`/topics/${topic.id}`}>{buildTopicPath(topic, topicMap)}</Link>
                     <button type="button" onClick={() => handleRemoveTopic(topic.id)}>
                       Remove
                     </button>

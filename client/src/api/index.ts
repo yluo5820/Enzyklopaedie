@@ -30,6 +30,7 @@ import {
   Note,
   Subject,
   Topic,
+  TopicSummary,
   UpdateAuthor,
   UpdateBook,
   UpdateCivilization,
@@ -528,10 +529,18 @@ export const deleteKnowledgeItem = async (id: number): Promise<void> => {
   }
 };
 
-export const fetchTopics = async (): Promise<Topic[]> => {
+export const fetchTopics = async (): Promise<TopicSummary[]> => {
   const response = await fetch(`${API_BASE_URL}/topics`);
   if (!response.ok) {
     throw new Error('Failed to fetch topics');
+  }
+  return response.json();
+};
+
+export const fetchTopic = async (id: number): Promise<TopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${id}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch topic');
   }
   return response.json();
 };
@@ -546,6 +555,14 @@ export const createTopic = async (topicData: NewTopic): Promise<Topic> => {
   });
   if (!response.ok) {
     throw new Error('Failed to create topic');
+  }
+  return response.json();
+};
+
+export const fetchTopicKnowledgeItems = async (topicId: number): Promise<KnowledgeItem[]> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/knowledge-items`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch topic knowledge items');
   }
   return response.json();
 };

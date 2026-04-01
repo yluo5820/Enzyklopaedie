@@ -9,6 +9,8 @@ import EraListPage from './pages/EraListPage';
 import WorldHistoryPage from './pages/WorldHistoryPage';
 import KnowledgePage from './pages/KnowledgePage';
 import KnowledgeDetailPage from './pages/KnowledgeDetailPage';
+import TopicTreePage from './pages/TopicTreePage';
+import TopicPage from './pages/TopicPage';
 // Import other pages
 
 const App: React.FC = () => {
@@ -45,6 +47,7 @@ const App: React.FC = () => {
             }}>
               <li><Link to="/" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Home</Link></li>
               <li><Link to="/knowledge" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Knowledge</Link></li>
+              <li><Link to="/topics" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Topics</Link></li>
               <li><Link to="/books" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Library</Link></li>
               <li><Link to="/authors" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Authors</Link></li>
               <li><Link to="/nations" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Nations</Link></li>
@@ -69,6 +72,8 @@ const App: React.FC = () => {
             <Route path="/" element={<HomePage />} />
             <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
+            <Route path="/topics" element={<TopicTreePage />} />
+            <Route path="/topics/:id" element={<TopicPage />} />
             <Route path="/books" element={<BookListPage />} />
             <Route path="/authors" element={<AuthorListPage />} />
             <Route path="/nations" element={<NationListPage />} />

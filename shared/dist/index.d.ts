@@ -125,6 +125,10 @@ export interface Topic {
     createdAt: string;
     updatedAt: string;
 }
+export interface TopicSummary extends Topic {
+    knowledgeItemCount: number;
+    childTopicCount: number;
+}
 export type KnowledgeRelationType = 'about' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
 export interface KnowledgeRelation {
     id: number;
