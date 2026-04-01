@@ -136,6 +136,12 @@ export interface KnowledgeRelation {
     note?: string;
     createdAt: string;
 }
+export interface KnowledgeRelationDetail extends KnowledgeRelation {
+    fromEntityTitle?: string;
+    toEntityTitle?: string;
+    fromEntityKind?: string;
+    toEntityKind?: string;
+}
 export type KnowledgeTaskStatus = 'todo' | 'doing' | 'done' | 'archived';
 export interface KnowledgeNote {
     id: number;
@@ -166,7 +172,7 @@ export interface KnowledgeReview {
     createdAt: string;
     updatedAt: string;
 }
-export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'topic_created' | 'note_created' | 'task_created' | 'review_created' | 'task_completed' | 'exhibit_published';
+export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'topic_created' | 'note_created' | 'task_created' | 'relation_created' | 'review_created' | 'task_completed' | 'exhibit_published';
 export interface ActivityEvent {
     id: number;
     type: ActivityEventType;
@@ -216,8 +222,8 @@ export declare const summarizeKnowledgeProgress: (items: Array<Pick<KnowledgeIte
 export declare const slugifyTopicName: (value: string) => string;
 export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
-export type NewTopic = Omit<Topic, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateTopic = Partial<Omit<Topic, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 export type NewKnowledgeRelation = Omit<KnowledgeRelation, 'id' | 'createdAt'>;
 export type UpdateKnowledgeRelation = Partial<Omit<KnowledgeRelation, 'id' | 'createdAt'>>;
 export type NewKnowledgeTask = Omit<KnowledgeTask, 'id' | 'createdAt' | 'updatedAt'>;

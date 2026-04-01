@@ -3,22 +3,34 @@ import type {
   KnowledgeItem,
   KnowledgeItemStatus,
   KnowledgeNote,
+  KnowledgeRelationDetail,
+  KnowledgeRelationType,
   KnowledgeReview,
   KnowledgeTask,
   KnowledgeTaskStatus,
+  Topic,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
+  assignTopicToKnowledgeItem,
   createKnowledgeNote,
+  createKnowledgeRelation,
   createKnowledgeReview,
   createKnowledgeTask,
+  createTopic,
   deleteKnowledgeNote,
+  deleteKnowledgeRelation,
   deleteKnowledgeReview,
   deleteKnowledgeTask,
   fetchKnowledgeItem,
+  fetchKnowledgeItems,
+  fetchKnowledgeItemTopics,
   fetchKnowledgeNotes,
+  fetchKnowledgeRelations,
   fetchKnowledgeReviews,
   fetchKnowledgeTasks,
+  fetchTopics,
+  removeTopicFromKnowledgeItem,
   updateKnowledgeItem,
   updateKnowledgeTask,
 } from '../api';
@@ -26,6 +38,15 @@ import './KnowledgeDetailPage.css';
 
 const itemStatusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 const taskStatusOptions: KnowledgeTaskStatus[] = ['todo', 'doing', 'done', 'archived'];
+const relationTypeOptions: KnowledgeRelationType[] = [
+  'related_to',
+  'about',
+  'references',
+  'influenced_by',
+  'part_of',
+  'located_in',
+  'during',
+];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -43,20 +64,82 @@ const formatDateTime = (value: string) =>
     minute: '2-digit',
   }).format(new Date(value));
 
+const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
+
+const orderTopics = (topics: Topic[]) => {
+  const children = new Map<number | null, Topic[]>();
+
+  for (const topic of topics) {
+    const key = topic.parentTopicId ?? null;
+    const branch = children.get(key) ?? [];
+    branch.push(topic);
+    children.set(key, branch);
+  }
+
+  for (const branch of children.values()) {
+    branch.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  const ordered: Array<{ topic: Topic; depth: number }> = [];
+  const visit = (parentTopicId: number | null, depth: number) => {
+    for (const topic of children.get(parentTopicId) ?? []) {
+      ordered.push({ topic, depth });
+      visit(topic.id, depth + 1);
+    }
+  };
+
+  visit(null, 0);
+  return ordered;
+};
+
+const buildTopicPath = (topic: Topic, topicMap: Map<number, Topic>) => {
+  const parts = [topic.name];
+  let currentParentId = topic.parentTopicId;
+  let guard = 0;
+
+  while (currentParentId && guard < 12) {
+    const parent = topicMap.get(currentParentId);
+    if (!parent) break;
+    parts.unshift(parent.name);
+    currentParentId = parent.parentTopicId;
+    guard += 1;
+  }
+
+  return parts.join(' / ');
+};
+
 const KnowledgeDetailPage: React.FC = () => {
   const { id } = useParams();
   const knowledgeItemId = Number(id);
 
   const [item, setItem] = useState<KnowledgeItem | null>(null);
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [allTopics, setAllTopics] = useState<Topic[]>([]);
+  const [itemTopics, setItemTopics] = useState<Topic[]>([]);
+  const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [notes, setNotes] = useState<KnowledgeNote[]>([]);
   const [tasks, setTasks] = useState<KnowledgeTask[]>([]);
   const [reviews, setReviews] = useState<KnowledgeReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [savingTopicAssignment, setSavingTopicAssignment] = useState(false);
+  const [creatingTopic, setCreatingTopic] = useState(false);
+  const [savingRelation, setSavingRelation] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [savingReview, setSavingReview] = useState(false);
+  const [selectedTopicId, setSelectedTopicId] = useState('');
+  const [newTopicForm, setNewTopicForm] = useState({
+    name: '',
+    parentTopicId: '',
+    description: '',
+  });
+  const [relationForm, setRelationForm] = useState({
+    toEntityId: '',
+    relationType: 'related_to' as KnowledgeRelationType,
+    note: '',
+  });
   const [noteContent, setNoteContent] = useState('');
   const [taskForm, setTaskForm] = useState({
     title: '',
@@ -78,14 +161,31 @@ const KnowledgeDetailPage: React.FC = () => {
 
     const loadDetail = async () => {
       try {
-        const [fetchedItem, fetchedNotes, fetchedTasks, fetchedReviews] = await Promise.all([
+        const [
+          fetchedItem,
+          fetchedItems,
+          fetchedTopics,
+          fetchedItemTopics,
+          fetchedRelations,
+          fetchedNotes,
+          fetchedTasks,
+          fetchedReviews,
+        ] = await Promise.all([
           fetchKnowledgeItem(knowledgeItemId),
+          fetchKnowledgeItems(),
+          fetchTopics(),
+          fetchKnowledgeItemTopics(knowledgeItemId),
+          fetchKnowledgeRelations(knowledgeItemId),
           fetchKnowledgeNotes(knowledgeItemId),
           fetchKnowledgeTasks(knowledgeItemId),
           fetchKnowledgeReviews(knowledgeItemId),
         ]);
 
         setItem(fetchedItem);
+        setKnowledgeItems(fetchedItems);
+        setAllTopics(fetchedTopics);
+        setItemTopics(fetchedItemTopics);
+        setRelations(fetchedRelations);
         setNotes(fetchedNotes);
         setTasks(fetchedTasks);
         setReviews(fetchedReviews);
@@ -100,6 +200,17 @@ const KnowledgeDetailPage: React.FC = () => {
     loadDetail();
   }, [knowledgeItemId]);
 
+  const topicMap = useMemo(() => new Map(allTopics.map((topic) => [topic.id, topic])), [allTopics]);
+  const orderedTopics = useMemo(() => orderTopics(allTopics), [allTopics]);
+  const assignedTopicIds = useMemo(() => new Set(itemTopics.map((topic) => topic.id)), [itemTopics]);
+  const assignableTopics = useMemo(
+    () => orderedTopics.filter(({ topic }) => !assignedTopicIds.has(topic.id)),
+    [assignedTopicIds, orderedTopics]
+  );
+  const relationTargets = useMemo(
+    () => knowledgeItems.filter((candidate) => candidate.id !== item?.id),
+    [item?.id, knowledgeItems]
+  );
   const completedTasks = useMemo(
     () => tasks.filter((task) => task.status === 'done').length,
     [tasks]
@@ -127,6 +238,134 @@ const KnowledgeDetailPage: React.FC = () => {
       setError('Failed to update knowledge item status.');
     } finally {
       setStatusSaving(false);
+    }
+  };
+
+  const handleAttachTopic = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!item || !selectedTopicId) return;
+
+    setSavingTopicAssignment(true);
+    setError(null);
+
+    try {
+      const assignedTopic = await assignTopicToKnowledgeItem(item.id, Number(selectedTopicId));
+      startTransition(() => {
+        setItemTopics((current) =>
+          current.some((topic) => topic.id === assignedTopic.id) ? current : [...current, assignedTopic]
+        );
+      });
+      setSelectedTopicId('');
+    } catch (topicError) {
+      console.error(topicError);
+      setError('Failed to attach topic.');
+    } finally {
+      setSavingTopicAssignment(false);
+    }
+  };
+
+  const handleCreateTopic = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!item || !newTopicForm.name.trim()) return;
+
+    setCreatingTopic(true);
+    setError(null);
+
+    try {
+      const createdTopic = await createTopic({
+        name: newTopicForm.name.trim(),
+        parentTopicId: newTopicForm.parentTopicId ? Number(newTopicForm.parentTopicId) : undefined,
+        description: newTopicForm.description.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setAllTopics((current) => [...current, createdTopic]);
+      });
+
+      const assignedTopic = await assignTopicToKnowledgeItem(item.id, createdTopic.id);
+      startTransition(() => {
+        setItemTopics((current) =>
+          current.some((topic) => topic.id === assignedTopic.id) ? current : [...current, assignedTopic]
+        );
+      });
+
+      setNewTopicForm({
+        name: '',
+        parentTopicId: '',
+        description: '',
+      });
+    } catch (topicError) {
+      console.error(topicError);
+      setError('Failed to create and attach topic.');
+    } finally {
+      setCreatingTopic(false);
+    }
+  };
+
+  const handleRemoveTopic = async (topicId: number) => {
+    if (!item) return;
+
+    try {
+      await removeTopicFromKnowledgeItem(item.id, topicId);
+      startTransition(() => {
+        setItemTopics((current) => current.filter((topic) => topic.id !== topicId));
+      });
+    } catch (topicError) {
+      console.error(topicError);
+      setError('Failed to remove topic.');
+    }
+  };
+
+  const handleRelationSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!item || !relationForm.toEntityId) return;
+
+    setSavingRelation(true);
+    setError(null);
+
+    try {
+      const relation = await createKnowledgeRelation(item.id, {
+        toEntityId: Number(relationForm.toEntityId),
+        relationType: relationForm.relationType,
+        note: relationForm.note.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setRelations((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === relation.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = relation;
+            return next;
+          }
+          return [relation, ...current];
+        });
+      });
+
+      setRelationForm({
+        toEntityId: '',
+        relationType: 'related_to',
+        note: '',
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to create relation.');
+    } finally {
+      setSavingRelation(false);
+    }
+  };
+
+  const handleDeleteRelation = async (relationId: number) => {
+    if (!item) return;
+
+    try {
+      await deleteKnowledgeRelation(item.id, relationId);
+      startTransition(() => {
+        setRelations((current) => current.filter((relation) => relation.id !== relationId));
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to delete relation.');
     }
   };
 
@@ -325,6 +564,14 @@ const KnowledgeDetailPage: React.FC = () => {
 
         <div className="knowledge-detail-stats">
           <div className="knowledge-detail-stat">
+            <strong>{itemTopics.length}</strong>
+            <span>Topics</span>
+          </div>
+          <div className="knowledge-detail-stat">
+            <strong>{relations.length}</strong>
+            <span>Relations</span>
+          </div>
+          <div className="knowledge-detail-stat">
             <strong>{notes.length}</strong>
             <span>Notes</span>
           </div>
@@ -373,8 +620,8 @@ const KnowledgeDetailPage: React.FC = () => {
               <p>{item.description}</p>
             ) : (
               <p>
-                This is the first item-level workspace. Use it to accumulate notes, track follow-up work,
-                and leave reviews as the encyclopedia grows.
+                This workspace now covers taxonomy and cross-links as well as notes, tasks, and reviews.
+                The next layers can grow from these topic placements and item relations.
               </p>
             )}
             <dl>
@@ -395,6 +642,187 @@ const KnowledgeDetailPage: React.FC = () => {
         </aside>
 
         <div className="knowledge-detail-main">
+          <section className="knowledge-detail-panel">
+            <div className="knowledge-detail-section-head">
+              <div>
+                <span className="knowledge-detail-eyebrow">Taxonomy</span>
+                <h2>Topic placement</h2>
+              </div>
+            </div>
+
+            <div className="knowledge-detail-chips">
+              {itemTopics.length === 0 ? (
+                <div className="knowledge-detail-empty">This item is not classified yet.</div>
+              ) : (
+                itemTopics.map((topic) => (
+                  <div key={topic.id} className="knowledge-detail-chip">
+                    <span>{buildTopicPath(topic, topicMap)}</span>
+                    <button type="button" onClick={() => handleRemoveTopic(topic.id)}>
+                      Remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <form className="knowledge-detail-form knowledge-detail-form-row" onSubmit={handleAttachTopic}>
+              <select
+                value={selectedTopicId}
+                onChange={(event) => setSelectedTopicId(event.target.value)}
+                disabled={savingTopicAssignment || assignableTopics.length === 0}
+              >
+                <option value="">Attach an existing topic</option>
+                {assignableTopics.map(({ topic, depth }) => (
+                  <option key={topic.id} value={topic.id}>
+                    {`${'  '.repeat(depth)}${topic.name}`}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" disabled={savingTopicAssignment || !selectedTopicId}>
+                {savingTopicAssignment ? 'Attaching...' : 'Attach topic'}
+              </button>
+            </form>
+
+            <form className="knowledge-detail-form" onSubmit={handleCreateTopic}>
+              <input
+                value={newTopicForm.name}
+                onChange={(event) =>
+                  setNewTopicForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="Create a new topic"
+              />
+              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                <label>
+                  Parent topic
+                  <select
+                    value={newTopicForm.parentTopicId}
+                    onChange={(event) =>
+                      setNewTopicForm((current) => ({
+                        ...current,
+                        parentTopicId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">No parent</option>
+                    {orderedTopics.map(({ topic, depth }) => (
+                      <option key={topic.id} value={topic.id}>
+                        {`${'  '.repeat(depth)}${topic.name}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Description
+                  <input
+                    value={newTopicForm.description}
+                    onChange={(event) =>
+                      setNewTopicForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    placeholder="Optional topic note"
+                  />
+                </label>
+              </div>
+              <button type="submit" disabled={creatingTopic}>
+                {creatingTopic ? 'Creating topic...' : 'Create and attach topic'}
+              </button>
+            </form>
+          </section>
+
+          <section className="knowledge-detail-panel">
+            <div className="knowledge-detail-section-head">
+              <div>
+                <span className="knowledge-detail-eyebrow">Relations</span>
+                <h2>Cross-links to other items</h2>
+              </div>
+            </div>
+
+            <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
+              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                <label>
+                  Relation
+                  <select
+                    value={relationForm.relationType}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        relationType: event.target.value as KnowledgeRelationType,
+                      }))
+                    }
+                  >
+                    {relationTypeOptions.map((relationType) => (
+                      <option key={relationType} value={relationType}>
+                        {formatRelationType(relationType)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Target item
+                  <select
+                    value={relationForm.toEntityId}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        toEntityId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Choose another knowledge item</option>
+                    {relationTargets.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <input
+                value={relationForm.note}
+                onChange={(event) =>
+                  setRelationForm((current) => ({
+                    ...current,
+                    note: event.target.value,
+                  }))
+                }
+                placeholder="Optional note about the connection"
+              />
+              <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
+                {savingRelation ? 'Linking...' : 'Add relation'}
+              </button>
+            </form>
+
+            {relations.length === 0 ? (
+              <div className="knowledge-detail-empty">No linked items yet.</div>
+            ) : (
+              <div className="knowledge-detail-stack">
+                {relations.map((relation) => (
+                  <article key={relation.id} className="knowledge-detail-card">
+                    <div className="knowledge-detail-card-top">
+                      <div>
+                        <div className="knowledge-detail-meta">
+                          <span>{formatRelationType(relation.relationType)}</span>
+                          {relation.toEntityKind ? <span>{relation.toEntityKind}</span> : null}
+                          <span>{formatDateTime(relation.createdAt)}</span>
+                        </div>
+                        <h3>{relation.toEntityTitle || `Item #${relation.toEntityId}`}</h3>
+                      </div>
+                      <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
+                        Delete
+                      </button>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
           <section className="knowledge-detail-panel">
             <div className="knowledge-detail-section-head">
               <div>

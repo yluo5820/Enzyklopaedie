@@ -264,6 +264,8 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_knowledge_items_status ON knowledge_items(status);
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
     CREATE INDEX IF NOT EXISTS idx_knowledge_notes_item ON knowledge_notes(knowledgeItemId);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_relations_from
+      ON knowledge_relations(fromEntityType, fromEntityId, createdAt DESC);
     CREATE INDEX IF NOT EXISTS idx_knowledge_tasks_item ON knowledge_tasks(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_item ON knowledge_reviews(knowledgeItemId);
 

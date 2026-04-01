@@ -179,6 +179,13 @@ export interface KnowledgeRelation {
   createdAt: string;
 }
 
+export interface KnowledgeRelationDetail extends KnowledgeRelation {
+  fromEntityTitle?: string;
+  toEntityTitle?: string;
+  fromEntityKind?: string;
+  toEntityKind?: string;
+}
+
 export type KnowledgeTaskStatus = 'todo' | 'doing' | 'done' | 'archived';
 
 export interface KnowledgeNote {
@@ -219,6 +226,7 @@ export type ActivityEventType =
   | 'topic_created'
   | 'note_created'
   | 'task_created'
+  | 'relation_created'
   | 'review_created'
   | 'task_completed'
   | 'exhibit_published';
@@ -306,8 +314,8 @@ export const slugifyTopicName = (value: string) =>
 export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
 
-export type NewTopic = Omit<Topic, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateTopic = Partial<Omit<Topic, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 
 export type NewKnowledgeRelation = Omit<KnowledgeRelation, 'id' | 'createdAt'>;
 export type UpdateKnowledgeRelation = Partial<Omit<KnowledgeRelation, 'id' | 'createdAt'>>;

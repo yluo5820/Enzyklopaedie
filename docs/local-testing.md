@@ -74,6 +74,8 @@ That test currently covers:
 ### 4. Knowledge Item Detail
 
 - From `/knowledge`, open a knowledge item
+- Attach an existing topic or create a new child topic and confirm it appears in the topic list
+- Create a relation to another knowledge item and confirm it appears in the relation list
 - Add one note and confirm it appears immediately
 - Add one task, move it to `done`, and confirm the status updates
 - Add one review and confirm it appears at the top of the review list
