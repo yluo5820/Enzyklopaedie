@@ -33,7 +33,7 @@ const AddEraModal: React.FC<AddEraModalProps> = ({
     if (isOpen) {
       setCivilizationsLoading(true);
       
-      fetchCivilizations().catch((err) => {
+      fetchCivilizations().catch(() => {
         setCivilizationsError('Failed to load civilizations');
         return [];
       }).then((fetchedCivilizations) => {

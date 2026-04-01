@@ -47,7 +47,7 @@ const EditEraModal: React.FC<EditEraModalProps> = ({
     if (isOpen) {
       setCivilizationsLoading(true);
       
-      fetchCivilizations().catch((err) => {
+      fetchCivilizations().catch(() => {
         setCivilizationsError('Failed to load civilizations');
         return [];
       }).then((fetchedCivilizations) => {

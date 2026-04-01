@@ -9,6 +9,20 @@ interface AddItemModalProps {
   onLectureAdded: (lecture: Lecture) => void;
 }
 
+type GoogleBookVolume = {
+  id: string;
+  volumeInfo?: {
+    title?: string;
+    authors?: string[];
+    publishedDate?: string;
+    pageCount?: number;
+    description?: string;
+    imageLinks?: {
+      thumbnail?: string;
+    };
+  };
+};
+
 const AddItemModal: React.FC<AddItemModalProps> = ({
   isOpen,
   onClose,
@@ -16,6 +30,14 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
   onLectureAdded,
 }) => {
   const [itemType, setItemType] = useState<'book' | 'lecture' | null>(null);
+  const [bookAddMode, setBookAddMode] = useState<'custom' | 'search' | null>(null);
+  const [bookSearchQuery, setBookSearchQuery] = useState('');
+  const [bookSearchResults, setBookSearchResults] = useState<GoogleBookVolume[]>([]);
+  const [bookSearchLoading, setBookSearchLoading] = useState(false);
+  const [bookSearchError, setBookSearchError] = useState<string | null>(null);
+  const [bookSelectedIds, setBookSelectedIds] = useState<string[]>([]);
+  const [bookBulkAddLoading, setBookBulkAddLoading] = useState(false);
+  const [bookBulkAddError, setBookBulkAddError] = useState<string | null>(null);
   
   // Book form state
   const [bookTitle, setBookTitle] = useState('');
@@ -45,6 +67,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
   const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [subjectsError, setSubjectsError] = useState<string | null>(null);
 
+  const googleBooksApiKey = (import.meta.env as { VITE_GOOGLE_BOOKS_API_KEY?: string })
+    .VITE_GOOGLE_BOOKS_API_KEY;
+
   // Fetch authors and subjects when modal opens for book or lecture
   useEffect(() => {
     if (isOpen && (itemType === 'book' || itemType === 'lecture')) {
@@ -52,11 +77,11 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
       setSubjectsLoading(true);
       
       Promise.all([
-        fetchAuthors().catch((err) => {
+        fetchAuthors().catch(() => {
           setAuthorsError('Failed to load authors');
           return [];
         }),
-        fetchSubjects().catch((err) => {
+        fetchSubjects().catch(() => {
           setSubjectsError('Failed to load subjects');
           return [];
         })
@@ -68,8 +93,19 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
         setSubjectsLoading(false);
       });
     }
+    if (itemType !== 'book') {
+      setBookAddMode(null);
+    }
     if (!isOpen) {
       setItemType(null);
+      setBookAddMode(null);
+      setBookSearchQuery('');
+      setBookSearchResults([]);
+      setBookSearchLoading(false);
+      setBookSearchError(null);
+      setBookSelectedIds([]);
+      setBookBulkAddLoading(false);
+      setBookBulkAddError(null);
       setBookAuthorId(null);
       setNewAuthorName('');
       setBookSubjectId(null);
@@ -80,6 +116,115 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
       setNewLectureSubjectName('');
     }
   }, [isOpen, itemType]);
+
+  const resetBookSearch = () => {
+    setBookSearchQuery('');
+    setBookSearchResults([]);
+    setBookSearchLoading(false);
+    setBookSearchError(null);
+    setBookSelectedIds([]);
+    setBookBulkAddLoading(false);
+    setBookBulkAddError(null);
+  };
+
+  const parsePublishedYear = (publishedDate?: string) => {
+    if (!publishedDate) return new Date().getFullYear();
+    const match = publishedDate.match(/\d{4}/);
+    if (!match) return new Date().getFullYear();
+    return Number.parseInt(match[0], 10);
+  };
+
+  const handleBookSearch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmedQuery = bookSearchQuery.trim();
+    if (!trimmedQuery) return;
+
+    setBookSearchLoading(true);
+    setBookSearchError(null);
+    setBookSearchResults([]);
+    setBookSelectedIds([]);
+
+    try {
+      const url = new URL('https://www.googleapis.com/books/v1/volumes');
+      url.searchParams.set('q', trimmedQuery);
+      url.searchParams.set('maxResults', '10');
+      if (googleBooksApiKey) {
+        url.searchParams.set('key', googleBooksApiKey);
+      }
+
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        throw new Error('Failed to search books');
+      }
+      const data = await response.json();
+      const items = Array.isArray(data.items) ? data.items : [];
+      setBookSearchResults(items);
+    } catch (error) {
+      console.error('Failed to search books:', error);
+      setBookSearchError('Failed to search books');
+    } finally {
+      setBookSearchLoading(false);
+    }
+  };
+
+  const toggleBookSelection = (volumeId: string) => {
+    setBookSelectedIds((prev) =>
+      prev.includes(volumeId) ? prev.filter((id) => id !== volumeId) : [...prev, volumeId]
+    );
+  };
+
+  const handleAddSelectedBooks = async () => {
+    if (bookSelectedIds.length === 0) return;
+
+    setBookBulkAddLoading(true);
+    setBookBulkAddError(null);
+
+    try {
+      const selectedVolumes = bookSearchResults.filter((volume) =>
+        bookSelectedIds.includes(volume.id)
+      );
+      const authorCache = new Map(
+        authors.map((author) => [author.name.trim().toLowerCase(), author.id])
+      );
+
+      for (const volume of selectedVolumes) {
+        const info = volume.volumeInfo ?? {};
+        const title = info.title?.trim() || 'Untitled';
+        const rawAuthorName = info.authors?.[0] || 'Unknown Author';
+        const authorName = rawAuthorName.trim() || 'Unknown Author';
+        const authorKey = authorName.toLowerCase();
+        let authorId = authorCache.get(authorKey);
+
+        if (!authorId) {
+          const createdAuthor = await createAuthor({ name: authorName });
+          authorId = createdAuthor.id;
+          authorCache.set(authorKey, authorId);
+          setAuthors((prev) => [...prev, createdAuthor]);
+        }
+
+        const newBook: NewBook = {
+          title,
+          authorId,
+          subjectIds: [1],
+          year: parsePublishedYear(info.publishedDate),
+          pages: info.pageCount,
+          isRead: false,
+          description: info.description || undefined,
+          coverImageUrl: info.imageLinks?.thumbnail,
+        };
+
+        const addedBook = await createBook(newBook);
+        onBookAdded(addedBook);
+      }
+
+      setBookSelectedIds([]);
+    } catch (error) {
+      console.error('Failed to add selected books:', error);
+      setBookBulkAddError('Failed to add selected books');
+    } finally {
+      setBookBulkAddLoading(false);
+    }
+  };
 
   const handleSubmitBook = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,6 +316,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
 
   const resetForm = () => {
     setItemType(null);
+    setBookAddMode(null);
     setBookTitle('');
     setBookAuthorId(null);
     setNewAuthorName('');
@@ -187,6 +333,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
     setLectureYear(new Date().getFullYear().toString());
     setLectureDuration('');
     setLectureLink('');
+    resetBookSearch();
   };
 
   if (!isOpen) return null;
@@ -209,7 +356,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
         padding: '20px',
         borderRadius: '8px',
         minWidth: '400px',
-        maxWidth: '500px',
+        width: '90%',
+        maxWidth: bookAddMode === 'search' ? '700px' : '500px',
         maxHeight: '80vh',
         overflow: 'auto',
       }}>
@@ -262,7 +410,54 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
               </button>
             </div>
           </div>
-        ) : itemType === 'book' ? (
+        ) : itemType === 'book' && !bookAddMode ? (
+          <div>
+            <p style={{ marginBottom: '20px' }}>How would you like to add a book?</p>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+              <button
+                onClick={() => setBookAddMode('custom')}
+                style={{
+                  padding: '15px 20px',
+                  border: '2px solid #007bff',
+                  backgroundColor: 'white',
+                  color: '#007bff',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  flex: 1,
+                }}
+              >
+                ✍️ Custom
+              </button>
+              <button
+                onClick={() => setBookAddMode('search')}
+                style={{
+                  padding: '15px 20px',
+                  border: '2px solid #17a2b8',
+                  backgroundColor: 'white',
+                  color: '#17a2b8',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  flex: 1,
+                }}
+              >
+                🔎 Search
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setItemType(null)}
+              style={{
+                padding: '10px 15px',
+                border: '1px solid #ddd',
+                backgroundColor: 'white',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Back
+            </button>
+          </div>
+        ) : itemType === 'book' && bookAddMode === 'custom' ? (
           <form onSubmit={handleSubmitBook}>
             <h3>Add New Book</h3>
             <div style={{ marginBottom: '15px' }}>
@@ -385,7 +580,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setItemType(null)}
+                onClick={() => setBookAddMode(null)}
                 style={{
                   padding: '10px 15px',
                   border: '1px solid #ddd',
@@ -411,6 +606,136 @@ const AddItemModal: React.FC<AddItemModalProps> = ({
               </button>
             </div>
           </form>
+        ) : itemType === 'book' && bookAddMode === 'search' ? (
+          <div>
+            <h3>Search Books</h3>
+            <form
+              onSubmit={handleBookSearch}
+              style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}
+            >
+              <input
+                type="text"
+                value={bookSearchQuery}
+                onChange={(e) => setBookSearchQuery(e.target.value)}
+                placeholder="Search by title, author, or keyword"
+                style={{ flex: 1, padding: '8px', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+              <button
+                type="submit"
+                disabled={bookSearchLoading}
+                style={{
+                  padding: '8px 14px',
+                  backgroundColor: '#17a2b8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {bookSearchLoading ? 'Searching...' : 'Search'}
+              </button>
+            </form>
+            {bookSearchError && <div style={{ color: 'red', marginBottom: '10px' }}>{bookSearchError}</div>}
+            {!bookSearchLoading && bookSearchResults.length === 0 && bookSearchQuery.trim() && (
+              <div style={{ color: '#666', marginBottom: '10px' }}>No results found.</div>
+            )}
+            {bookSearchResults.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {bookSearchResults.map((volume) => {
+                  const info = volume.volumeInfo ?? {};
+                  const title = info.title || 'Untitled';
+                  const authorsText = info.authors?.join(', ') || 'Unknown author';
+                  const publishedDate = info.publishedDate || 'Unknown year';
+                  const description = info.description || '';
+                  const thumbnail = info.imageLinks?.thumbnail;
+                  const isSelected = bookSelectedIds.includes(volume.id);
+                  const preview =
+                    description.length > 160 ? `${description.slice(0, 160)}...` : description;
+
+                  return (
+                    <label
+                      key={volume.id}
+                      style={{
+                        display: 'flex',
+                        gap: '12px',
+                        padding: '10px',
+                        border: '1px solid #eee',
+                        borderRadius: '6px',
+                        alignItems: 'flex-start',
+                        cursor: 'pointer',
+                        backgroundColor: isSelected ? '#f0f7ff' : 'white',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleBookSelection(volume.id)}
+                        style={{ marginTop: '4px' }}
+                      />
+                      {thumbnail && (
+                        <img
+                          src={thumbnail}
+                          alt={`${title} cover`}
+                          style={{
+                            width: '48px',
+                            height: '72px',
+                            objectFit: 'cover',
+                            borderRadius: '4px',
+                          }}
+                        />
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: '#333' }}>{title}</div>
+                        <div style={{ color: '#666', fontSize: '0.9em' }}>{authorsText}</div>
+                        <div style={{ color: '#999', fontSize: '0.85em' }}>{publishedDate}</div>
+                        {preview && (
+                          <p style={{ marginTop: '6px', fontSize: '0.9em', color: '#444' }}>
+                            {preview}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {bookBulkAddError && <div style={{ color: 'red', marginTop: '10px' }}>{bookBulkAddError}</div>}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setBookAddMode(null);
+                  resetBookSearch();
+                }}
+                style={{
+                  padding: '10px 15px',
+                  border: '1px solid #ddd',
+                  backgroundColor: 'white',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSelectedBooks}
+                disabled={bookSelectedIds.length === 0 || bookBulkAddLoading}
+                style={{
+                  padding: '10px 15px',
+                  backgroundColor: '#17a2b8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                {bookBulkAddLoading
+                  ? 'Adding...'
+                  : `Add Selected${bookSelectedIds.length ? ` (${bookSelectedIds.length})` : ''}`}
+              </button>
+            </div>
+          </div>
         ) : (
           <form onSubmit={handleSubmitLecture}>
             <h3>Add New Lecture</h3>

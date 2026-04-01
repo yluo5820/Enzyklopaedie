@@ -40,11 +40,11 @@ const AddCivilizationModal: React.FC<AddCivilizationModalProps> = ({
       setCivilizationsLoading(true);
       
       Promise.all([
-        fetchNations().catch((err) => {
+        fetchNations().catch(() => {
           setNationsError('Failed to load nations');
           return [];
         }),
-        import('../api').then(api => api.fetchCivilizations()).catch((err) => {
+        import('../api').then(api => api.fetchCivilizations()).catch(() => {
           setCivilizationsError('Failed to load civilizations');
           return [];
         })

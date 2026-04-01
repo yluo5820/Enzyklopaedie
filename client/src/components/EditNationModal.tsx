@@ -72,15 +72,15 @@ const EditNationModal: React.FC<EditNationModalProps> = ({
       setErasLoading(true);
       
       Promise.all([
-        fetchAuthors().catch((err) => {
+        fetchAuthors().catch(() => {
           setAuthorsError('Failed to load authors');
           return [];
         }),
-        fetchCivilizations().catch((err) => {
+        fetchCivilizations().catch(() => {
           setCivilizationsError('Failed to load civilizations');
           return [];
         }),
-        fetchEras().catch((err) => {
+        fetchEras().catch(() => {
           setErasError('Failed to load eras');
           return [];
         })

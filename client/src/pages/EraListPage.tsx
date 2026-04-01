@@ -91,7 +91,7 @@ const EraListPage: React.FC = () => {
   if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1>Eras</h1>
         <button

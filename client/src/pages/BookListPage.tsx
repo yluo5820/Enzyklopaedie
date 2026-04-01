@@ -3,6 +3,7 @@ import { Book, Lecture, Author } from '@enzyklopaedie/shared';
 import { fetchBooks, fetchLectures, fetchAuthors, deleteBook, deleteLecture, updateBook } from '../api';
 import AddItemModal from '../components/AddItemModal';
 import EditItemModal from '../components/EditItemModal';
+import CenteredContainer from '../components/CenteredContainer';
 
 interface ListItem {
   id: number;
@@ -134,182 +135,184 @@ const BookListPage: React.FC = () => {
     }))
   ].sort((a, b) => b.year - a.year); // Sort by year, newest first
 
-  if (loading) return <div>Loading items...</div>;
-  if (error) return <div style={{ color: 'red' }}>Error: {error}</div>;
+  if (loading) return <CenteredContainer>Loading items...</CenteredContainer>;
+  if (error) return <CenteredContainer><div style={{ color: 'red' }}>Error: {error}</div></CenteredContainer>;
 
   return (
-    <div style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>My Library</h1>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          style={{
-            padding: '10px 20px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px',
-            cursor: 'pointer',
-            fontSize: '16px',
-          }}
-        >
-          + Add Item
-        </button>
-      </div>
-
-      {allItems.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px' }}>
-          <p style={{ fontSize: '18px', color: '#666' }}>No items in your library yet.</p>
-          <p style={{ color: '#999' }}>Click "Add Item" to get started!</p>
+    <CenteredContainer>
+      <div style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h1>My Library</h1>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '16px',
+            }}
+          >
+            + Add Item
+          </button>
         </div>
-      ) : (
-        <div style={{ display: 'grid', gap: '15px' }}>
-          {allItems.map((item) => {
-            const originalItem = item.type === 'book' 
-              ? books.find(b => b.id === item.id)
-              : lectures.find(l => l.id === item.id);
-            
-            return (
-              <div
-                key={`${item.type}-${item.id}`}
-                style={{
-                  border: '1px solid #ddd',
-                  borderRadius: '8px',
-                  padding: '15px',
-                  backgroundColor: item.type === 'book' && item.isRead ? '#f0f8f0' : 'white',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ 
-                        marginRight: '10px', 
-                        fontSize: '20px',
-                        color: item.type === 'book' ? '#007bff' : '#28a745'
-                      }}>
-                        {item.type === 'book' ? '📚' : '🎓'}
-                      </span>
-                      <h3 style={{ margin: 0, fontSize: '18px' }}>{item.title}</h3>
+
+        {allItems.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <p style={{ fontSize: '18px', color: '#666' }}>No items in your library yet.</p>
+            <p style={{ color: '#999' }}>Click "Add Item" to get started!</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: '15px' }}>
+            {allItems.map((item) => {
+              const originalItem = item.type === 'book' 
+                ? books.find(b => b.id === item.id)
+                : lectures.find(l => l.id === item.id);
+              
+              return (
+                <div
+                  key={`${item.type}-${item.id}`}
+                  style={{
+                    border: '1px solid #ddd',
+                    borderRadius: '8px',
+                    padding: '15px',
+                    backgroundColor: item.type === 'book' && item.isRead ? '#f0f8f0' : 'white',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ 
+                          marginRight: '10px', 
+                          fontSize: '20px',
+                          color: item.type === 'book' ? '#007bff' : '#28a745'
+                        }}>
+                          {item.type === 'book' ? '📚' : '🎓'}
+                        </span>
+                        <h3 style={{ margin: 0, fontSize: '18px' }}>{item.title}</h3>
+                      </div>
+                      
+                      <p style={{ margin: '5px 0', color: '#666' }}>
+                        {item.type === 'book' 
+                          ? `by ${item.author}` 
+                          : `by ${item.speaker}`
+                        } • {item.year}
+                      </p>
+                      
+                      {item.type === 'book' && item.isRead && (
+                        <p style={{ margin: '5px 0', color: '#28a745', fontWeight: 'bold' }}>
+                          ✓ Read{item.rating ? ` • Rating: ${item.rating}/5` : ''}
+                        </p>
+                      )}
+                      
+                      {item.type === 'lecture' && item.duration && (
+                        <p style={{ margin: '5px 0', color: '#666' }}>
+                          Duration: {item.duration} minutes
+                        </p>
+                      )}
+                      
+                      {item.description && (
+                        <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
+                          {item.description}
+                        </p>
+                      )}
+                      
+                      {item.type === 'lecture' && item.link && (
+                        <a 
+                          href={item.link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          style={{ 
+                            color: '#007bff', 
+                            textDecoration: 'none',
+                            fontSize: '14px'
+                          }}
+                        >
+                          🔗 Watch Lecture
+                        </a>
+                      )}
                     </div>
                     
-                    <p style={{ margin: '5px 0', color: '#666' }}>
-                      {item.type === 'book' 
-                        ? `by ${item.author}` 
-                        : `by ${item.speaker}`
-                      } • {item.year}
-                    </p>
-                    
-                    {item.type === 'book' && item.isRead && (
-                      <p style={{ margin: '5px 0', color: '#28a745', fontWeight: 'bold' }}>
-                        ✓ Read{item.rating ? ` • Rating: ${item.rating}/5` : ''}
-                      </p>
-                    )}
-                    
-                    {item.type === 'lecture' && item.duration && (
-                      <p style={{ margin: '5px 0', color: '#666' }}>
-                        Duration: {item.duration} minutes
-                      </p>
-                    )}
-                    
-                    {item.description && (
-                      <p style={{ margin: '5px 0', color: '#666', fontSize: '14px' }}>
-                        {item.description}
-                      </p>
-                    )}
-                    
-                    {item.type === 'lecture' && item.link && (
-                      <a 
-                        href={item.link} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        style={{ 
-                          color: '#007bff', 
-                          textDecoration: 'none',
-                          fontSize: '14px'
-                        }}
-                      >
-                        🔗 Watch Lecture
-                      </a>
-                    )}
-                  </div>
-                  
-                  <div style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
-                    <button
-                      onClick={() => originalItem && handleEditItem(originalItem)}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#ffc107',
-                        color: '#212529',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                      }}
-                    >
-                      Edit
-                    </button>
-                    {item.type === 'book' && (
+                    <div style={{ display: 'flex', gap: '8px', marginLeft: '15px' }}>
                       <button
-                        onClick={() => {
-                          const book = books.find(b => b.id === item.id);
-                          if (book) handleToggleRead(book);
-                        }}
+                        onClick={() => originalItem && handleEditItem(originalItem)}
                         style={{
                           padding: '6px 12px',
-                          border: '1px solid #ddd',
-                          backgroundColor: 'white',
+                          backgroundColor: '#ffc107',
+                          color: '#212529',
+                          border: 'none',
                           borderRadius: '4px',
                           cursor: 'pointer',
                           fontSize: '12px',
                         }}
                       >
-                        {item.isRead ? 'Mark Unread' : 'Mark Read'}
+                        Edit
                       </button>
-                    )}
-                    <button
-                      onClick={() => item.type === 'book' 
-                        ? handleDeleteBook(item.id) 
-                        : handleDeleteLecture(item.id)
-                      }
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#dc3545',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                      }}
-                    >
-                      Delete
-                    </button>
+                      {item.type === 'book' && (
+                        <button
+                          onClick={() => {
+                            const book = books.find(b => b.id === item.id);
+                            if (book) handleToggleRead(book);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            border: '1px solid #ddd',
+                            backgroundColor: 'white',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                          }}
+                        >
+                          {item.isRead ? 'Mark Unread' : 'Mark Read'}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => item.type === 'book' 
+                          ? handleDeleteBook(item.id) 
+                          : handleDeleteLecture(item.id)
+                        }
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#dc3545',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
 
-      <AddItemModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onBookAdded={handleBookAdded}
-        onLectureAdded={handleLectureAdded}
-      />
+        <AddItemModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onBookAdded={handleBookAdded}
+          onLectureAdded={handleLectureAdded}
+        />
 
-      <EditItemModal
-        isOpen={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setEditingItem(null);
-        }}
-        item={editingItem}
-        onBookUpdated={handleBookUpdated}
-        onLectureUpdated={handleLectureUpdated}
-      />
-    </div>
+        <EditItemModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingItem(null);
+          }}
+          item={editingItem}
+          onBookUpdated={handleBookUpdated}
+          onLectureUpdated={handleLectureUpdated}
+        />
+      </div>
+    </CenteredContainer>
   );
 };
 

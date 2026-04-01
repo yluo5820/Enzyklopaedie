@@ -77,11 +77,11 @@ const EditItemModal: React.FC<EditItemModalProps> = ({
       setSubjectsLoading(true);
       
       Promise.all([
-        fetchAuthors().catch((err) => {
+        fetchAuthors().catch(() => {
           setAuthorsError('Failed to load authors');
           return [];
         }),
-        fetchSubjects().catch((err) => {
+        fetchSubjects().catch(() => {
           setSubjectsError('Failed to load subjects');
           return [];
         })

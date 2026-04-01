@@ -18,7 +18,7 @@ export interface Book {
 export interface Lecture {
     id: number;
     title: string;
-    speakerId: number | string;
+    speakerId: number;
     subjectIds: number[];
     year: number;
     duration?: number;
@@ -94,3 +94,134 @@ export type NewNote = Omit<Note, 'id'>;
 export type UpdateNote = Partial<Omit<Note, 'id'>>;
 export type NewComment = Omit<Comment, 'id'>;
 export type UpdateComment = Partial<Omit<Comment, 'id'>>;
+export type KnowledgeItemKind = 'book' | 'lecture' | 'article' | 'essay' | 'video' | 'podcast' | 'course' | 'artifact';
+export type KnowledgeItemStatus = 'inbox' | 'queued' | 'active' | 'completed' | 'archived';
+export interface KnowledgeItem {
+    id: number;
+    kind: KnowledgeItemKind;
+    title: string;
+    creator?: string;
+    sourceName?: string;
+    sourceUrl?: string;
+    summary?: string;
+    description?: string;
+    publishedYear?: number;
+    startedOn?: string;
+    completedOn?: string;
+    status: KnowledgeItemStatus;
+    rating?: number;
+    coverImageUrl?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface Topic {
+    id: number;
+    name: string;
+    slug: string;
+    description?: string;
+    parentTopicId?: number;
+    color?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export type KnowledgeRelationType = 'about' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
+export interface KnowledgeRelation {
+    id: number;
+    fromEntityType: string;
+    fromEntityId: number;
+    toEntityType: string;
+    toEntityId: number;
+    relationType: KnowledgeRelationType;
+    note?: string;
+    createdAt: string;
+}
+export type KnowledgeTaskStatus = 'todo' | 'doing' | 'done' | 'archived';
+export interface KnowledgeTask {
+    id: number;
+    knowledgeItemId: number;
+    title: string;
+    details?: string;
+    status: KnowledgeTaskStatus;
+    dueAt?: string;
+    scheduledFor?: string;
+    completedAt?: string;
+    sortOrder?: number;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface KnowledgeReview {
+    id: number;
+    knowledgeItemId: number;
+    score?: number;
+    summary?: string;
+    body?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'topic_created' | 'note_created' | 'review_created' | 'task_completed' | 'exhibit_published';
+export interface ActivityEvent {
+    id: number;
+    type: ActivityEventType;
+    entityType: string;
+    entityId: number;
+    message: string;
+    metadata?: Record<string, unknown>;
+    occurredAt: string;
+}
+export interface Place {
+    id: number;
+    name: string;
+    latitude?: number;
+    longitude?: number;
+    bounds?: Record<string, unknown>;
+    description?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface TimelineEvent {
+    id: number;
+    title: string;
+    startYear?: number;
+    endYear?: number;
+    placeId?: number;
+    description?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface Exhibit {
+    id: number;
+    title: string;
+    slug: string;
+    summary?: string;
+    description?: string;
+    isPublished: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface KnowledgeProgressSummary {
+    total: number;
+    active: number;
+    completed: number;
+    byStatus: Record<KnowledgeItemStatus, number>;
+}
+export declare const summarizeKnowledgeProgress: (items: Array<Pick<KnowledgeItem, "status">>) => KnowledgeProgressSummary;
+export declare const slugifyTopicName: (value: string) => string;
+export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewTopic = Omit<Topic, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateTopic = Partial<Omit<Topic, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewKnowledgeRelation = Omit<KnowledgeRelation, 'id' | 'createdAt'>;
+export type UpdateKnowledgeRelation = Partial<Omit<KnowledgeRelation, 'id' | 'createdAt'>>;
+export type NewKnowledgeTask = Omit<KnowledgeTask, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateKnowledgeTask = Partial<Omit<KnowledgeTask, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewKnowledgeReview = Omit<KnowledgeReview, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateKnowledgeReview = Partial<Omit<KnowledgeReview, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewActivityEvent = Omit<ActivityEvent, 'id' | 'occurredAt'>;
+export type UpdateActivityEvent = Partial<Omit<ActivityEvent, 'id' | 'occurredAt'>>;
+export type NewPlace = Omit<Place, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdatePlace = Partial<Omit<Place, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewTimelineEvent = Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateTimelineEvent = Partial<Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewExhibit = Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateExhibit = Partial<Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>>;

@@ -1,0 +1,306 @@
+.world-history-page {
+  width: 100%;
+  max-width: 1400px;
+  padding: 12px 24px 40px;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman", serif;
+  color: #2f241b;
+  --ink: #2f241b;
+  --ink-muted: #6f5c4d;
+  --accent: #9c6b3f;
+  --accent-strong: #7b4d2a;
+  --paper: #f6ecda;
+  --paper-strong: #f1e0c7;
+  --border: #d7c3ab;
+  --shadow: rgba(53, 33, 18, 0.18);
+}
+
+.world-history-frame {
+  position: relative;
+  background: linear-gradient(180deg, #fbf2e3 0%, #f1e2cb 100%);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 20px;
+  box-shadow: 0 18px 40px var(--shadow);
+  overflow: hidden;
+  animation: reveal 0.6s ease-out;
+}
+
+.world-history-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.7), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.4), transparent 45%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.15), rgba(0, 0, 0, 0.08));
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.world-history-header {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 16px;
+  z-index: 1;
+}
+
+.world-history-title p {
+  margin: 6px 0 0;
+  color: var(--ink-muted);
+  max-width: 520px;
+  font-size: 1.05rem;
+}
+
+.world-history-title h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 3vw, 3rem);
+  letter-spacing: 0.02em;
+}
+
+.world-history-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+
+.world-history-meta {
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+  z-index: 1;
+}
+
+.world-history-meta-card {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(215, 195, 171, 0.8);
+  border-radius: 14px;
+  padding: 12px 14px;
+  backdrop-filter: blur(6px);
+}
+
+.world-history-meta-card span {
+  display: block;
+}
+
+.world-history-meta-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.world-history-meta-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.world-history-map {
+  position: relative;
+  height: min(62vh, 620px);
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #ede1cf, #e3d1bb);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 14px 30px rgba(53, 33, 18, 0.15);
+  z-index: 1;
+}
+
+.world-history-map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 15% 15%, rgba(255, 255, 255, 0.3), transparent 45%),
+    radial-gradient(circle at 85% 60%, rgba(0, 0, 0, 0.12), transparent 55%);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.world-history-map__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.world-history-map__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 20px;
+  color: var(--ink);
+  background: rgba(246, 236, 218, 0.85);
+  border: 1px dashed var(--border);
+  z-index: 2;
+}
+
+.world-history-map__overlay code {
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 6px;
+}
+
+.world-history-timeline {
+  margin-top: 18px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(215, 195, 171, 0.9);
+  border-radius: 16px;
+  padding: 14px 16px 18px;
+  z-index: 1;
+  position: relative;
+}
+
+.world-history-range {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.world-history-range input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(90deg, rgba(156, 107, 63, 0.4), rgba(56, 92, 101, 0.6));
+  border-radius: 999px;
+  outline: none;
+}
+
+.world-history-range input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  border: 2px solid #f8f1e5;
+  box-shadow: 0 4px 10px rgba(53, 33, 18, 0.25);
+  cursor: pointer;
+}
+
+.world-history-range input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  border: 2px solid #f8f1e5;
+  box-shadow: 0 4px 10px rgba(53, 33, 18, 0.25);
+  cursor: pointer;
+}
+
+.world-history-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.world-history-segments {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timeline-segment {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(215, 195, 171, 0.8);
+  background: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.timeline-segment::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent, rgba(0, 0, 0, 0.06));
+  opacity: 0.6;
+}
+
+.timeline-segment:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(53, 33, 18, 0.15);
+}
+
+.timeline-segment.is-active {
+  border-color: var(--accent-strong);
+  box-shadow: 0 10px 24px rgba(53, 33, 18, 0.2);
+}
+
+.timeline-segment::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 3px solid var(--segment-color, #9c6b3f);
+  opacity: 0.75;
+}
+
+.timeline-segment-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  position: relative;
+  z-index: 1;
+}
+
+.timeline-segment-range {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  position: relative;
+  z-index: 1;
+}
+
+.world-history-hint {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .world-history-header {
+    flex-direction: column;
+  }
+
+  .world-history-meta {
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+
+  .world-history-map {
+    height: 52vh;
+  }
+}
+
+@media (max-width: 600px) {
+  .world-history-page {
+    padding: 8px 14px 28px;
+  }
+
+  .timeline-segment {
+    min-width: 140px;
+  }
+}

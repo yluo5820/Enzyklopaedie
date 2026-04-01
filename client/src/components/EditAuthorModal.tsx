@@ -56,11 +56,11 @@ const EditAuthorModal: React.FC<EditAuthorModalProps> = ({
       setNationsLoading(true);
       
       Promise.all([
-        fetchSubjects().catch((err) => {
+        fetchSubjects().catch(() => {
           setSubjectsError('Failed to load subjects');
           return [];
         }),
-        fetchNations().catch((err) => {
+        fetchNations().catch(() => {
           setNationsError('Failed to load nations');
           return [];
         })

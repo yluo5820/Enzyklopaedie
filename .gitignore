@@ -2,13 +2,16 @@
 .DS_Store
 .env
 *.env
+.env.local
 *.db
+*.tsbuildinfo
 node_modules/
 
 # Client
 /client/node_modules/
 /client/dist/
 /client/.env
+/client/.env.local
 
 # Server
 /server/node_modules/
