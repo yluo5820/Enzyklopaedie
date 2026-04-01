@@ -143,12 +143,13 @@ export interface ReferenceEntity {
     createdAt: string;
     updatedAt: string;
 }
-export type KnowledgeRelationType = 'about' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
+export type KnowledgeRelationEntityType = 'knowledge_item' | 'topic' | 'reference_entity';
+export type KnowledgeRelationType = 'about' | 'created_by' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
 export interface KnowledgeRelation {
     id: number;
-    fromEntityType: string;
+    fromEntityType: KnowledgeRelationEntityType;
     fromEntityId: number;
-    toEntityType: string;
+    toEntityType: KnowledgeRelationEntityType;
     toEntityId: number;
     relationType: KnowledgeRelationType;
     note?: string;

@@ -77,6 +77,7 @@ That test currently covers:
 
 - From `/knowledge`, open a knowledge item
 - Attach an existing topic or create a new child topic and confirm it appears in the topic list
+- Add one relation to a reference entity such as a person or era and confirm it appears as a linked card
 - Add one note and confirm it appears immediately
 - Add one task, move it to `done`, and confirm the status updates
 - Add one review and confirm it appears at the top of the review list
@@ -88,6 +89,7 @@ That test currently covers:
 - Confirm `Ontology` appears as the root node in the tree
 - Click a topic node and confirm its topic page opens
 - Create a child topic from the topic page and confirm it appears in the child topic list
+- Link the topic to a reference entity and confirm it appears in the linked entities section
 
 ### 6. Reference Atlas
 

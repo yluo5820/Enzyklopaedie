@@ -10,6 +10,7 @@ import {
   KnowledgeNote,
   KnowledgeReview,
   KnowledgeTask,
+  KnowledgeRelationEntityType,
   Lecture,
   Nation,
   NewAuthor,
@@ -678,7 +679,7 @@ export const fetchKnowledgeRelations = async (
 
 export const createKnowledgeRelation = async (
   knowledgeItemId: number,
-  relationData: Omit<NewKnowledgeRelation, 'fromEntityType' | 'fromEntityId' | 'toEntityType'>
+  relationData: Omit<NewKnowledgeRelation, 'fromEntityType' | 'fromEntityId'>
 ): Promise<KnowledgeRelationDetail> => {
   const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/relations`, {
     method: 'POST',
@@ -702,6 +703,45 @@ export const deleteKnowledgeRelation = async (
   });
   if (!response.ok) {
     throw new Error('Failed to delete knowledge relation');
+  }
+};
+
+export const fetchTopicRelations = async (topicId: number): Promise<KnowledgeRelationDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch topic relations');
+  }
+  return response.json();
+};
+
+export const createTopicRelation = async (
+  topicId: number,
+  relationData: {
+    toEntityType?: KnowledgeRelationEntityType;
+    toEntityId: number;
+    relationType: NewKnowledgeRelation['relationType'];
+    note?: string;
+  }
+): Promise<KnowledgeRelationDetail> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(relationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create topic relation');
+  }
+  return response.json();
+};
+
+export const deleteTopicRelation = async (topicId: number, relationId: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations/${relationId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete topic relation');
   }
 };
 

@@ -78,10 +78,11 @@ After `npm start`, use this path:
 4. Open `Entities` and confirm the reference atlas loads with imported legacy entities like `Unknown Author`
 5. Create a new entity, open it, update it, and delete it again
 6. Open `Topics` and confirm the tree loads with `Ontology` as the root
-7. Open a topic page from the tree and create a child topic
-8. Open a knowledge item and attach or create a topic, then add a note, a task, and a review
-9. Return to `Home` and confirm recent activity entries appear
-10. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+7. Open a topic page from the tree, create a child topic, and link that topic to an entity from the reference atlas
+8. Open a knowledge item, attach or create a topic, then link it to an entity such as a person or era
+9. Add a note, a task, and a review on the knowledge item page
+10. Return to `Home` and confirm recent activity entries appear
+11. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

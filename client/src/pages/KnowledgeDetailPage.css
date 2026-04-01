@@ -208,6 +208,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.knowledge-detail-inline-fields-relations {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .knowledge-detail-inline-label {
   display: grid;
   gap: 6px;
@@ -286,6 +290,11 @@
   font-size: 1.1rem;
 }
 
+.knowledge-detail-card-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+
 .knowledge-detail-card button,
 .knowledge-detail-form button {
   border: none;
@@ -335,6 +344,10 @@
   .knowledge-detail-grid {
     grid-template-columns: 1fr;
   }
+
+  .knowledge-detail-inline-fields-relations {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -350,6 +363,10 @@
 
   .knowledge-detail-form-row,
   .knowledge-detail-inline-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-detail-inline-fields-relations {
     grid-template-columns: 1fr;
   }
 }

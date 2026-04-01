@@ -148,6 +148,7 @@
 }
 
 .topic-page-form input,
+.topic-page-form select,
 .topic-page-form textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -218,8 +219,33 @@
   font-size: 1.04rem;
 }
 
+.topic-page-item-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+
 .topic-page-item-card p {
   color: #45362a;
+}
+
+.topic-page-item-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.topic-page-item-actions button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--accent-dark);
+  font: inherit;
+  cursor: pointer;
 }
 
 .topic-page-empty,

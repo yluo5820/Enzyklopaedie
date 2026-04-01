@@ -433,11 +433,65 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const duplicateRelation = await duplicateRelationResponse.json();
     assert.equal(duplicateRelation.id, relation.id);
 
+    const referenceEntityResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'era',
+        title: 'Late Antiquity',
+        startYear: 250,
+        endYear: 750,
+      }),
+    });
+
+    assert.equal(referenceEntityResponse.status, 201);
+    const eraEntity = await referenceEntityResponse.json();
+
+    const entityRelationResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityType: 'reference_entity',
+        toEntityId: eraEntity.id,
+        relationType: 'during',
+        note: 'The source item belongs to this historical period.',
+      }),
+    });
+
+    assert.equal(entityRelationResponse.status, 201);
+    const entityRelation = await entityRelationResponse.json();
+    assert.equal(entityRelation.toEntityType, 'reference_entity');
+    assert.equal(entityRelation.toEntityTitle, 'Late Antiquity');
+    assert.equal(entityRelation.toEntityKind, 'era');
+
     const relationsResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`);
     assert.equal(relationsResponse.status, 200);
     const relations = await relationsResponse.json();
-    assert.equal(relations.length, 1);
-    assert.equal(relations[0].toEntityKind, 'essay');
+    assert.equal(relations.length, 2);
+    assert.ok(relations.some((entry) => entry.toEntityKind === 'essay'));
+    assert.ok(relations.some((entry) => entry.toEntityKind === 'era'));
+
+    const topicRelationResponse = await request(`/api/topics/${childTopic.id}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityType: 'reference_entity',
+        toEntityId: eraEntity.id,
+        relationType: 'during',
+        note: 'This topic sits inside the period.',
+      }),
+    });
+
+    assert.equal(topicRelationResponse.status, 201);
+    const topicRelation = await topicRelationResponse.json();
+    assert.equal(topicRelation.toEntityTitle, 'Late Antiquity');
+    assert.equal(topicRelation.toEntityKind, 'era');
+
+    const topicRelationsResponse = await request(`/api/topics/${childTopic.id}/relations`);
+    assert.equal(topicRelationsResponse.status, 200);
+    const topicRelations = await topicRelationsResponse.json();
+    assert.equal(topicRelations.length, 1);
+    assert.equal(topicRelations[0].relationType, 'during');
 
     const activityResponse = await request('/api/activity-events?limit=40');
     assert.equal(activityResponse.status, 200);
@@ -456,9 +510,25 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
           event.entityId === sourceItem.id
       )
     );
+    assert.ok(
+      activityEvents.some(
+        (event) =>
+          event.type === 'relation_created' &&
+          event.entityType === 'topic' &&
+          event.entityId === childTopic.id
+      )
+    );
 
     const deleteRelationResponse = await request(
       `/api/knowledge-items/${sourceItem.id}/relations/${relation.id}`,
+      { method: 'DELETE' }
+    );
+    const deleteEntityRelationResponse = await request(
+      `/api/knowledge-items/${sourceItem.id}/relations/${entityRelation.id}`,
+      { method: 'DELETE' }
+    );
+    const deleteTopicRelationResponse = await request(
+      `/api/topics/${childTopic.id}/relations/${topicRelation.id}`,
       { method: 'DELETE' }
     );
     const removeTopicResponse = await request(
@@ -467,6 +537,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     );
 
     assert.equal(deleteRelationResponse.status, 204);
+    assert.equal(deleteEntityRelationResponse.status, 204);
+    assert.equal(deleteTopicRelationResponse.status, 204);
     assert.equal(removeTopicResponse.status, 204);
   });
 

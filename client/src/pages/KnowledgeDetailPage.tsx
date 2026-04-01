@@ -1,6 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   KnowledgeItem,
+  KnowledgeRelationEntityType,
   KnowledgeItemStatus,
   KnowledgeNote,
   KnowledgeRelationDetail,
@@ -8,6 +9,7 @@ import type {
   KnowledgeReview,
   KnowledgeTask,
   KnowledgeTaskStatus,
+  ReferenceEntity,
   Topic,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
@@ -29,6 +31,7 @@ import {
   fetchKnowledgeRelations,
   fetchKnowledgeReviews,
   fetchKnowledgeTasks,
+  fetchReferenceEntities,
   fetchTopics,
   removeTopicFromKnowledgeItem,
   updateKnowledgeItem,
@@ -39,6 +42,7 @@ import './KnowledgeDetailPage.css';
 const itemStatusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 const taskStatusOptions: KnowledgeTaskStatus[] = ['todo', 'doing', 'done', 'archived'];
 const relationTypeOptions: KnowledgeRelationType[] = [
+  'created_by',
   'related_to',
   'about',
   'references',
@@ -65,6 +69,29 @@ const formatDateTime = (value: string) =>
   }).format(new Date(value));
 
 const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
+const formatEntityType = (value: KnowledgeRelationEntityType) => value.replace(/_/g, ' ');
+
+const formatYear = (value?: number) => {
+  if (value === undefined) return null;
+  if (value < 0) return `${Math.abs(value)} BCE`;
+  if (value > 0) return `${value} CE`;
+  return 'Year 0';
+};
+
+const formatReferenceTimespan = (entity: ReferenceEntity) => {
+  const start = formatYear(entity.startYear);
+  const end = formatYear(entity.endYear);
+
+  if (start && end) return `${start} - ${end}`;
+  return start || end || null;
+};
+
+const buildRelationHref = (relation: KnowledgeRelationDetail) => {
+  if (relation.toEntityType === 'knowledge_item') return `/knowledge/${relation.toEntityId}`;
+  if (relation.toEntityType === 'reference_entity') return `/entities/${relation.toEntityId}`;
+  if (relation.toEntityType === 'topic') return `/topics/${relation.toEntityId}`;
+  return null;
+};
 
 const orderTopics = (topics: Topic[]) => {
   const children = new Map<number | null, Topic[]>();
@@ -114,6 +141,7 @@ const KnowledgeDetailPage: React.FC = () => {
 
   const [item, setItem] = useState<KnowledgeItem | null>(null);
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
   const [allTopics, setAllTopics] = useState<Topic[]>([]);
   const [itemTopics, setItemTopics] = useState<Topic[]>([]);
   const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
@@ -136,6 +164,7 @@ const KnowledgeDetailPage: React.FC = () => {
     description: '',
   });
   const [relationForm, setRelationForm] = useState({
+    toEntityType: 'reference_entity' as KnowledgeRelationEntityType,
     toEntityId: '',
     relationType: 'related_to' as KnowledgeRelationType,
     note: '',
@@ -164,6 +193,7 @@ const KnowledgeDetailPage: React.FC = () => {
         const [
           fetchedItem,
           fetchedItems,
+          fetchedReferenceEntities,
           fetchedTopics,
           fetchedItemTopics,
           fetchedRelations,
@@ -173,6 +203,7 @@ const KnowledgeDetailPage: React.FC = () => {
         ] = await Promise.all([
           fetchKnowledgeItem(knowledgeItemId),
           fetchKnowledgeItems(),
+          fetchReferenceEntities(),
           fetchTopics(),
           fetchKnowledgeItemTopics(knowledgeItemId),
           fetchKnowledgeRelations(knowledgeItemId),
@@ -183,6 +214,7 @@ const KnowledgeDetailPage: React.FC = () => {
 
         setItem(fetchedItem);
         setKnowledgeItems(fetchedItems);
+        setReferenceEntities(fetchedReferenceEntities);
         setAllTopics(fetchedTopics);
         setItemTopics(fetchedItemTopics);
         setRelations(fetchedRelations);
@@ -210,6 +242,10 @@ const KnowledgeDetailPage: React.FC = () => {
   const relationTargets = useMemo(
     () => knowledgeItems.filter((candidate) => candidate.id !== item?.id),
     [item?.id, knowledgeItems]
+  );
+  const relationReferenceTargets = useMemo(
+    () => [...referenceEntities].sort((left, right) => left.title.localeCompare(right.title)),
+    [referenceEntities]
   );
   const completedTasks = useMemo(
     () => tasks.filter((task) => task.status === 'done').length,
@@ -325,6 +361,7 @@ const KnowledgeDetailPage: React.FC = () => {
 
     try {
       const relation = await createKnowledgeRelation(item.id, {
+        toEntityType: relationForm.toEntityType,
         toEntityId: Number(relationForm.toEntityId),
         relationType: relationForm.relationType,
         note: relationForm.note.trim() || undefined,
@@ -343,6 +380,7 @@ const KnowledgeDetailPage: React.FC = () => {
       });
 
       setRelationForm({
+        toEntityType: relationForm.toEntityType,
         toEntityId: '',
         relationType: 'related_to',
         note: '',
@@ -694,7 +732,7 @@ const KnowledgeDetailPage: React.FC = () => {
                 }
                 placeholder="Create a new topic"
               />
-              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-relations">
                 <label>
                   Parent topic
                   <select
@@ -738,12 +776,28 @@ const KnowledgeDetailPage: React.FC = () => {
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Relations</span>
-                <h2>Cross-links to other items</h2>
+                <h2>Connections to items and entities</h2>
               </div>
             </div>
 
             <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
               <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                <label>
+                  Target type
+                  <select
+                    value={relationForm.toEntityType}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        toEntityType: event.target.value as KnowledgeRelationEntityType,
+                        toEntityId: '',
+                      }))
+                    }
+                  >
+                    <option value="reference_entity">Reference entity</option>
+                    <option value="knowledge_item">Knowledge item</option>
+                  </select>
+                </label>
                 <label>
                   Relation
                   <select
@@ -763,7 +817,7 @@ const KnowledgeDetailPage: React.FC = () => {
                   </select>
                 </label>
                 <label>
-                  Target item
+                  {relationForm.toEntityType === 'reference_entity' ? 'Target entity' : 'Target item'}
                   <select
                     value={relationForm.toEntityId}
                     onChange={(event) =>
@@ -773,12 +827,27 @@ const KnowledgeDetailPage: React.FC = () => {
                       }))
                     }
                   >
-                    <option value="">Choose another knowledge item</option>
-                    {relationTargets.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.title}
-                      </option>
-                    ))}
+                    <option value="">
+                      {relationForm.toEntityType === 'reference_entity'
+                        ? 'Choose a person, nation, civilization, era, or place'
+                        : 'Choose another knowledge item'}
+                    </option>
+                    {relationForm.toEntityType === 'reference_entity'
+                      ? relationReferenceTargets.map((candidate) => {
+                          const timespan = formatReferenceTimespan(candidate);
+
+                          return (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.title}
+                              {timespan ? ` (${candidate.kind}, ${timespan})` : ` (${candidate.kind})`}
+                            </option>
+                          );
+                        })
+                      : relationTargets.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.title}
+                          </option>
+                        ))}
                   </select>
                 </label>
               </div>
@@ -798,7 +867,7 @@ const KnowledgeDetailPage: React.FC = () => {
             </form>
 
             {relations.length === 0 ? (
-              <div className="knowledge-detail-empty">No linked items yet.</div>
+              <div className="knowledge-detail-empty">No connections yet.</div>
             ) : (
               <div className="knowledge-detail-stack">
                 {relations.map((relation) => (
@@ -807,10 +876,17 @@ const KnowledgeDetailPage: React.FC = () => {
                       <div>
                         <div className="knowledge-detail-meta">
                           <span>{formatRelationType(relation.relationType)}</span>
+                          <span>{formatEntityType(relation.toEntityType)}</span>
                           {relation.toEntityKind ? <span>{relation.toEntityKind}</span> : null}
                           <span>{formatDateTime(relation.createdAt)}</span>
                         </div>
-                        <h3>{relation.toEntityTitle || `Item #${relation.toEntityId}`}</h3>
+                        {buildRelationHref(relation) ? (
+                          <Link to={buildRelationHref(relation) as string} className="knowledge-detail-card-link">
+                            <h3>{relation.toEntityTitle || `Item #${relation.toEntityId}`}</h3>
+                          </Link>
+                        ) : (
+                          <h3>{relation.toEntityTitle || `Item #${relation.toEntityId}`}</h3>
+                        )}
                       </div>
                       <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
                         Delete

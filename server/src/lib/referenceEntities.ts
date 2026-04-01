@@ -22,6 +22,13 @@ interface LegacyImportInput {
 
 type DbConnection = Database<sqlite3.Database, sqlite3.Statement>;
 
+export interface ReferenceEntityLookup {
+  id: number;
+  kind: ReferenceEntityKind;
+  title: string;
+  slug: string;
+}
+
 export const parseReferenceEntityMetadata = (value?: string | null) => {
   if (!value) return undefined;
 
@@ -36,6 +43,18 @@ export const hydrateReferenceEntity = (row: ReferenceEntityRow): ReferenceEntity
   ...row,
   metadata: parseReferenceEntityMetadata(row.metadata),
 });
+
+export const getReferenceEntityLookup = async (referenceEntityId: number) => {
+  const db = await getDbConnection();
+  return db.get<ReferenceEntityLookup>(
+    'SELECT id, kind, title, slug FROM reference_entities WHERE id = ?',
+    referenceEntityId
+  );
+};
+
+const getDbConnection = async () => {
+  return import('../db').then(({ getDb }) => getDb());
+};
 
 export const generateUniqueReferenceEntitySlug = async (
   db: DbConnection,
