@@ -87,17 +87,7 @@ That test currently covers:
 - Click a topic node and confirm its topic page opens
 - Create a child topic from the topic page and confirm it appears in the child topic list
 
-### 6. Legacy Library Flow
-
-- Open `/books`
-- Click `Add Item`
-- Choose `Book`
-- Choose `Custom` and verify the original form still works
-- Reopen and choose `Search`
-- Search for a title and confirm results appear
-- Select one or more results and confirm they are added to the library
-
-### 7. World History Prototype
+### 6. World History Prototype
 
 - Open `/world-history`
 - Confirm the map loads if `VITE_MAPTILER_API_KEY` exists in `client/.env.local`
@@ -108,4 +98,4 @@ That test currently covers:
 - The world history page is still a prototype. It has a working map renderer and timeline interaction,
   but not yet real historical spatial data.
 - The knowledge workbench is the first slice of the rebuild and should be treated as the new product
-  direction, while the older CRUD pages remain as legacy surfaces for now.
+  direction, while the older legacy pages are being phased out as their useful flows move into it.

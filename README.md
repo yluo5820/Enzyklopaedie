@@ -78,8 +78,7 @@ After `npm start`, use this path:
 5. Open a topic page from the tree and create a child topic
 6. Open a knowledge item and attach or create a topic, then add a note, a task, and a review
 7. Return to `Home` and confirm recent activity entries appear
-8. Open `Library` and test `Add Item -> Book -> Search`
-9. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+8. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

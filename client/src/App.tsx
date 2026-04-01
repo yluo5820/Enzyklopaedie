@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import HomePage from './pages/HomePage';
-import BookListPage from './pages/BookListPage';
 import AuthorListPage from './pages/AuthorListPage';
 import NationListPage from './pages/NationListPage';
 import CivilizationListPage from './pages/CivilizationListPage';
@@ -48,7 +47,6 @@ const App: React.FC = () => {
               <li><Link to="/" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Home</Link></li>
               <li><Link to="/knowledge" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Knowledge</Link></li>
               <li><Link to="/topics" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Topics</Link></li>
-              <li><Link to="/books" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Library</Link></li>
               <li><Link to="/authors" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Authors</Link></li>
               <li><Link to="/nations" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Nations</Link></li>
               <li><Link to="/civilizations" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Civilizations</Link></li>
@@ -74,7 +72,6 @@ const App: React.FC = () => {
             <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
             <Route path="/topics" element={<TopicTreePage />} />
             <Route path="/topics/:id" element={<TopicPage />} />
-            <Route path="/books" element={<BookListPage />} />
             <Route path="/authors" element={<AuthorListPage />} />
             <Route path="/nations" element={<NationListPage />} />
             <Route path="/civilizations" element={<CivilizationListPage />} />
