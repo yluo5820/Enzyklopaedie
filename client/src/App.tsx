@@ -1,16 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import HomePage from './pages/HomePage';
-import AuthorListPage from './pages/AuthorListPage';
-import NationListPage from './pages/NationListPage';
-import CivilizationListPage from './pages/CivilizationListPage';
-import EraListPage from './pages/EraListPage';
 import WorldHistoryPage from './pages/WorldHistoryPage';
 import KnowledgePage from './pages/KnowledgePage';
 import KnowledgeDetailPage from './pages/KnowledgeDetailPage';
+import ReferenceEntitiesPage from './pages/ReferenceEntitiesPage';
+import ReferenceEntityPage from './pages/ReferenceEntityPage';
 import TopicTreePage from './pages/TopicTreePage';
 import TopicPage from './pages/TopicPage';
-// Import other pages
 
 const App: React.FC = () => {
   return (
@@ -47,10 +44,7 @@ const App: React.FC = () => {
               <li><Link to="/" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Home</Link></li>
               <li><Link to="/knowledge" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Knowledge</Link></li>
               <li><Link to="/topics" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Topics</Link></li>
-              <li><Link to="/authors" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Authors</Link></li>
-              <li><Link to="/nations" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Nations</Link></li>
-              <li><Link to="/civilizations" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Civilizations</Link></li>
-              <li><Link to="/eras" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Eras</Link></li>
+              <li><Link to="/entities" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Entities</Link></li>
               <li><Link to="/world-history" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>World History</Link></li>
             </ul>
           </div>
@@ -72,12 +66,9 @@ const App: React.FC = () => {
             <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
             <Route path="/topics" element={<TopicTreePage />} />
             <Route path="/topics/:id" element={<TopicPage />} />
-            <Route path="/authors" element={<AuthorListPage />} />
-            <Route path="/nations" element={<NationListPage />} />
-            <Route path="/civilizations" element={<CivilizationListPage />} />
-            <Route path="/eras" element={<EraListPage />} />
+            <Route path="/entities" element={<ReferenceEntitiesPage />} />
+            <Route path="/entities/:id" element={<ReferenceEntityPage />} />
             <Route path="/world-history" element={<WorldHistoryPage />} />
-            {/* Define routes for BookDetail, LectureList, LectureDetail, Subject pages etc. */}
           </Routes>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
+import { syncLegacyReferenceEntities } from '../lib/referenceEntities';
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data.db');
 let dbPromise: Promise<Database<sqlite3.Database, sqlite3.Statement>> | null = null;
@@ -161,6 +162,20 @@ export async function initializeDatabase() {
       FOREIGN KEY (parentTopicId) REFERENCES topics(id)
     );
 
+    CREATE TABLE IF NOT EXISTS reference_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      summary TEXT,
+      description TEXT,
+      startYear INTEGER,
+      endYear INTEGER,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS knowledge_item_topics (
       knowledgeItemId INTEGER NOT NULL,
       topicId INTEGER NOT NULL,
@@ -263,6 +278,8 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_knowledge_items_kind ON knowledge_items(kind);
     CREATE INDEX IF NOT EXISTS idx_knowledge_items_status ON knowledge_items(status);
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_reference_entities_kind ON reference_entities(kind);
+    CREATE INDEX IF NOT EXISTS idx_reference_entities_title ON reference_entities(lower(title));
     CREATE INDEX IF NOT EXISTS idx_knowledge_notes_item ON knowledge_notes(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_relations_from
       ON knowledge_relations(fromEntityType, fromEntityId, createdAt DESC);
@@ -302,6 +319,8 @@ export async function initializeDatabase() {
      WHERE slug != 'ontology' AND parentTopicId IS NULL`,
     now
   );
+
+  await syncLegacyReferenceEntities(db);
 
   console.log('Database initialized successfully with new schema.');
   return db;

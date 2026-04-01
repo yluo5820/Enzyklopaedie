@@ -25,9 +25,11 @@ import {
   NewLecture,
   NewNation,
   NewNote,
+  NewReferenceEntity,
   NewTopic,
   NewSubject,
   Note,
+  ReferenceEntity,
   Subject,
   Topic,
   TopicSummary,
@@ -43,6 +45,7 @@ import {
   UpdateLecture,
   UpdateNation,
   UpdateNote,
+  UpdateReferenceEntity,
   UpdateSubject,
 } from '@enzyklopaedie/shared';
 
@@ -526,6 +529,65 @@ export const deleteKnowledgeItem = async (id: number): Promise<void> => {
   });
   if (!response.ok) {
     throw new Error('Failed to delete knowledge item');
+  }
+};
+
+export const fetchReferenceEntities = async (kind?: string): Promise<ReferenceEntity[]> => {
+  const params = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  const response = await fetch(`${API_BASE_URL}/reference-entities${params}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch reference entities');
+  }
+  return response.json();
+};
+
+export const fetchReferenceEntity = async (id: number): Promise<ReferenceEntity> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch reference entity');
+  }
+  return response.json();
+};
+
+export const createReferenceEntity = async (
+  entityData: NewReferenceEntity
+): Promise<ReferenceEntity> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(entityData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create reference entity');
+  }
+  return response.json();
+};
+
+export const updateReferenceEntity = async (
+  id: number,
+  entityData: UpdateReferenceEntity
+): Promise<ReferenceEntity> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(entityData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update reference entity');
+  }
+  return response.json();
+};
+
+export const deleteReferenceEntity = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete reference entity');
   }
 };
 

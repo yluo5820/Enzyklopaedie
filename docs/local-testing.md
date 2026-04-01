@@ -45,6 +45,8 @@ That test currently covers:
 - fetching it back with parsed metadata
 - updating it
 - verifying the activity feed records both create and update events
+- creating, updating, filtering, and deleting unified reference entities
+- syncing legacy author data into the new reference entity model
 
 ## Suggested Manual Pass
 
@@ -87,7 +89,15 @@ That test currently covers:
 - Click a topic node and confirm its topic page opens
 - Create a child topic from the topic page and confirm it appears in the child topic list
 
-### 6. World History Prototype
+### 6. Reference Atlas
+
+- Open `/entities`
+- Confirm the page loads and shows imported legacy entities such as `Unknown Author`
+- Create a new entity and confirm it appears in the list immediately
+- Open that entity and update its kind, summary, or chronology
+- Delete it again and confirm you return to the atlas list
+
+### 7. World History Prototype
 
 - Open `/world-history`
 - Confirm the map loads if `VITE_MAPTILER_API_KEY` exists in `client/.env.local`
@@ -99,3 +109,5 @@ That test currently covers:
   but not yet real historical spatial data.
 - The knowledge workbench is the first slice of the rebuild and should be treated as the new product
   direction, while the older legacy pages are being phased out as their useful flows move into it.
+- The old split `Authors`, `Nations`, `Civilizations`, and `Eras` screens are now legacy scaffolding.
+  The new main surface for that information is `/entities`.

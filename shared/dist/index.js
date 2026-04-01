@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.slugifyTopicName = exports.summarizeKnowledgeProgress = void 0;
+exports.buildReferenceEntitySlug = exports.slugifyTopicName = exports.summarizeKnowledgeProgress = void 0;
 const summarizeKnowledgeProgress = (items) => {
     const byStatus = {
         inbox: 0,
@@ -26,3 +26,5 @@ const slugifyTopicName = (value) => value
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 exports.slugifyTopicName = slugifyTopicName;
+const buildReferenceEntitySlug = (kind, title) => `${kind}-${(0, exports.slugifyTopicName)(title)}`;
+exports.buildReferenceEntitySlug = buildReferenceEntitySlug;

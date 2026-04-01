@@ -1,0 +1,281 @@
+.reference-entities-page {
+  width: 100%;
+  max-width: 1320px;
+  padding: 0 24px 40px;
+  color: #211912;
+  --ink: #211912;
+  --muted: #6d5b4b;
+  --line: #dccbb9;
+  --panel: rgba(255, 252, 246, 0.97);
+  --accent: #8f5c36;
+  --accent-dark: #6a4123;
+  --accent-soft: #ead8c3;
+}
+
+.reference-entities-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.reference-entities-panel {
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.82), transparent 42%),
+    linear-gradient(180deg, rgba(255, 252, 246, 0.98), rgba(247, 241, 231, 0.98));
+  box-shadow: 0 20px 44px rgba(47, 31, 18, 0.08);
+}
+
+.reference-entities-form-panel {
+  padding: 22px;
+  position: sticky;
+  top: 24px;
+}
+
+.reference-entities-header {
+  margin-bottom: 18px;
+}
+
+.reference-entities-eyebrow {
+  display: inline-block;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.reference-entities-header h1 {
+  margin: 0 0 8px;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+.reference-entities-header p {
+  margin: 0;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.reference-entities-form,
+.reference-entities-content {
+  display: grid;
+  gap: 16px;
+}
+
+.reference-entities-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reference-entities-field {
+  display: grid;
+  gap: 6px;
+}
+
+.reference-entities-field label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.reference-entities-field input,
+.reference-entities-field select,
+.reference-entities-field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font: inherit;
+}
+
+.reference-entities-field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.reference-entities-form button,
+.reference-entities-actions button,
+.reference-entities-link,
+.reference-entities-filter {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.reference-entities-form button,
+.reference-entities-link {
+  background: linear-gradient(135deg, #8a572d, #694121);
+  color: white;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reference-entities-actions button,
+.reference-entities-filter {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--line);
+  color: var(--accent-dark);
+}
+
+.reference-entities-filter.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-color: rgba(106, 65, 35, 0.2);
+}
+
+.reference-entities-form button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.reference-entities-summary,
+.reference-entities-list-panel {
+  padding: 22px;
+}
+
+.reference-entities-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reference-entities-stat {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.reference-entities-stat strong {
+  display: block;
+  font-size: 1.6rem;
+  margin-bottom: 4px;
+}
+
+.reference-entities-list-header {
+  margin-bottom: 16px;
+}
+
+.reference-entities-list-header h2 {
+  margin: 0;
+}
+
+.reference-entities-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.reference-entities-items {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entities-item {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.reference-entities-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.reference-entities-item h3 {
+  margin: 0 0 6px;
+  font-size: 1.12rem;
+}
+
+.reference-entities-item p {
+  margin: 10px 0 0;
+  line-height: 1.62;
+  color: #423428;
+}
+
+.reference-entities-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.reference-entities-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  text-transform: capitalize;
+}
+
+.reference-entities-badge-secondary {
+  background: rgba(54, 95, 76, 0.12);
+  color: #365f4c;
+  text-transform: none;
+}
+
+.reference-entities-actions {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.reference-entities-empty,
+.reference-entities-error {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+}
+
+.reference-entities-error {
+  color: #962f2f;
+}
+
+@media (max-width: 1040px) {
+  .reference-entities-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-entities-form-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .reference-entities-page {
+    padding: 0 16px 28px;
+  }
+
+  .reference-entities-panel {
+    padding: 20px;
+  }
+
+  .reference-entities-grid,
+  .reference-entities-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-entities-item-top {
+    flex-direction: column;
+  }
+}

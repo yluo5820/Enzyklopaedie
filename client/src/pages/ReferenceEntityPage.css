@@ -1,0 +1,239 @@
+.reference-entity-page {
+  width: 100%;
+  max-width: 1320px;
+  padding: 0 24px 40px;
+  color: #211912;
+  --ink: #211912;
+  --muted: #6d5b4b;
+  --line: #dccbb9;
+  --panel: rgba(255, 252, 246, 0.96);
+  --accent: #915f36;
+  --accent-dark: #6f4525;
+  --danger: #8a3933;
+}
+
+.reference-entity-back {
+  display: inline-flex;
+  margin-bottom: 18px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.reference-entity-hero,
+.reference-entity-panel {
+  border-radius: 28px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 20px 44px rgba(47, 31, 18, 0.07);
+}
+
+.reference-entity-hero {
+  padding: 28px 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.84), transparent 40%),
+    linear-gradient(135deg, #f7ecdb 0%, #efdfc8 52%, #e4d0b3 100%);
+}
+
+.reference-entity-eyebrow {
+  display: inline-block;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.reference-entity-hero h1,
+.reference-entity-panel h2 {
+  margin: 0 0 10px;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+.reference-entity-hero h1 {
+  font-size: clamp(2.2rem, 4vw, 3.6rem);
+}
+
+.reference-entity-hero p {
+  margin: 0;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.reference-entity-stats {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entity-stat {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(95, 60, 33, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.reference-entity-stat strong {
+  display: block;
+  font-size: 1.3rem;
+}
+
+.reference-entity-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 22px;
+  align-items: start;
+}
+
+.reference-entity-sidebar,
+.reference-entity-main {
+  display: grid;
+  gap: 20px;
+}
+
+.reference-entity-panel {
+  padding: 22px;
+}
+
+.reference-entity-side-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entity-side-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.reference-entity-side-item strong {
+  color: var(--accent-dark);
+}
+
+.reference-entity-side-item span,
+.reference-entity-side-item a {
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+.reference-entity-side-item a {
+  text-decoration: none;
+}
+
+.reference-entity-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.reference-entity-form {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entity-grid-inline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reference-entity-field {
+  display: grid;
+  gap: 6px;
+}
+
+.reference-entity-field label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.reference-entity-field input,
+.reference-entity-field select,
+.reference-entity-field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font: inherit;
+}
+
+.reference-entity-field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.reference-entity-form button,
+.reference-entity-danger {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.reference-entity-form button {
+  background: linear-gradient(135deg, #8a572d, #694121);
+  color: white;
+}
+
+.reference-entity-danger {
+  background: rgba(138, 57, 51, 0.12);
+  color: var(--danger);
+}
+
+.reference-entity-form button:disabled,
+.reference-entity-danger:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.reference-entity-empty,
+.reference-entity-error {
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+}
+
+.reference-entity-error {
+  margin-top: 18px;
+  color: #962f2f;
+}
+
+@media (max-width: 980px) {
+  .reference-entity-hero,
+  .reference-entity-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .reference-entity-page {
+    padding: 0 16px 28px;
+  }
+
+  .reference-entity-hero,
+  .reference-entity-panel {
+    padding: 20px;
+  }
+
+  .reference-entity-section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reference-entity-grid-inline {
+    grid-template-columns: 1fr;
+  }
+}

@@ -469,4 +469,101 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(deleteRelationResponse.status, 204);
     assert.equal(removeTopicResponse.status, 204);
   });
+
+  await t.test('reference entity routes support the unified atlas workflow', async () => {
+    const initialPeopleResponse = await request('/api/reference-entities?kind=person');
+    assert.equal(initialPeopleResponse.status, 200);
+
+    const initialPeople = await initialPeopleResponse.json();
+    const unknownAuthor = initialPeople.find((entity) => entity.title === 'Unknown Author');
+    assert.ok(unknownAuthor);
+    assert.equal(unknownAuthor.kind, 'person');
+    assert.equal(unknownAuthor.metadata.legacySource, 'authors');
+
+    const createResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'nation',
+        title: 'Byzantine Empire',
+        summary: 'A test fixture for the reference atlas.',
+        startYear: 330,
+        endYear: 1453,
+        metadata: {
+          origin: 'server-test',
+        },
+      }),
+    });
+
+    assert.equal(createResponse.status, 201);
+    const createdEntity = await createResponse.json();
+    assert.equal(createdEntity.kind, 'nation');
+    assert.equal(createdEntity.slug, 'nation-byzantine-empire');
+    assert.deepEqual(createdEntity.metadata, {
+      origin: 'server-test',
+    });
+
+    const duplicateResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'nation',
+        title: 'Byzantine Empire',
+      }),
+    });
+
+    assert.equal(duplicateResponse.status, 200);
+    const duplicateEntity = await duplicateResponse.json();
+    assert.equal(duplicateEntity.id, createdEntity.id);
+
+    const nationsResponse = await request('/api/reference-entities?kind=nation');
+    assert.equal(nationsResponse.status, 200);
+    const nations = await nationsResponse.json();
+    assert.ok(nations.some((entity) => entity.id === createdEntity.id));
+
+    const getResponse = await request(`/api/reference-entities/${createdEntity.id}`);
+    assert.equal(getResponse.status, 200);
+    const fetchedEntity = await getResponse.json();
+    assert.equal(fetchedEntity.title, 'Byzantine Empire');
+    assert.equal(fetchedEntity.endYear, 1453);
+
+    const updateResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'civilization',
+        title: 'Eastern Roman Empire',
+        summary: 'Updated during the server test pass.',
+        endYear: 1453,
+      }),
+    });
+
+    assert.equal(updateResponse.status, 200);
+    const updatedEntity = await updateResponse.json();
+    assert.equal(updatedEntity.kind, 'civilization');
+    assert.equal(updatedEntity.title, 'Eastern Roman Empire');
+    assert.equal(updatedEntity.slug, 'civilization-eastern-roman-empire');
+    assert.equal(updatedEntity.startYear, 330);
+
+    const activityResponse = await request('/api/activity-events?limit=50');
+    assert.equal(activityResponse.status, 200);
+    const activityEvents = await activityResponse.json();
+    const entityEvents = activityEvents.filter(
+      (event) =>
+        event.entityType === 'reference_entity' &&
+        event.entityId === createdEntity.id
+    );
+
+    assert.equal(entityEvents.length, 2);
+    assert.equal(entityEvents[0].type, 'reference_entity_updated');
+    assert.equal(entityEvents[1].type, 'reference_entity_created');
+
+    const deleteResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
+      method: 'DELETE',
+    });
+    assert.equal(deleteResponse.status, 204);
+
+    const missingResponse = await request(`/api/reference-entities/${createdEntity.id}`);
+    assert.equal(missingResponse.status, 404);
+  });
 });

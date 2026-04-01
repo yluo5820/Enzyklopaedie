@@ -59,6 +59,7 @@ The current automated coverage is intentionally focused on the new foundation:
 
 - shared domain helpers
 - knowledge item create/update API flow
+- unified reference entity create/update/delete API flow
 - activity event recording for knowledge changes
 
 For a focused server-only pass, run:
@@ -74,11 +75,13 @@ After `npm start`, use this path:
 1. Open `http://localhost:5173`
 2. Check the home dashboard loads
 3. Open `Knowledge` and add a knowledge item
-4. Open `Topics` and confirm the tree loads with `Ontology` as the root
-5. Open a topic page from the tree and create a child topic
-6. Open a knowledge item and attach or create a topic, then add a note, a task, and a review
-7. Return to `Home` and confirm recent activity entries appear
-8. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+4. Open `Entities` and confirm the reference atlas loads with imported legacy entities like `Unknown Author`
+5. Create a new entity, open it, update it, and delete it again
+6. Open `Topics` and confirm the tree loads with `Ontology` as the root
+7. Open a topic page from the tree and create a child topic
+8. Open a knowledge item and attach or create a topic, then add a note, a task, and a review
+9. Return to `Home` and confirm recent activity entries appear
+10. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

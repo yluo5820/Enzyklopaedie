@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ActivityEvent, KnowledgeItem } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
-import { fetchActivityEvents, fetchKnowledgeItems } from '../api';
+import { fetchActivityEvents, fetchKnowledgeItems, fetchReferenceEntities } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './HomePage.css';
 
@@ -15,17 +15,20 @@ const formatDate = (value: string) =>
 const HomePage: React.FC = () => {
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const [referenceEntityCount, setReferenceEntityCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const [items, events] = await Promise.all([
+        const [items, events, referenceEntities] = await Promise.all([
           fetchKnowledgeItems(),
           fetchActivityEvents(6),
+          fetchReferenceEntities(),
         ]);
         setKnowledgeItems(items);
         setActivityEvents(events);
+        setReferenceEntityCount(referenceEntities.length);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       } finally {
@@ -52,6 +55,7 @@ const HomePage: React.FC = () => {
         <div className="home-links">
           <Link to="/topics">Open Topic Tree</Link>
           <Link to="/knowledge">Open Knowledge Workbench</Link>
+          <Link to="/entities">Open Reference Atlas</Link>
           <Link to="/world-history">Open World History</Link>
         </div>
       </section>
@@ -73,6 +77,13 @@ const HomePage: React.FC = () => {
               <div className="home-pillar">
                 <strong>Taxonomy and relations</strong>
                 <p>Topics should branch, relate, and reveal the structure of your encyclopedia.</p>
+              </div>
+              <div className="home-pillar">
+                <strong>Reference atlas</strong>
+                <p>
+                  People, nations, civilizations, eras, and places need their own pages outside the
+                  topic tree.
+                </p>
               </div>
               <div className="home-pillar">
                 <strong>Chronology and places</strong>
@@ -102,6 +113,10 @@ const HomePage: React.FC = () => {
               <div className="home-stat">
                 <strong>{loading ? '...' : stats.completed}</strong>
                 <span>Completed items</span>
+              </div>
+              <div className="home-stat">
+                <strong>{loading ? '...' : referenceEntityCount}</strong>
+                <span>Reference entities</span>
               </div>
             </div>
           </div>

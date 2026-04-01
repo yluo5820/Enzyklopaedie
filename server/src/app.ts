@@ -16,6 +16,7 @@ import knowledgeRelationRoutes from './routes/knowledgeRelationRoutes';
 import knowledgeTaskRoutes from './routes/knowledgeTaskRoutes';
 import knowledgeReviewRoutes from './routes/knowledgeReviewRoutes';
 import topicRoutes from './routes/topicRoutes';
+import referenceEntityRoutes from './routes/referenceEntityRoutes';
 import cors from 'cors'; // For development, allow cross-origin requests from client
 
 const app = express();
@@ -34,6 +35,7 @@ app.use('/api/nations', nationRoutes);
 app.use('/api/civilizations', civilizationRoutes);
 app.use('/api/eras', eraRoutes);
 app.use('/api/topics', topicRoutes);
+app.use('/api/reference-entities', referenceEntityRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/notes', knowledgeNoteRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/topics', knowledgeItemTopicRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/relations', knowledgeRelationRoutes);
