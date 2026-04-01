@@ -48,13 +48,24 @@ Run the baseline verification suite from the repo root:
 npm test
 ```
 
-That currently does three things:
+That currently does four things:
 
 1. runs shared unit tests
 2. builds the server
-3. builds the client
+3. runs server API tests against a temporary SQLite database
+4. builds the client
 
-The shared tests cover real domain helpers used by the app.
+The current automated coverage is intentionally focused on the new foundation:
+
+- shared domain helpers
+- knowledge item create/update API flow
+- activity event recording for knowledge changes
+
+For a focused server-only pass, run:
+
+```bash
+npm run test --prefix server
+```
 
 ## Manual Smoke Test
 

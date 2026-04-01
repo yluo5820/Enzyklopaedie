@@ -26,9 +26,25 @@ This runs:
 
 1. `shared` unit tests
 2. `server` TypeScript build
-3. `client` TypeScript + Vite production build
+3. `server` API tests against a temporary SQLite database
+4. `client` TypeScript + Vite production build
 
 If this passes, the repo is in a reasonable baseline state.
+
+## Focused Knowledge API Tests
+
+If you only want to verify the new foundation layer:
+
+```bash
+npm run test --prefix server
+```
+
+That test currently covers:
+
+- creating a knowledge item
+- fetching it back with parsed metadata
+- updating it
+- verifying the activity feed records both create and update events
 
 ## Suggested Manual Pass
 

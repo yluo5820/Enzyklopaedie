@@ -1,14 +1,23 @@
 import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import { open, type Database } from 'sqlite';
 import path from 'path';
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data.db');
+let dbPromise: Promise<Database<sqlite3.Database, sqlite3.Statement>> | null = null;
+
+const openDatabase = () => {
+  if (!dbPromise) {
+    dbPromise = open({
+      filename: DB_PATH,
+      driver: sqlite3.Database,
+    });
+  }
+
+  return dbPromise;
+};
 
 export async function initializeDatabase() {
-  const db = await open({
-    filename: DB_PATH,
-    driver: sqlite3.Database,
-  });
+  const db = await openDatabase();
 
   // Create tables if they don't exist
   await db.exec(`
@@ -255,8 +264,13 @@ export async function initializeDatabase() {
 }
 
 export const getDb = async () => {
-  return open({
-    filename: DB_PATH,
-    driver: sqlite3.Database,
-  });
+  return openDatabase();
+};
+
+export const closeDb = async () => {
+  if (!dbPromise) return;
+
+  const db = await dbPromise;
+  dbPromise = null;
+  await db.close();
 };
