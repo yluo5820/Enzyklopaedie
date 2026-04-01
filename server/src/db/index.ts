@@ -12,17 +12,6 @@ export async function initializeDatabase() {
 
   // Create tables if they don't exist
   await db.exec(`
-    -- Drop existing tables to recreate with new schema
-    DROP TABLE IF EXISTS comments;
-    DROP TABLE IF EXISTS notes;
-    DROP TABLE IF EXISTS lectures;
-    DROP TABLE IF EXISTS books;
-    DROP TABLE IF EXISTS subjects;
-    DROP TABLE IF EXISTS authors;
-    DROP TABLE IF EXISTS nations;
-    DROP TABLE IF EXISTS civilizations;
-    DROP TABLE IF EXISTS eras;
-
     -- Create subjects table
     CREATE TABLE IF NOT EXISTS subjects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,6 +115,135 @@ export async function initializeDatabase() {
       -- userId INTEGER, -- Add if you implement users
       -- FOREIGN KEY (userId) REFERENCES users(id)
     );
+
+    -- Create the new knowledge domain tables
+    CREATE TABLE IF NOT EXISTS knowledge_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      creator TEXT,
+      sourceName TEXT,
+      sourceUrl TEXT,
+      summary TEXT,
+      description TEXT,
+      publishedYear INTEGER,
+      startedOn TEXT,
+      completedOn TEXT,
+      status TEXT NOT NULL DEFAULT 'inbox',
+      rating INTEGER,
+      coverImageUrl TEXT,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT,
+      parentTopicId INTEGER,
+      color TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (parentTopicId) REFERENCES topics(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_item_topics (
+      knowledgeItemId INTEGER NOT NULL,
+      topicId INTEGER NOT NULL,
+      sortOrder INTEGER DEFAULT 0,
+      PRIMARY KEY (knowledgeItemId, topicId),
+      FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE,
+      FOREIGN KEY (topicId) REFERENCES topics(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fromEntityType TEXT NOT NULL,
+      fromEntityId INTEGER NOT NULL,
+      toEntityType TEXT NOT NULL,
+      toEntityId INTEGER NOT NULL,
+      relationType TEXT NOT NULL,
+      note TEXT,
+      createdAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      knowledgeItemId INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT,
+      status TEXT NOT NULL DEFAULT 'todo',
+      dueAt TEXT,
+      scheduledFor TEXT,
+      completedAt TEXT,
+      sortOrder INTEGER DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      knowledgeItemId INTEGER NOT NULL,
+      score INTEGER,
+      summary TEXT,
+      body TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS activity_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      entityType TEXT NOT NULL,
+      entityId INTEGER NOT NULL,
+      message TEXT NOT NULL,
+      metadata TEXT,
+      occurredAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS places (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      latitude REAL,
+      longitude REAL,
+      bounds TEXT,
+      description TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS timeline_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      startYear INTEGER,
+      endYear INTEGER,
+      placeId INTEGER,
+      description TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (placeId) REFERENCES places(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS exhibits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      summary TEXT,
+      description TEXT,
+      isPublished INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_knowledge_items_kind ON knowledge_items(kind);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_items_status ON knowledge_items(status);
+    CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_tasks_item ON knowledge_tasks(knowledgeItemId);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_item ON knowledge_reviews(knowledgeItemId);
 
     -- Insert some default data
     INSERT OR IGNORE INTO subjects (id, name) VALUES (1, 'General');

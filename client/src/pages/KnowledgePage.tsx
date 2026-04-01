@@ -1,0 +1,295 @@
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
+import type {
+  KnowledgeItem,
+  KnowledgeItemKind,
+  KnowledgeItemStatus,
+  NewKnowledgeItem,
+} from '@enzyklopaedie/shared';
+import { createKnowledgeItem, deleteKnowledgeItem, fetchKnowledgeItems } from '../api';
+import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
+import './KnowledgePage.css';
+
+const kindOptions: KnowledgeItemKind[] = [
+  'book',
+  'lecture',
+  'article',
+  'essay',
+  'video',
+  'podcast',
+  'course',
+  'artifact',
+];
+
+const statusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
+
+const initialFormState = {
+  kind: 'book' as KnowledgeItemKind,
+  title: '',
+  creator: '',
+  sourceName: '',
+  sourceUrl: '',
+  summary: '',
+  publishedYear: '',
+  status: 'inbox' as KnowledgeItemStatus,
+};
+
+const formatDate = (value: string) =>
+  new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value));
+
+const KnowledgePage: React.FC = () => {
+  const [items, setItems] = useState<KnowledgeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formState, setFormState] = useState(initialFormState);
+
+  useEffect(() => {
+    const loadItems = async () => {
+      try {
+        const fetchedItems = await fetchKnowledgeItems();
+        setItems(fetchedItems);
+      } catch (loadError) {
+        console.error(loadError);
+        setError('Failed to load knowledge items.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadItems();
+  }, []);
+
+  const stats = useMemo(() => summarizeKnowledgeProgress(items), [items]);
+
+  const handleChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = event.target;
+    setFormState((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!formState.title.trim()) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    const payload: NewKnowledgeItem = {
+      kind: formState.kind,
+      title: formState.title.trim(),
+      creator: formState.creator.trim() || undefined,
+      sourceName: formState.sourceName.trim() || undefined,
+      sourceUrl: formState.sourceUrl.trim() || undefined,
+      summary: formState.summary.trim() || undefined,
+      publishedYear: formState.publishedYear ? Number(formState.publishedYear) : undefined,
+      status: formState.status,
+    };
+
+    try {
+      const createdItem = await createKnowledgeItem(payload);
+      startTransition(() => {
+        setItems((current) => [createdItem, ...current]);
+      });
+      setFormState(initialFormState);
+    } catch (submitError) {
+      console.error(submitError);
+      setError('Failed to create knowledge item.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteKnowledgeItem(id);
+      startTransition(() => {
+        setItems((current) => current.filter((item) => item.id !== id));
+      });
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError('Failed to delete knowledge item.');
+    }
+  };
+
+  return (
+    <div className="knowledge-page">
+      <div className="knowledge-layout">
+        <aside className="knowledge-panel knowledge-form-panel">
+          <div className="knowledge-header">
+            <span className="knowledge-eyebrow">Phase 1</span>
+            <h1>Knowledge Workbench</h1>
+            <p>
+              Capture the raw material of your encyclopedia in one unified model. Books and lectures are
+              now just different kinds of knowledge objects.
+            </p>
+          </div>
+
+          <form className="knowledge-form" onSubmit={handleSubmit}>
+            <div className="knowledge-field">
+              <label htmlFor="kind">Kind</label>
+              <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
+                {kindOptions.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="title">Title</label>
+              <input id="title" name="title" value={formState.title} onChange={handleChange} required />
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="creator">Creator / Author / Speaker</label>
+              <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="sourceName">Source</label>
+              <input
+                id="sourceName"
+                name="sourceName"
+                value={formState.sourceName}
+                onChange={handleChange}
+                placeholder="Publisher, channel, collection..."
+              />
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="sourceUrl">Source URL</label>
+              <input
+                id="sourceUrl"
+                name="sourceUrl"
+                type="url"
+                value={formState.sourceUrl}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="publishedYear">Published Year</label>
+              <input
+                id="publishedYear"
+                name="publishedYear"
+                type="number"
+                value={formState.publishedYear}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="status">Status</label>
+              <select id="status" name="status" value={formState.status} onChange={handleChange}>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="summary">Summary</label>
+              <textarea
+                id="summary"
+                name="summary"
+                value={formState.summary}
+                onChange={handleChange}
+                placeholder="Why does this belong in your encyclopedia?"
+              />
+            </div>
+
+            <button type="submit" disabled={submitting}>
+              {submitting ? 'Saving...' : 'Add Knowledge Item'}
+            </button>
+          </form>
+        </aside>
+
+        <section className="knowledge-content">
+          <section className="knowledge-panel knowledge-summary">
+            <div className="knowledge-header">
+              <span className="knowledge-eyebrow">Foundation</span>
+              <h1>Unified Knowledge Model</h1>
+              <p>
+                This is the first step away from isolated CRUD pages toward an actual encyclopedia
+                system. The next layers will attach taxonomy, notes, tasks, reviews, places, and
+                exhibitions to these items.
+              </p>
+            </div>
+            <div className="knowledge-summary-grid">
+              <div className="knowledge-stat">
+                <strong>{stats.total}</strong>
+                <span>Total knowledge items</span>
+              </div>
+              <div className="knowledge-stat">
+                <strong>{stats.active}</strong>
+                <span>Currently active</span>
+              </div>
+              <div className="knowledge-stat">
+                <strong>{stats.completed}</strong>
+                <span>Completed entries</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="knowledge-panel knowledge-list-panel">
+            <div className="knowledge-list-header">
+              <div>
+                <span className="knowledge-eyebrow">Inventory</span>
+                <h2>Knowledge Items</h2>
+              </div>
+            </div>
+
+            {error && <div className="knowledge-error">{error}</div>}
+            {loading ? <div className="knowledge-empty">Loading knowledge items...</div> : null}
+            {!loading && items.length === 0 ? (
+              <div className="knowledge-empty">
+                No knowledge items yet. Add the first entry in the workbench to begin the rebuild.
+              </div>
+            ) : null}
+
+            {!loading && items.length > 0 ? (
+              <div className="knowledge-items">
+                {items.map((item) => (
+                  <article key={item.id} className="knowledge-item">
+                    <div className="knowledge-item-top">
+                      <div>
+                        <div className="knowledge-meta">
+                          <span className="knowledge-badge">{item.kind}</span>
+                          <span className="knowledge-badge knowledge-status">{item.status}</span>
+                        </div>
+                        <h3>{item.title}</h3>
+                        <div className="knowledge-meta">
+                          {item.creator ? <span>{item.creator}</span> : null}
+                          {item.sourceName ? <span>{item.sourceName}</span> : null}
+                          {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+                          <span>Updated {formatDate(item.updatedAt)}</span>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => handleDelete(item.id)}>
+                        Remove
+                      </button>
+                    </div>
+                    {item.summary ? <p>{item.summary}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        </section>
+      </div>
+    </div>
+  );
+};
+
+export default KnowledgePage;

@@ -1,70 +1,73 @@
 # Enzyklopaedie
-Build your own encyclopedia with your reading experience, create your own system of knowledge.
 
-.
-├── client/
-│   ├── public/
-│   │   └── index.html
-│   ├── src/
-│   │   ├── api/                  // API service functions (e.g., fetchBooks, addBook)
-│   │   │   └── index.ts
-│   │   ├── assets/
-│   │   ├── components/           // Reusable UI components
-│   │   │   ├── BookCard.tsx
-│   │   │   ├── LectureCard.tsx
-│   │   │   └── common/
-│   │   │       └── Button.tsx
-│   │   ├── hooks/                // Custom React hooks (e.g., useBooks, useLectures)
-│   │   ├── pages/                // Top-level page components
-│   │   │   ├── HomePage.tsx
-│   │   │   ├── BookListPage.tsx
-│   │   │   ├── LectureListPage.tsx
-│   │   │   ├── BookDetailPage.tsx
-│   │   │   └── SubjectPage.tsx
-│   │   ├── types/                // TypeScript interfaces and types for frontend
-│   │   │   ├── index.ts          // Exports all types
-│   │   │   ├── Book.d.ts         // Interface for Book
-│   │   │   ├── Lecture.d.ts      // Interface for Lecture
-│   │   │   ├── Note.d.ts
-│   │   │   └── Subject.d.ts
-│   │   ├── App.tsx               // Main application component, sets up routing
-│   │   ├── main.tsx              // Entry point for React application
-│   │   └── index.css             // Global styles
-│   ├── tailwind.config.js        // Tailwind CSS configuration (if used)
-│   ├── tsconfig.json             // TypeScript configuration for client
-│   ├── vite.config.ts            // Vite configuration
-│   └── package.json              // Frontend dependencies
-│
-├── server/
-│   ├── src/
-│   │   ├── config/               // Configuration files (e.g., database path)
-│   │   │   └── index.ts
-│   │   ├── controllers/          // Request handlers (logic for each route)
-│   │   │   ├── bookController.ts
-│   │   │   ├── lectureController.ts
-│   │   │   └── subjectController.ts
-│   │   ├── db/                   // Database initialization and helper functions
-│   │   │   ├── index.ts          // DB connection, initialization, migrations
-│   │   │   └── queries.ts        // SQL queries or data access functions
-│   │   ├── routes/               // API routes definitions
-│   │   │   ├── bookRoutes.ts
-│   │   │   ├── lectureRoutes.ts
-│   │   │   └── subjectRoutes.ts
-│   │   ├── types/                // TypeScript interfaces and types for backend
-│   │   │   ├── index.ts          // Exports all types (should mirror frontend types where applicable)
-│   │   │   ├── Book.d.ts
-│   │   │   ├── Lecture.d.ts
-│   │   │   ├── Note.d.ts
-│   │   │   └── Subject.d.ts
-│   │   ├── utils/                // Utility functions
-│   │   │   └── helpers.ts
-│   │   └── app.ts                // Express application setup
-│   │   └── server.ts             // Main entry point for the backend server
-│   ├── data.db                   // SQLite database file (will be created)
-│   ├── tsconfig.json             // TypeScript configuration for server
-│   ├── package.json              // Backend dependencies
-│   └── .env                      // Environment variables (e.g., DB_PATH)
-│
-├── .gitignore
-├── README.md
-└── package.json (Optional: for monorepo setup with workspaces, but not strictly necessary here)
+Enzyklopaedie is a local-first personal encyclopedia for what you learn. The current rebuild is moving
+away from isolated CRUD pages toward a unified knowledge model that can support taxonomy, chronology,
+tasks, reviews, progress tracking, and exhibition pages.
+
+## Stack
+
+- `client/`: React + Vite
+- `server/`: Express + SQLite
+- `shared/`: shared TypeScript types and domain helpers
+
+## Run The App
+
+From the repo root:
+
+```bash
+npm start
+```
+
+That command now:
+
+1. builds `shared/`
+2. watches `shared/`
+3. starts the client dev server
+4. starts the server dev server
+
+Open:
+
+- app: `http://localhost:5173`
+- API: `http://localhost:3001/api`
+
+## Environment
+
+Optional client env vars:
+
+- `client/.env.local`
+- `VITE_MAPTILER_API_KEY=...` for the world history page
+- `VITE_GOOGLE_BOOKS_API_KEY=...` for Google Books search in the add-book flow
+
+`client/.env.local` is ignored by git.
+
+## Testing
+
+Run the baseline verification suite from the repo root:
+
+```bash
+npm test
+```
+
+That currently does three things:
+
+1. runs shared unit tests
+2. builds the server
+3. builds the client
+
+The shared tests cover real domain helpers used by the app.
+
+## Manual Smoke Test
+
+After `npm start`, use this path:
+
+1. Open `http://localhost:5173`
+2. Check the home dashboard loads
+3. Open `Knowledge` and add a knowledge item
+4. Return to `Home` and confirm a recent activity entry appears
+5. Open `Library` and test `Add Item -> Book -> Search`
+6. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+
+## Working Notes
+
+- Foundation plan: [docs/foundation-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/foundation-plan.md)
+- Local testing guide: [docs/local-testing.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/local-testing.md)

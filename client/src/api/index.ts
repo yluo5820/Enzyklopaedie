@@ -1,4 +1,4 @@
-import { Book, NewBook, UpdateBook, Subject, NewSubject, UpdateSubject, Lecture, NewLecture, UpdateLecture, Author, NewAuthor, UpdateAuthor, Nation, NewNation, UpdateNation, Civilization, NewCivilization, UpdateCivilization, Era, NewEra, UpdateEra, Note, NewNote, UpdateNote, Comment, NewComment, UpdateComment } from '@enzyklopaedie/shared';
+import { Book, NewBook, UpdateBook, Subject, NewSubject, UpdateSubject, Lecture, NewLecture, UpdateLecture, Author, NewAuthor, UpdateAuthor, Nation, NewNation, UpdateNation, Civilization, NewCivilization, UpdateCivilization, Era, NewEra, UpdateEra, Note, NewNote, UpdateNote, Comment, NewComment, UpdateComment, KnowledgeItem, NewKnowledgeItem, UpdateKnowledgeItem, ActivityEvent } from '@enzyklopaedie/shared';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
@@ -424,4 +424,62 @@ export const deleteEra = async (id: number): Promise<void> => {
   if (!response.ok) {
     throw new Error('Failed to delete era');
   }
+};
+
+// Knowledge item API functions
+export const fetchKnowledgeItems = async (): Promise<KnowledgeItem[]> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch knowledge items');
+  }
+  return response.json();
+};
+
+export const createKnowledgeItem = async (itemData: NewKnowledgeItem): Promise<KnowledgeItem> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(itemData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create knowledge item');
+  }
+  return response.json();
+};
+
+export const updateKnowledgeItem = async (
+  id: number,
+  itemData: UpdateKnowledgeItem
+): Promise<KnowledgeItem> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(itemData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update knowledge item');
+  }
+  return response.json();
+};
+
+export const deleteKnowledgeItem = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete knowledge item');
+  }
+};
+
+// Activity event API functions
+export const fetchActivityEvents = async (limit = 25): Promise<ActivityEvent[]> => {
+  const response = await fetch(`${API_BASE_URL}/activity-events?limit=${limit}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch activity events');
+  }
+  return response.json();
 };
