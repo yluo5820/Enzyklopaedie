@@ -152,6 +152,21 @@ const TopicTreePage: React.FC = () => {
     () => (selectedTopicId ? layout.topicMap.get(selectedTopicId) ?? null : null),
     [layout.topicMap, selectedTopicId]
   );
+  const subjectFacts = useMemo(() => {
+    if (!selectedTopic) return [];
+
+    return [
+      selectedTopic.childTopicCount > 0
+        ? { label: 'Child subjects', value: selectedTopic.childTopicCount }
+        : null,
+      selectedTopic.topicCount > 0
+        ? { label: 'Contained topics', value: selectedTopic.topicCount }
+        : null,
+      selectedTopic.knowledgeItemCount > 0
+        ? { label: 'Items', value: selectedTopic.knowledgeItemCount }
+        : null,
+    ].filter((entry): entry is { label: string; value: number } => entry !== null);
+  }, [selectedTopic]);
   const totalTopics = useMemo(
     () => topics.reduce((sum, topic) => sum + topic.topicCount, 0),
     [topics]
@@ -385,10 +400,24 @@ const TopicTreePage: React.FC = () => {
               {selectedTopic ? (
                 <>
                   <div className="topic-tree-editor-head">
-                    <span className="topic-tree-eyebrow">Selected Subject</span>
+                    <div className="topic-tree-editor-kicker">
+                      <span className="topic-tree-eyebrow">Selected Subject</span>
+                      {isRootSubject ? <span className="topic-tree-root-chip">Root</span> : null}
+                    </div>
                     <h3>{selectedTopic.name}</h3>
-                    <p>{selectedTopic.childTopicCount} child subjects, {selectedTopic.topicCount} contained topics</p>
+                    {selectedTopic.description ? <p>{selectedTopic.description}</p> : null}
                   </div>
+
+                  {subjectFacts.length > 0 ? (
+                    <div className="topic-tree-editor-metrics">
+                      {subjectFacts.map((fact) => (
+                        <div key={fact.label} className="topic-tree-editor-metric">
+                          <strong>{fact.value}</strong>
+                          <span>{fact.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
 
                   <form className="topic-tree-editor-form" onSubmit={handleCreateChild}>
                     <div className="topic-tree-editor-section">
@@ -407,7 +436,11 @@ const TopicTreePage: React.FC = () => {
                   </form>
 
                   <div className="topic-tree-editor-actions">
-                    <button type="button" onClick={() => navigate(`/topics/${selectedTopic.id}`)}>
+                    <button
+                      type="button"
+                      className="topic-tree-secondary-button"
+                      onClick={() => navigate(`/topics/${selectedTopic.id}`)}
+                    >
                       Open subject page
                     </button>
                     {!isRootSubject ? (
