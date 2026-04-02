@@ -1,4 +1,4 @@
-import React, { startTransition, useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type {
   KnowledgeItem,
   KnowledgeRelationDetail,
@@ -10,8 +10,10 @@ import type {
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
+  assignTopicToKnowledgeItem,
   createTopicRelation as createStudyTopicRelation,
   deleteTopicRelation as deleteStudyTopicRelation,
+  fetchKnowledgeItems,
   fetchReferenceEntities,
   fetchSubject as fetchTopic,
   fetchSubjects as fetchTopics,
@@ -19,6 +21,7 @@ import {
   fetchTopicKnowledgeItems as fetchStudyTopicKnowledgeItems,
   fetchTopicRelations as fetchStudyTopicRelations,
   fetchTopics as fetchStudyTopics,
+  removeTopicFromKnowledgeItem,
   updateTopic as updateStudyTopic,
 } from '../api';
 import './TopicPage.css';
@@ -173,12 +176,18 @@ const TopicPage: React.FC = () => {
   const [subject, setSubject] = useState<TopicSummary | null>(null);
   const [siblingTopics, setSiblingTopics] = useState<StudyTopicSummary[]>([]);
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [allKnowledgeItems, setAllKnowledgeItems] = useState<KnowledgeItem[]>([]);
   const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
   const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showTopicEditor, setShowTopicEditor] = useState(false);
   const [savingTopic, setSavingTopic] = useState(false);
+  const [showItemManager, setShowItemManager] = useState(false);
+  const [loadingItemOptions, setLoadingItemOptions] = useState(false);
+  const [addingItemId, setAddingItemId] = useState<number | null>(null);
+  const [removingItemId, setRemovingItemId] = useState<number | null>(null);
+  const [itemManagerQuery, setItemManagerQuery] = useState('');
   const [showRelationComposer, setShowRelationComposer] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
   const [topicForm, setTopicForm] = useState({
@@ -191,6 +200,7 @@ const TopicPage: React.FC = () => {
     relationType: 'about' as KnowledgeRelationType,
     note: '',
   });
+  const deferredItemManagerQuery = useDeferredValue(itemManagerQuery);
 
   useEffect(() => {
     if (!Number.isInteger(studyTopicId) || studyTopicId <= 0) {
@@ -252,6 +262,24 @@ const TopicPage: React.FC = () => {
         .sort((left, right) => left.name.localeCompare(right.name)),
     [studyTopic?.id, siblingTopics]
   );
+  const assignedItemIds = useMemo(() => new Set(knowledgeItems.map((item) => item.id)), [knowledgeItems]);
+  const availableKnowledgeItems = useMemo(
+    () =>
+      [...allKnowledgeItems]
+        .filter((item) => !assignedItemIds.has(item.id))
+        .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()),
+    [allKnowledgeItems, assignedItemIds]
+  );
+  const visibleAvailableKnowledgeItems = useMemo(() => {
+    const query = deferredItemManagerQuery.trim().toLowerCase();
+    if (!query) return availableKnowledgeItems;
+
+    return availableKnowledgeItems.filter((item) =>
+      [item.title, item.creator, item.sourceName, item.summary]
+        .filter(Boolean)
+        .some((value) => value?.toLowerCase().includes(query))
+    );
+  }, [availableKnowledgeItems, deferredItemManagerQuery]);
   const relationTargets = useMemo(
     () =>
       [...referenceEntities].sort((left, right) => {
@@ -292,6 +320,37 @@ const TopicPage: React.FC = () => {
       summary: studyTopic.summary ?? '',
     });
   }, [studyTopic]);
+
+  useEffect(() => {
+    if (!showItemManager || allKnowledgeItems.length > 0) return;
+
+    let cancelled = false;
+
+    const loadKnowledgeItems = async () => {
+      setLoadingItemOptions(true);
+      try {
+        const fetchedKnowledgeItems = await fetchKnowledgeItems();
+        if (!cancelled) {
+          setAllKnowledgeItems(fetchedKnowledgeItems);
+        }
+      } catch (loadError) {
+        console.error(loadError);
+        if (!cancelled) {
+          setError('Failed to load items for this topic.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingItemOptions(false);
+        }
+      }
+    };
+
+    void loadKnowledgeItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allKnowledgeItems.length, showItemManager]);
 
   useEffect(() => {
     setRelationForm((current) => {
@@ -391,6 +450,68 @@ const TopicPage: React.FC = () => {
     } catch (relationError) {
       console.error(relationError);
       setError('Failed to delete topic relation.');
+    }
+  };
+
+  const handleAssignKnowledgeItem = async (knowledgeItem: KnowledgeItem) => {
+    if (!studyTopic || assignedItemIds.has(knowledgeItem.id)) return;
+
+    setAddingItemId(knowledgeItem.id);
+    setError(null);
+
+    try {
+      await assignTopicToKnowledgeItem(knowledgeItem.id, studyTopic.id);
+
+      startTransition(() => {
+        setKnowledgeItems((current) =>
+          current.some((entry) => entry.id === knowledgeItem.id)
+            ? current
+            : [...current, knowledgeItem].sort(
+                (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+              )
+        );
+        setStudyTopic((current) =>
+          current ? { ...current, itemCount: current.itemCount + 1 } : current
+        );
+        setSiblingTopics((current) =>
+          current.map((entry) =>
+            entry.id === studyTopic.id ? { ...entry, itemCount: entry.itemCount + 1 } : entry
+          )
+        );
+      });
+    } catch (assignmentError) {
+      console.error(assignmentError);
+      setError('Failed to assign item to this topic.');
+    } finally {
+      setAddingItemId(null);
+    }
+  };
+
+  const handleRemoveKnowledgeItem = async (knowledgeItem: KnowledgeItem) => {
+    if (!studyTopic) return;
+
+    setRemovingItemId(knowledgeItem.id);
+    setError(null);
+
+    try {
+      await removeTopicFromKnowledgeItem(knowledgeItem.id, studyTopic.id);
+
+      startTransition(() => {
+        setKnowledgeItems((current) => current.filter((entry) => entry.id !== knowledgeItem.id));
+        setStudyTopic((current) =>
+          current ? { ...current, itemCount: Math.max(0, current.itemCount - 1) } : current
+        );
+        setSiblingTopics((current) =>
+          current.map((entry) =>
+            entry.id === studyTopic.id ? { ...entry, itemCount: Math.max(0, entry.itemCount - 1) } : entry
+          )
+        );
+      });
+    } catch (removeError) {
+      console.error(removeError);
+      setError('Failed to remove item from this topic.');
+    } finally {
+      setRemovingItemId(null);
     }
   };
 
@@ -532,7 +653,108 @@ const TopicPage: React.FC = () => {
                   This is the concrete reading and viewing list that gives the topic its substance.
                 </p>
               </div>
+              <button
+                type="button"
+                className="topic-page-secondary-button"
+                onClick={() => setShowItemManager((current) => !current)}
+              >
+                {showItemManager ? 'Close' : 'Manage items'}
+              </button>
             </div>
+
+            {showItemManager ? (
+              <div className="topic-page-inline-panel topic-page-manager-stack">
+                <div className="topic-page-note">
+                  <strong>Curate the reading cluster here.</strong>
+                  <span>
+                    Add existing items into this topic or remove items that no longer belong in this study context.
+                  </span>
+                </div>
+
+                <section className="topic-page-manager-section">
+                  <div className="topic-page-subsection-head">
+                    <h3>Assigned here</h3>
+                    <span className="topic-page-count-badge">{knowledgeItems.length}</span>
+                  </div>
+                  {knowledgeItems.length === 0 ? (
+                    <div className="topic-page-empty">No items are assigned to this topic yet.</div>
+                  ) : (
+                    <div className="topic-page-manager-list">
+                      {knowledgeItems.map((knowledgeItem) => (
+                        <article key={`assigned-${knowledgeItem.id}`} className="topic-page-manager-row">
+                          <div className="topic-page-manager-copy">
+                            <Link to={`/knowledge/${knowledgeItem.id}`} className="topic-page-item-link">
+                              <strong>{knowledgeItem.title}</strong>
+                            </Link>
+                            <div className="topic-page-item-meta">
+                              {knowledgeItem.creator ? <span>{knowledgeItem.creator}</span> : null}
+                              {knowledgeItem.publishedYear ? <span>{knowledgeItem.publishedYear}</span> : null}
+                              <span>{knowledgeItem.kind}</span>
+                              <span>{knowledgeItem.status}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="topic-page-danger-button"
+                            onClick={() => void handleRemoveKnowledgeItem(knowledgeItem)}
+                            disabled={removingItemId === knowledgeItem.id}
+                          >
+                            {removingItemId === knowledgeItem.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="topic-page-manager-section">
+                  <div className="topic-page-subsection-head">
+                    <h3>Add existing item</h3>
+                    <span className="topic-page-count-badge">{visibleAvailableKnowledgeItems.length}</span>
+                  </div>
+                  <input
+                    value={itemManagerQuery}
+                    onChange={(event) => setItemManagerQuery(event.target.value)}
+                    placeholder="Search existing items by title, creator, source, or summary"
+                  />
+                  {loadingItemOptions ? (
+                    <div className="topic-page-empty">Loading the item catalog...</div>
+                  ) : visibleAvailableKnowledgeItems.length === 0 ? (
+                    <div className="topic-page-empty">
+                      {availableKnowledgeItems.length === 0
+                        ? 'Everything in the current item catalog is already assigned here.'
+                        : 'No unassigned items match the current search.'}
+                    </div>
+                  ) : (
+                    <div className="topic-page-manager-list">
+                      {visibleAvailableKnowledgeItems.slice(0, 12).map((knowledgeItem) => (
+                        <article key={`candidate-${knowledgeItem.id}`} className="topic-page-manager-row">
+                          <div className="topic-page-manager-copy">
+                            <Link to={`/knowledge/${knowledgeItem.id}`} className="topic-page-item-link">
+                              <strong>{knowledgeItem.title}</strong>
+                            </Link>
+                            <div className="topic-page-item-meta">
+                              {knowledgeItem.creator ? <span>{knowledgeItem.creator}</span> : null}
+                              {knowledgeItem.publishedYear ? <span>{knowledgeItem.publishedYear}</span> : null}
+                              <span>{knowledgeItem.kind}</span>
+                              <span>{knowledgeItem.status}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="topic-page-card-button"
+                            onClick={() => void handleAssignKnowledgeItem(knowledgeItem)}
+                            disabled={addingItemId !== null}
+                          >
+                            {addingItemId === knowledgeItem.id ? 'Adding...' : 'Add'}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
 
             {knowledgeItems.length === 0 ? (
               <div className="topic-page-empty">No items are assigned to this topic yet.</div>

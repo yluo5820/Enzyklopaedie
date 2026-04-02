@@ -150,6 +150,38 @@
   gap: 12px;
 }
 
+.topic-page-manager-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.topic-page-manager-section {
+  display: grid;
+  gap: 12px;
+}
+
+.topic-page-manager-list {
+  display: grid;
+  gap: 10px;
+}
+
+.topic-page-manager-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 203, 185, 0.9);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.topic-page-manager-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
 .topic-page-subsection-head {
   display: flex;
   flex-wrap: wrap;
@@ -474,6 +506,11 @@
   }
 
   .topic-page-item-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topic-page-manager-row {
     flex-direction: column;
     align-items: stretch;
   }
