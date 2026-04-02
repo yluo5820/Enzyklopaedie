@@ -2,16 +2,20 @@ import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   KnowledgeItem,
   KnowledgeItemKind,
+  KnowledgeRelationDetail,
   KnowledgeItemStatus,
   NewKnowledgeItem,
   ReferenceEntity,
+  StudyTopicSummary,
 } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
 import {
   createKnowledgeItem,
   createKnowledgeRelation,
   deleteKnowledgeItem,
+  fetchKnowledgeItemStudyTopics,
   fetchKnowledgeItems,
+  fetchKnowledgeRelations,
   fetchReferenceEntities,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
@@ -30,6 +34,12 @@ type ItemWorkbenchPreset = {
 };
 
 type ItemWorkbenchKind = 'book' | 'lecture';
+type StatusFilter = 'all' | KnowledgeItemStatus;
+type ItemListGroupBy = 'none' | 'topic' | 'subject' | 'entity';
+type ItemListContext = {
+  entityLabels?: string[];
+  studyTopics?: StudyTopicSummary[];
+};
 
 const kindOptions: ItemWorkbenchKind[] = ['book', 'lecture'];
 const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
@@ -100,6 +110,50 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
+const formatStatusLabel = (value: StatusFilter) => {
+  if (value === 'all') return 'All';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+const dedupeAndSort = (values: string[]) =>
+  Array.from(new Set(values.filter(Boolean))).sort((left, right) => left.localeCompare(right));
+
+const getEntityLabelsForItem = (relations: KnowledgeRelationDetail[]) =>
+  dedupeAndSort(
+    relations
+      .filter(
+        (relation) =>
+          relation.toEntityType === 'reference_entity' &&
+          relation.relationType !== 'created_by' &&
+          typeof relation.toEntityTitle === 'string'
+      )
+      .map((relation) => relation.toEntityTitle?.trim() ?? '')
+  );
+
+const getItemGroupLabels = (
+  groupBy: ItemListGroupBy,
+  context: ItemListContext | undefined
+) => {
+  if (!context) return [];
+  if (groupBy === 'topic') {
+    return dedupeAndSort((context.studyTopics ?? []).map((studyTopic) => studyTopic.name));
+  }
+  if (groupBy === 'subject') {
+    return dedupeAndSort((context.studyTopics ?? []).map((studyTopic) => studyTopic.subjectName));
+  }
+  if (groupBy === 'entity') {
+    return context.entityLabels ?? [];
+  }
+  return [];
+};
+
+const getUngroupedLabel = (groupBy: ItemListGroupBy) => {
+  if (groupBy === 'topic') return 'Without topic';
+  if (groupBy === 'subject') return 'Without subject';
+  if (groupBy === 'entity') return 'Without entity';
+  return 'Items';
+};
+
 type FieldLabelProps = {
   htmlFor: string;
   hint?: string;
@@ -131,8 +185,13 @@ const KnowledgePage: React.FC = () => {
   const [people, setPeople] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [listContextError, setListContextError] = useState<string | null>(null);
+  const [listContextLoading, setListContextLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [viewMode, setViewMode] = useState<'create' | 'list'>('create');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [groupBy, setGroupBy] = useState<ItemListGroupBy>('none');
+  const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
   const [formState, setFormState] = useState(createInitialFormState());
 
   useEffect(() => {
@@ -158,10 +217,159 @@ const KnowledgePage: React.FC = () => {
   }, []);
 
   const stats = useMemo(() => summarizeKnowledgeProgress(items), [items]);
+  const orderedItems = useMemo(
+    () =>
+      [...items].sort(
+        (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+      ),
+    [items]
+  );
+  const statusCounts = useMemo(
+    () => ({
+      all: items.length,
+      inbox: items.filter((item) => item.status === 'inbox').length,
+      queued: items.filter((item) => item.status === 'queued').length,
+      active: items.filter((item) => item.status === 'active').length,
+      completed: items.filter((item) => item.status === 'completed').length,
+      archived: items.filter((item) => item.status === 'archived').length,
+    }),
+    [items]
+  );
+  const filteredItems = useMemo(
+    () =>
+      orderedItems.filter((item) => (statusFilter === 'all' ? true : item.status === statusFilter)),
+    [orderedItems, statusFilter]
+  );
+  const groupedItems = useMemo(() => {
+    if (groupBy === 'none') {
+      return [
+        {
+          id: 'all-items',
+          items: filteredItems,
+          label: statusFilter === 'all' ? 'All items' : `${formatStatusLabel(statusFilter)} items`,
+        },
+      ];
+    }
+
+    const groups = new Map<string, KnowledgeItem[]>();
+    const ungroupedItems: KnowledgeItem[] = [];
+
+    for (const item of filteredItems) {
+      const labels = getItemGroupLabels(groupBy, itemContexts[item.id]);
+      if (labels.length === 0) {
+        ungroupedItems.push(item);
+        continue;
+      }
+
+      for (const label of labels) {
+        const branch = groups.get(label) ?? [];
+        branch.push(item);
+        groups.set(label, branch);
+      }
+    }
+
+    const organizedGroups = [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([label, groupedBranch]) => ({
+        id: label,
+        items: groupedBranch,
+        label,
+      }));
+
+    if (ungroupedItems.length > 0) {
+      organizedGroups.push({
+        id: 'ungrouped-items',
+        items: ungroupedItems,
+        label: getUngroupedLabel(groupBy),
+      });
+    }
+
+    return organizedGroups;
+  }, [filteredItems, groupBy, itemContexts, statusFilter]);
   const workbenchKind = formState.kind as ItemWorkbenchKind;
   const workbenchPreset = itemWorkbenchPresets[workbenchKind];
   const extraFieldValue =
     workbenchPreset.extraFieldName === 'pageCount' ? formState.pageCount : formState.durationMinutes;
+
+  useEffect(() => {
+    if (viewMode !== 'list' || items.length === 0 || groupBy === 'none') {
+      return;
+    }
+
+    const needsStudyTopics = groupBy === 'topic' || groupBy === 'subject';
+    const missingItems = items.filter((item) => {
+      const context = itemContexts[item.id];
+      if (!context) return true;
+      if (needsStudyTopics) return !context.studyTopics;
+      return !context.entityLabels;
+    });
+
+    if (missingItems.length === 0) return;
+
+    let cancelled = false;
+
+    const loadListContext = async () => {
+      setListContextLoading(true);
+      setListContextError(null);
+
+      try {
+        if (needsStudyTopics) {
+          const entries = await Promise.all(
+            missingItems.map(async (item) => ({
+              itemId: item.id,
+              studyTopics: await fetchKnowledgeItemStudyTopics(item.id),
+            }))
+          );
+
+          if (cancelled) return;
+          setItemContexts((current) => {
+            const next = { ...current };
+            for (const entry of entries) {
+              next[entry.itemId] = {
+                ...next[entry.itemId],
+                studyTopics: entry.studyTopics,
+              };
+            }
+            return next;
+          });
+        } else {
+          const entries = await Promise.all(
+            missingItems.map(async (item) => ({
+              entityLabels: getEntityLabelsForItem(await fetchKnowledgeRelations(item.id)),
+              itemId: item.id,
+            }))
+          );
+
+          if (cancelled) return;
+          setItemContexts((current) => {
+            const next = { ...current };
+            for (const entry of entries) {
+              next[entry.itemId] = {
+                ...next[entry.itemId],
+                entityLabels: entry.entityLabels,
+              };
+            }
+            return next;
+          });
+        }
+      } catch (contextLoadError) {
+        console.error(contextLoadError);
+        if (!cancelled) {
+          setListContextError('Failed to organize items by that context.');
+        }
+      } finally {
+        if (!cancelled) {
+          setListContextLoading(false);
+        }
+      }
+    };
+
+    loadListContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groupBy, itemContexts, items, viewMode]);
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -445,43 +653,95 @@ const KnowledgePage: React.FC = () => {
             </div>
           </div>
 
+          <div className="knowledge-list-controls">
+            <div className="knowledge-list-filter-group">
+              <span className="knowledge-list-filter-label">Status</span>
+              <div className="knowledge-chip-row">
+                {(['all', ...statusOptions] as StatusFilter[]).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`knowledge-filter-chip${statusFilter === status ? ' is-active' : ''}`}
+                    onClick={() => setStatusFilter(status)}
+                  >
+                    <span>{formatStatusLabel(status)}</span>
+                    <strong>{statusCounts[status]}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="knowledge-list-organizer">
+              <span className="knowledge-list-filter-label">Then organize by</span>
+              <select value={groupBy} onChange={(event) => setGroupBy(event.target.value as ItemListGroupBy)}>
+                <option value="none">Nothing extra</option>
+                <option value="topic">Topic</option>
+                <option value="subject">Subject</option>
+                <option value="entity">Entity</option>
+              </select>
+            </label>
+          </div>
+
+          {groupBy !== 'none' && listContextError ? (
+            <div className="knowledge-error">{listContextError}</div>
+          ) : null}
+          {groupBy !== 'none' && listContextLoading ? (
+            <div className="knowledge-empty">Loading {groupBy} context for this list...</div>
+          ) : null}
+
           {loading ? <div className="knowledge-empty">Loading items...</div> : null}
           {!loading && items.length === 0 ? (
             <div className="knowledge-empty">
               No items yet. Switch back and add the first entry.
             </div>
           ) : null}
+          {!loading && items.length > 0 && filteredItems.length === 0 ? (
+            <div className="knowledge-empty">No items are currently in {formatStatusLabel(statusFilter).toLowerCase()}.</div>
+          ) : null}
 
-          {!loading && items.length > 0 ? (
+          {!loading && filteredItems.length > 0 && (groupBy === 'none' || !listContextLoading) ? (
             <div className="knowledge-items">
-              {items.map((item) => (
-                <article key={item.id} className="knowledge-item">
-                  <div className="knowledge-item-top">
-                    <div>
-                      <div className="knowledge-meta">
-                        <span className="knowledge-badge">{item.kind}</span>
-                        <span className="knowledge-badge knowledge-status">{item.status}</span>
-                      </div>
-                      <h3>{item.title}</h3>
-                      <div className="knowledge-meta">
-                        {item.creator ? <span>{item.creator}</span> : null}
-                        {item.sourceName ? <span>{item.sourceName}</span> : null}
-                        {item.publishedYear ? <span>{item.publishedYear}</span> : null}
-                        {getItemRecordDetail(item) ? <span>{getItemRecordDetail(item)}</span> : null}
-                        <span>Updated {formatDate(item.updatedAt)}</span>
-                      </div>
+              {groupedItems.map((group) => (
+                <section key={group.id} className="knowledge-list-group">
+                  {groupBy !== 'none' ? (
+                    <div className="knowledge-list-group-header">
+                      <h2>{group.label}</h2>
+                      <span>{group.items.length}</span>
                     </div>
-                    <div className="knowledge-item-actions">
-                      <Link to={`/knowledge/${item.id}`} className="knowledge-item-link">
-                        Open
-                      </Link>
-                      <button type="button" onClick={() => handleDelete(item.id)}>
-                        Remove
-                      </button>
-                    </div>
+                  ) : null}
+
+                  <div className="knowledge-list-group-items">
+                    {group.items.map((item) => (
+                      <article key={`${group.id}-${item.id}`} className="knowledge-item">
+                        <div className="knowledge-item-top">
+                          <div>
+                            <div className="knowledge-meta">
+                              <span className="knowledge-badge">{item.kind}</span>
+                              <span className="knowledge-badge knowledge-status">{item.status}</span>
+                            </div>
+                            <h3>{item.title}</h3>
+                            <div className="knowledge-meta">
+                              {item.creator ? <span>{item.creator}</span> : null}
+                              {item.sourceName ? <span>{item.sourceName}</span> : null}
+                              {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+                              {getItemRecordDetail(item) ? <span>{getItemRecordDetail(item)}</span> : null}
+                              <span>Updated {formatDate(item.updatedAt)}</span>
+                            </div>
+                          </div>
+                          <div className="knowledge-item-actions">
+                            <Link to={`/knowledge/${item.id}`} className="knowledge-item-link">
+                              Open
+                            </Link>
+                            <button type="button" onClick={() => handleDelete(item.id)}>
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        {item.summary ? <p>{item.summary}</p> : null}
+                      </article>
+                    ))}
                   </div>
-                  {item.summary ? <p>{item.summary}</p> : null}
-                </article>
+                </section>
               ))}
             </div>
           ) : null}
