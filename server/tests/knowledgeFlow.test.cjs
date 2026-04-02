@@ -1073,12 +1073,14 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       const parsedUrl = new URL(url);
       assert.match(parsedUrl.toString(), /openlibrary\.org\/search\.json/);
       assert.equal(parsedUrl.searchParams.get('limit'), '5');
+      assert.equal(parsedUrl.searchParams.get('page'), '2');
       assert.match(parsedUrl.searchParams.get('q') ?? '', /foundation/);
       assert.match(parsedUrl.searchParams.get('q') ?? '', /author%3A|author:/);
       assert.match(parsedUrl.searchParams.get('q') ?? '', /language:eng/);
 
       return new Response(
         JSON.stringify({
+          numFound: 21,
           docs: [
             {
               key: '/works/OL82563W',
@@ -1104,23 +1106,104 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     try {
       const response = await requestThroughHttp(
-        '/api/open-library/search?q=foundation&author=asimov&language=eng&maxResults=5'
+        '/api/open-library/search?q=foundation&author=asimov&language=eng&page=2&maxResults=5'
       );
       assert.equal(response.status, 200);
 
       const books = await response.json();
-      assert.equal(books.length, 1);
-      assert.deepEqual(books[0], {
+      assert.equal(books.page, 2);
+      assert.equal(books.hasMore, true);
+      assert.equal(books.nextPage, 3);
+      assert.equal(books.total, 21);
+      assert.equal(books.matches.length, 1);
+      assert.deepEqual(books.matches[0], {
         id: '/works/OL82563W',
         authors: ['Isaac Asimov'],
         coverImageUrl: 'https://covers.openlibrary.org/b/id/12345-M.jpg?default=false',
         languageCodes: ['eng'],
         pageCount: 255,
+        provider: 'open_library',
         publishedYear: 1951,
         publisher: 'Spectra',
         sourceUrl: 'https://openlibrary.org/works/OL82563W',
         subtitle: 'A Novel',
         title: 'Foundation',
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await t.test('GET /api/library-of-congress/search proxies and normalizes LoC results', async () => {
+    const originalFetch = global.fetch;
+
+    global.fetch = async (input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      const parsedUrl = new URL(url);
+      assert.match(parsedUrl.toString(), /loc\.gov\/books\/\?/);
+      assert.equal(parsedUrl.searchParams.get('fo'), 'json');
+      assert.equal(parsedUrl.searchParams.get('c'), '10');
+      assert.equal(parsedUrl.searchParams.get('sp'), '1');
+      assert.match(parsedUrl.searchParams.get('q') ?? '', /hegel/);
+      assert.match(parsedUrl.searchParams.get('q') ?? '', /kojeve/);
+      assert.equal(parsedUrl.searchParams.get('fa'), 'language:english');
+
+      return new Response(
+        JSON.stringify({
+          pagination: {
+            next: '/books/?sp=2',
+            of: 18,
+          },
+          results: [
+            {
+              id: 'https://www.loc.gov/item/123456/',
+              title: 'Introduction to the Reading of Hegel',
+              contributor: ['Alexandre Kojeve'],
+              date: '1947',
+              language: ['eng'],
+              image_url: ['https://tile.loc.gov/storage-services/service/pnp/example.jpg'],
+              description: ['A lecture-based interpretation of Hegel.'],
+              url: 'https://www.loc.gov/item/123456/',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const response = await requestThroughHttp(
+        '/api/library-of-congress/search?q=hegel&author=kojeve&language=eng&page=1&maxResults=10'
+      );
+      assert.equal(response.status, 200);
+
+      const books = await response.json();
+      assert.equal(books.page, 1);
+      assert.equal(books.hasMore, true);
+      assert.equal(books.nextPage, 2);
+      assert.equal(books.total, 18);
+      assert.equal(books.matches.length, 1);
+      assert.deepEqual(books.matches[0], {
+        id: 'https://www.loc.gov/item/123456/',
+        authors: ['Alexandre Kojeve'],
+        coverImageUrl: 'https://tile.loc.gov/storage-services/service/pnp/example.jpg',
+        description: 'A lecture-based interpretation of Hegel.',
+        languageCodes: ['eng'],
+        provider: 'library_of_congress',
+        publishedYear: 1947,
+        sourceUrl: 'https://www.loc.gov/item/123456/',
+        title: 'Introduction to the Reading of Hegel',
       });
     } finally {
       global.fetch = originalFetch;

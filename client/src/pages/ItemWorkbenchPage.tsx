@@ -10,7 +10,9 @@ import type {
 } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
 import {
+  type BookSearchPage,
   type BookSearchFilters,
+  type BookSearchProvider,
   createKnowledgeItem,
   createKnowledgeRelation,
   createReferenceEntity,
@@ -20,7 +22,7 @@ import {
   fetchKnowledgeRelations,
   fetchReferenceEntities,
   type BookSearchMatch,
-  searchOpenLibraryBooks,
+  searchBookCatalog,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './ItemWorkbenchPage.css';
@@ -49,6 +51,11 @@ type SearchLanguageOption = {
   code: string;
   label: string;
 };
+type SearchProviderOption = {
+  description: string;
+  label: string;
+  value: BookSearchProvider;
+};
 
 const kindOptions: ItemWorkbenchKind[] = ['book', 'lecture'];
 const statusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
@@ -67,6 +74,19 @@ const searchLanguageOptions: SearchLanguageOption[] = [
   { code: 'ara', label: 'Arabic' },
 ];
 const languageLabelByCode = new Map(searchLanguageOptions.map((option) => [option.code, option.label]));
+const searchProviderOptions: SearchProviderOption[] = [
+  {
+    description: 'Broader general catalog with better everyday discovery.',
+    label: 'Open Library',
+    value: 'open_library',
+  },
+  {
+    description: 'Library of Congress records, useful as a second catalog check.',
+    label: 'Library of Congress',
+    value: 'library_of_congress',
+  },
+];
+const providerLabelByValue = new Map(searchProviderOptions.map((option) => [option.value, option.label]));
 
 const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
   book: {
@@ -179,6 +199,8 @@ const getUngroupedLabel = (groupBy: ItemListGroupBy) => {
 };
 
 const formatLanguageLabel = (code: string) => languageLabelByCode.get(code) ?? code.toUpperCase();
+const formatProviderLabel = (provider: BookSearchProvider) =>
+  providerLabelByValue.get(provider) ?? provider;
 
 const buildKnowledgeItemFromSearchMatch = (book: BookSearchMatch): NewKnowledgeItem => {
   const authorLabel = book.authors.join(', ').trim();
@@ -194,8 +216,10 @@ const buildKnowledgeItemFromSearchMatch = (book: BookSearchMatch): NewKnowledgeI
     status: 'inbox',
     coverImageUrl: book.coverImageUrl,
     metadata: {
-      importedFrom: 'open_library',
-      openLibraryId: book.id,
+      importedFrom: book.provider,
+      providerRecordId: book.id,
+      ...(book.provider === 'open_library' ? { openLibraryId: book.id } : {}),
+      ...(book.provider === 'library_of_congress' ? { libraryOfCongressId: book.id } : {}),
       ...(book.pageCount ? { pageCount: book.pageCount } : {}),
     },
   };
@@ -247,10 +271,14 @@ const ItemWorkbenchPage: React.FC = () => {
   const [groupBy, setGroupBy] = useState<ItemListGroupBy>('none');
   const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
   const [formState, setFormState] = useState(createInitialFormState());
+  const [bookSearchProvider, setBookSearchProvider] = useState<BookSearchProvider>('open_library');
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAuthor, setBookSearchAuthor] = useState('');
   const [bookSearchLanguage, setBookSearchLanguage] = useState('any');
   const [bookSearchResults, setBookSearchResults] = useState<BookSearchMatch[]>([]);
+  const [bookSearchPage, setBookSearchPage] = useState(1);
+  const [bookSearchHasMore, setBookSearchHasMore] = useState(false);
+  const [bookSearchTotal, setBookSearchTotal] = useState<number | null>(null);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -367,6 +395,15 @@ const ItemWorkbenchPage: React.FC = () => {
   const selectedBooks = useMemo(
     () => bookSearchResults.filter((book) => selectedBookIds.includes(book.id)),
     [bookSearchResults, selectedBookIds]
+  );
+
+  const currentSearchFilters = useMemo(
+    (): BookSearchFilters => ({
+      query: bookSearchQuery,
+      author: bookSearchAuthor,
+      language: bookSearchLanguage,
+    }),
+    [bookSearchAuthor, bookSearchLanguage, bookSearchQuery]
   );
 
   useEffect(() => {
@@ -569,35 +606,64 @@ const ItemWorkbenchPage: React.FC = () => {
     }
   };
 
-  const handleSearchBooks = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const searchFilters: BookSearchFilters = {
-      query: bookSearchQuery,
-      author: bookSearchAuthor,
-      language: bookSearchLanguage,
-    };
+  const handleSearchResponse = (pageData: BookSearchPage, append = false) => {
+    setBookSearchPage(pageData.page);
+    setBookSearchHasMore(pageData.hasMore);
+    setBookSearchTotal(pageData.total ?? null);
+    setBookSearchResults((current) => {
+      if (!append) {
+        return pageData.matches;
+      }
 
-    if (!searchFilters.query?.trim() && !searchFilters.author?.trim()) return;
+      const next = [...current];
+      for (const match of pageData.matches) {
+        if (!next.some((existing) => existing.provider === match.provider && existing.id === match.id)) {
+          next.push(match);
+        }
+      }
+      return next;
+    });
+  };
 
+  const runBookSearch = async (page: number, append = false) => {
+    if (!currentSearchFilters.query?.trim() && !currentSearchFilters.author?.trim()) return;
     setSearchingBooks(true);
     setBookSearchError(null);
     setNotice(null);
 
     try {
-      const results = await searchOpenLibraryBooks(searchFilters, 10);
-      setBookSearchResults(results);
-      setSelectedBookIds([]);
-      if (results.length === 0) {
-        setBookSearchError('No matching books came back from Open Library.');
+      const pageData = await searchBookCatalog(bookSearchProvider, currentSearchFilters, page, 10);
+      handleSearchResponse(pageData, append);
+      if (!append) {
+        setSelectedBookIds([]);
+      }
+      if (!append && pageData.matches.length === 0) {
+        setBookSearchError(`No matching books came back from ${formatProviderLabel(bookSearchProvider)}.`);
       }
     } catch (searchError) {
       console.error(searchError);
       setBookSearchError(
-        searchError instanceof Error ? searchError.message : 'Failed to search Open Library right now.'
+        searchError instanceof Error
+          ? searchError.message
+          : `Failed to search ${formatProviderLabel(bookSearchProvider)} right now.`
       );
     } finally {
       setSearchingBooks(false);
     }
+  };
+
+  const handleSearchBooks = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBookSearchResults([]);
+    setBookSearchPage(1);
+    setBookSearchHasMore(false);
+    setBookSearchTotal(null);
+    await runBookSearch(1, false);
+  };
+
+  const handleLoadMoreBooks = async () => {
+    if (!bookSearchHasMore || searchingBooks) return;
+    await runBookSearch(bookSearchPage + 1, true);
   };
 
   const handleImportSelectedBooks = async () => {
@@ -708,10 +774,38 @@ const ItemWorkbenchPage: React.FC = () => {
             <section className="knowledge-search-panel">
               <div className="knowledge-search-head">
                 <div>
-                  <span className="knowledge-eyebrow">Open Library</span>
+                  <span className="knowledge-eyebrow">{formatProviderLabel(bookSearchProvider)}</span>
                   <h2>Import books by search</h2>
-                  <p>Start with a title or keyword, then tighten the list with an author or language filter when the catalog feels noisy.</p>
+                  <p>Compare supported catalogs, then tighten the list with author and language filters when the first pass feels noisy.</p>
                 </div>
+              </div>
+
+              <div className="knowledge-provider-pills" role="tablist" aria-label="Book search provider">
+                {searchProviderOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`knowledge-capture-pill${bookSearchProvider === option.value ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setBookSearchProvider(option.value);
+                      setBookSearchResults([]);
+                      setSelectedBookIds([]);
+                      setBookSearchError(null);
+                      setBookSearchPage(1);
+                      setBookSearchHasMore(false);
+                      setBookSearchTotal(null);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="knowledge-search-filter-note">
+                {
+                  searchProviderOptions.find((option) => option.value === bookSearchProvider)
+                    ?.description
+                }
               </div>
 
               <form className="knowledge-search-form" onSubmit={handleSearchBooks}>
@@ -755,7 +849,11 @@ const ItemWorkbenchPage: React.FC = () => {
               {bookSearchResults.length > 0 ? (
                 <>
                   <div className="knowledge-search-actions">
-                    <span>{bookSearchResults.length} matches</span>
+                    <span>
+                      Loaded {bookSearchResults.length}
+                      {bookSearchTotal ? ` of about ${bookSearchTotal}` : ''} matches from{' '}
+                      {formatProviderLabel(bookSearchProvider)}
+                    </span>
                     <div className="knowledge-search-action-group">
                       <button
                         type="button"
@@ -780,6 +878,14 @@ const ItemWorkbenchPage: React.FC = () => {
                         {importingBooks
                           ? 'Importing...'
                           : `Import selected (${selectedBooks.length})`}
+                      </button>
+                      <button
+                        type="button"
+                        className="knowledge-secondary-button"
+                        onClick={handleLoadMoreBooks}
+                        disabled={searchingBooks || !bookSearchHasMore}
+                      >
+                        {searchingBooks && bookSearchResults.length > 0 ? 'Loading...' : 'Fetch more'}
                       </button>
                     </div>
                   </div>

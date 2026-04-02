@@ -633,6 +633,12 @@
   line-height: 1.6;
 }
 
+.knowledge-provider-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .knowledge-search-form {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(180px, 220px) auto;

@@ -15,6 +15,7 @@ type OpenLibrarySearchPayload = {
     subtitle?: string;
     title?: string;
   }>;
+  numFound?: number;
 };
 
 const asyncErrorHandler = (fn: AsyncRoute) =>
@@ -29,6 +30,15 @@ const parseMaxResults = (value: unknown) => {
   }
 
   return Math.min(Math.max(Math.trunc(parsed), 1), 20);
+};
+
+const parsePage = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+
+  return Math.max(Math.trunc(parsed), 1);
 };
 
 const buildCoverUrl = (coverId?: number) =>
@@ -62,6 +72,8 @@ export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res
     return res.status(400).json({ message: 'A title/keyword query or author is required.' });
   }
 
+  const page = parsePage(req.query.page);
+  const limit = parseMaxResults(req.query.maxResults);
   const queryParts = [
     query || null,
     author ? `author:${quoteTerm(author)}` : null,
@@ -70,7 +82,8 @@ export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res
 
   const params = new URLSearchParams({
     q: queryParts.join(' AND '),
-    limit: String(parseMaxResults(req.query.maxResults)),
+    limit: String(limit),
+    page: String(page),
     fields: [
       'key',
       'title',
@@ -115,6 +128,7 @@ export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res
         languageCodes: normalizeLanguageCodes(doc.language),
         pageCount: doc.number_of_pages_median,
         publishedYear: doc.first_publish_year,
+        provider: 'open_library' as const,
         publisher: doc.publisher?.[0],
         sourceUrl: buildSourceUrl(doc.key),
         subtitle: doc.subtitle,
@@ -123,5 +137,14 @@ export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res
     })
     .filter((book) => Boolean(book.title));
 
-  res.json(matches);
+  const total = typeof payload.numFound === 'number' ? payload.numFound : undefined;
+  const hasMore = typeof total === 'number' ? page * limit < total : matches.length === limit;
+
+  res.json({
+    hasMore,
+    matches,
+    nextPage: hasMore ? page + 1 : null,
+    page,
+    total,
+  });
 });

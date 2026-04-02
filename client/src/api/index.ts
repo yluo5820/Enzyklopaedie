@@ -28,6 +28,8 @@ import {
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
+export type BookSearchProvider = 'open_library' | 'library_of_congress';
+
 export type BookSearchMatch = {
   id: string;
   authors: string[];
@@ -36,6 +38,7 @@ export type BookSearchMatch = {
   languageCodes?: string[];
   pageCount?: number;
   publishedYear?: number;
+  provider: BookSearchProvider;
   publisher?: string;
   sourceUrl?: string;
   subtitle?: string;
@@ -46,6 +49,14 @@ export type BookSearchFilters = {
   author?: string;
   language?: string;
   query?: string;
+};
+
+export type BookSearchPage = {
+  hasMore: boolean;
+  matches: BookSearchMatch[];
+  nextPage: number | null;
+  page: number;
+  total?: number;
 };
 
 // Knowledge item API functions
@@ -79,17 +90,18 @@ export const createKnowledgeItem = async (itemData: NewKnowledgeItem): Promise<K
   return response.json();
 };
 
-export const searchOpenLibraryBooks = async (
+const buildBookSearchParams = (
   filters: BookSearchFilters,
+  page: number,
   maxResults = 10
-): Promise<BookSearchMatch[]> => {
+): URLSearchParams => {
   const trimmedQuery = filters.query?.trim() ?? '';
   const trimmedAuthor = filters.author?.trim() ?? '';
   const trimmedLanguage = filters.language?.trim() ?? '';
-  if (!trimmedQuery && !trimmedAuthor) return [];
 
   const params = new URLSearchParams({
     maxResults: String(Math.min(Math.max(maxResults, 1), 20)),
+    page: String(Math.max(page, 1)),
   });
 
   if (trimmedQuery) {
@@ -102,13 +114,43 @@ export const searchOpenLibraryBooks = async (
     params.set('language', trimmedLanguage);
   }
 
-  const response = await fetch(`${API_BASE_URL}/open-library/search?${params.toString()}`);
-  if (!response.ok) {
-    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
-    throw new Error(errorPayload?.message || 'Failed to search Open Library');
+  return params;
+};
+
+export const searchBookCatalog = async (
+  provider: BookSearchProvider,
+  filters: BookSearchFilters,
+  page = 1,
+  maxResults = 10
+): Promise<BookSearchPage> => {
+  const trimmedQuery = filters.query?.trim() ?? '';
+  const trimmedAuthor = filters.author?.trim() ?? '';
+  if (!trimmedQuery && !trimmedAuthor) {
+    return {
+      hasMore: false,
+      matches: [],
+      nextPage: null,
+      page: 1,
+      total: 0,
+    };
   }
 
-  return response.json() as Promise<BookSearchMatch[]>;
+  const params = buildBookSearchParams(filters, page, maxResults);
+  const routeBase =
+    provider === 'open_library' ? `${API_BASE_URL}/open-library/search` : `${API_BASE_URL}/library-of-congress/search`;
+
+  const response = await fetch(`${routeBase}?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(
+      errorPayload?.message ||
+        (provider === 'open_library'
+          ? 'Failed to search Open Library'
+          : 'Failed to search the Library of Congress')
+    );
+  }
+
+  return response.json() as Promise<BookSearchPage>;
 };
 
 export const updateKnowledgeItem = async (
