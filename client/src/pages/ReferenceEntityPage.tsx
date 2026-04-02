@@ -317,6 +317,17 @@ const formatMetadataValue = (value: unknown) => {
   return JSON.stringify(value);
 };
 
+const EntityHint = ({ text }: { text: string }) => (
+  <span className="reference-entity-help" tabIndex={0} aria-label={text}>
+    <span aria-hidden="true" className="reference-entity-help-icon">
+      i
+    </span>
+    <span role="tooltip" className="reference-entity-help-tooltip">
+      {text}
+    </span>
+  </span>
+);
+
 const buildRelationHref = (relation: KnowledgeRelationDetail, direction: 'incoming' | 'outgoing') => {
   const entityType = direction === 'incoming' ? relation.fromEntityType : relation.toEntityType;
   const entityId = direction === 'incoming' ? relation.fromEntityId : relation.toEntityId;
@@ -484,6 +495,12 @@ const ReferenceEntityPage: React.FC = () => {
     () => outgoingRelations.filter((relation) => relation.toEntityType === 'reference_entity'),
     [outgoingRelations]
   );
+  const topicContextCount = topicRelations.length + subjectRelations.length;
+  const structureLinkCount = outgoingStructureRelations.length + incomingEntityRelations.length;
+  const itemLinkSummary =
+    entity?.kind === 'person'
+      ? `${authoredWorks.length} authored${relatedItems.length ? `, ${relatedItems.length} other` : ''}`
+      : `${itemRelations.length} linked`;
 
   useEffect(() => {
     if (!structurePreset.modes.some((mode) => mode.id === structureModeId)) {
@@ -668,10 +685,9 @@ const ReferenceEntityPage: React.FC = () => {
               {authoredWorks.length || itemRelations.length}{' '}
               {entity.kind === 'person' ? 'item links' : 'linked items'}
             </span>
-            <span>{topicRelations.length + subjectRelations.length} topic links</span>
-            <span>{outgoingRelations.length + incomingEntityRelations.length} entity links</span>
+            <span>{topicContextCount} topic links</span>
+            <span>{structureLinkCount} entity links</span>
             <span>Updated {formatDate(entity.updatedAt)}</span>
-            <span>Slug: {entity.slug}</span>
             {legacySource ? <span>Imported from legacy {legacySource}</span> : <span>Native entity record</span>}
           </div>
           <div className="reference-entity-hero-actions">
@@ -692,6 +708,46 @@ const ReferenceEntityPage: React.FC = () => {
                 Open source link
               </a>
             ) : null}
+          </div>
+          <div className="reference-entity-overview-grid">
+            <article className="reference-entity-overview-card">
+              <div className="reference-entity-overview-label">
+                <span className="reference-entity-eyebrow">Chronology</span>
+                <EntityHint text="The main time span recorded for this entity." />
+              </div>
+              <strong>{formatTimespan(entity)}</strong>
+              <span className="reference-entity-overview-meta">
+                {legacySource ? `Imported from ${legacySource}` : 'Native atlas record'}
+              </span>
+            </article>
+            <article className="reference-entity-overview-card">
+              <div className="reference-entity-overview-label">
+                <span className="reference-entity-eyebrow">Atlas Context</span>
+                <EntityHint text="Subjects and topics that point to this entity as part of their conceptual or historical framing." />
+              </div>
+              <strong>{topicContextCount} links</strong>
+              <span className="reference-entity-overview-meta">
+                {topicRelations.length} topic, {subjectRelations.length} legacy subject
+              </span>
+            </article>
+            <article className="reference-entity-overview-card">
+              <div className="reference-entity-overview-label">
+                <span className="reference-entity-eyebrow">Item Context</span>
+                <EntityHint text={entity.kind === 'person' ? 'Items linked through authorship and other person-level connections.' : 'Items that point to this entity.'} />
+              </div>
+              <strong>{itemRelations.length} items</strong>
+              <span className="reference-entity-overview-meta">{itemLinkSummary}</span>
+            </article>
+            <article className="reference-entity-overview-card">
+              <div className="reference-entity-overview-label">
+                <span className="reference-entity-eyebrow">Structure</span>
+                <EntityHint text="Entity-to-entity containment, placement, and affiliation links." />
+              </div>
+              <strong>{structureLinkCount} links</strong>
+              <span className="reference-entity-overview-meta">
+                {outgoingStructureRelations.length} outgoing, {incomingEntityRelations.length} incoming
+              </span>
+            </article>
           </div>
           {showEditor ? (
             <section className="reference-entity-inline-panel">
@@ -783,6 +839,7 @@ const ReferenceEntityPage: React.FC = () => {
                 <span className="reference-entity-eyebrow">Atlas Context</span>
                 <h2>
                   {getTopicSectionLabel(entity.kind)}
+                  <EntityHint text="Topics and legacy subject links that currently point to this entity." />
                   <span className="reference-entity-count-badge">{topicRelations.length + subjectRelations.length}</span>
                 </h2>
               </div>
@@ -842,6 +899,7 @@ const ReferenceEntityPage: React.FC = () => {
                 <span className="reference-entity-eyebrow">Item Context</span>
                 <h2>
                   {getItemSectionLabel(entity.kind)}
+                  <EntityHint text={entity.kind === 'person' ? 'Works and item links that point to this person.' : 'Items that currently point to this entity.'} />
                   <span className="reference-entity-count-badge">{itemRelations.length}</span>
                 </h2>
               </div>
@@ -936,11 +994,11 @@ const ReferenceEntityPage: React.FC = () => {
                 <span className="reference-entity-eyebrow">Structure</span>
                 <h2>
                   {getEntityStructureLabel(entity.kind)}
+                  <EntityHint text={structurePreset.helperText} />
                   <span className="reference-entity-count-badge">
                     {outgoingStructureRelations.length + incomingEntityRelations.length}
                   </span>
                 </h2>
-                <p className="reference-entity-section-copy">{structurePreset.helperText}</p>
               </div>
               <button
                 type="button"
@@ -972,17 +1030,20 @@ const ReferenceEntityPage: React.FC = () => {
                         });
                       }}
                     >
-                      <strong>{mode.label}</strong>
-                      <span>{mode.description}</span>
+                      <div className="reference-entity-mode-head">
+                        <strong>{mode.label}</strong>
+                        <EntityHint text={mode.description} />
+                      </div>
+                      <div className="reference-entity-badges">
+                        {mode.targetKinds.map((kind) => (
+                          <span key={`${mode.id}-${kind}`}>{kind}</span>
+                        ))}
+                      </div>
                     </button>
                   ))}
                 </div>
 
                 <form className="reference-entity-form" onSubmit={handleCreateRelation}>
-                  <div className="reference-entity-note">
-                    <strong>Current mode</strong>
-                    <span>{activeStructureMode.description}</span>
-                  </div>
                   <div className="reference-entity-grid-inline">
                     <div className="reference-entity-field">
                       <label htmlFor="entity-relation-type">Relation</label>
@@ -1037,6 +1098,10 @@ const ReferenceEntityPage: React.FC = () => {
                       }
                       placeholder={activeStructureMode.notePlaceholder}
                     />
+                  </div>
+                  <div className="reference-entity-inline-meta">
+                    <EntityHint text={activeStructureMode.description} />
+                    <span>{activeStructureMode.label} guidance</span>
                   </div>
                   <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
                     {savingRelation ? 'Linking...' : 'Add entity link'}
