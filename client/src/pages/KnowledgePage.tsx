@@ -101,6 +101,32 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
+type FieldLabelProps = {
+  htmlFor: string;
+  hint?: string;
+  label: string;
+  required?: boolean;
+};
+
+const FieldLabel: React.FC<FieldLabelProps> = ({ htmlFor, hint, label, required = false }) => (
+  <label htmlFor={htmlFor} className="knowledge-field-label">
+    <span className="knowledge-field-label-main">
+      <span>{label}</span>
+      {required ? <span className="knowledge-field-badge">Required</span> : null}
+      {hint ? (
+        <span className="knowledge-help" tabIndex={0} aria-label={hint}>
+          <span aria-hidden="true" className="knowledge-help-icon">
+            i
+          </span>
+          <span role="tooltip" className="knowledge-help-tooltip">
+            {hint}
+          </span>
+        </span>
+      ) : null}
+    </span>
+  </label>
+);
+
 const KnowledgePage: React.FC = () => {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [people, setPeople] = useState<ReferenceEntity[]>([]);
@@ -257,9 +283,9 @@ const KnowledgePage: React.FC = () => {
 
           {error ? <div className="knowledge-error">{error}</div> : null}
 
-          <form className="knowledge-form" onSubmit={handleSubmit}>
-            <div className="knowledge-field">
-              <label htmlFor="kind">Kind</label>
+          <form className="knowledge-form knowledge-form-grid" onSubmit={handleSubmit}>
+            <div className="knowledge-field knowledge-field-span-3 is-primary">
+              <FieldLabel htmlFor="kind" hint={workbenchPreset.kindHelp} label="Kind" />
               <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
                 {kindOptions.map((kind) => (
                   <option key={kind} value={kind}>
@@ -267,16 +293,37 @@ const KnowledgePage: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <span className="knowledge-field-hint">{workbenchPreset.kindHelp}</span>
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="title">Title</label>
-              <input id="title" name="title" value={formState.title} onChange={handleChange} required />
+            <div className="knowledge-field knowledge-field-span-6 is-primary">
+              <FieldLabel htmlFor="title" label="Title" required />
+              <input
+                id="title"
+                name="title"
+                value={formState.title}
+                onChange={handleChange}
+                placeholder="Enter the work you want to add"
+                required
+              />
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="creatorEntityId">Creator Entity</label>
+            <div className="knowledge-field knowledge-field-span-3 is-primary">
+              <FieldLabel htmlFor="status" label="Status" />
+              <select id="status" name="status" value={formState.status} onChange={handleChange}>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="knowledge-field knowledge-field-span-6">
+              <FieldLabel
+                htmlFor="creatorEntityId"
+                hint="Selecting a person here creates the canonical created_by link."
+                label="Creator Entity"
+              />
               <select
                 id="creatorEntityId"
                 name="creatorEntityId"
@@ -290,21 +337,19 @@ const KnowledgePage: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <span className="knowledge-field-hint">
-                Selecting a person here creates the canonical <code>created_by</code> link.
-              </span>
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="creator">{workbenchPreset.creatorLabel} Text Fallback</label>
+            <div className="knowledge-field knowledge-field-span-6">
+              <FieldLabel
+                htmlFor="creator"
+                hint="Only use this when you are importing older material or do not yet have the person entity."
+                label={`${workbenchPreset.creatorLabel} Text Fallback`}
+              />
               <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
-              <span className="knowledge-field-hint">
-                Only use this when you are importing older material or do not yet have the person entity.
-              </span>
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="sourceName">{workbenchPreset.sourceLabel}</label>
+            <div className="knowledge-field knowledge-field-span-6">
+              <FieldLabel htmlFor="sourceName" label={workbenchPreset.sourceLabel} />
               <input
                 id="sourceName"
                 name="sourceName"
@@ -314,8 +359,8 @@ const KnowledgePage: React.FC = () => {
               />
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="sourceUrl">Source URL</label>
+            <div className="knowledge-field knowledge-field-span-6">
+              <FieldLabel htmlFor="sourceUrl" label="Source URL" />
               <input
                 id="sourceUrl"
                 name="sourceUrl"
@@ -325,44 +370,31 @@ const KnowledgePage: React.FC = () => {
               />
             </div>
 
-            <div className="knowledge-form-inline">
-              <div className="knowledge-field">
-                <label htmlFor="publishedYear">{workbenchPreset.yearLabel}</label>
-                <input
-                  id="publishedYear"
-                  name="publishedYear"
-                  type="number"
-                  value={formState.publishedYear}
-                  onChange={handleChange}
-                />
-              </div>
-
-              <div className="knowledge-field">
-                <label htmlFor={workbenchPreset.extraFieldName}>{workbenchPreset.extraFieldLabel}</label>
-                <input
-                  id={workbenchPreset.extraFieldName}
-                  name={workbenchPreset.extraFieldName}
-                  type="number"
-                  value={extraFieldValue}
-                  onChange={handleChange}
-                  placeholder={workbenchPreset.extraFieldPlaceholder}
-                />
-              </div>
+            <div className="knowledge-field knowledge-field-span-3">
+              <FieldLabel htmlFor="publishedYear" label={workbenchPreset.yearLabel} />
+              <input
+                id="publishedYear"
+                name="publishedYear"
+                type="number"
+                value={formState.publishedYear}
+                onChange={handleChange}
+              />
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="status">Status</label>
-              <select id="status" name="status" value={formState.status} onChange={handleChange}>
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
+            <div className="knowledge-field knowledge-field-span-3">
+              <FieldLabel htmlFor={workbenchPreset.extraFieldName} label={workbenchPreset.extraFieldLabel} />
+              <input
+                id={workbenchPreset.extraFieldName}
+                name={workbenchPreset.extraFieldName}
+                type="number"
+                value={extraFieldValue}
+                onChange={handleChange}
+                placeholder={workbenchPreset.extraFieldPlaceholder}
+              />
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="summary">Summary</label>
+            <div className="knowledge-field knowledge-field-span-6">
+              <FieldLabel htmlFor="summary" label="Summary" />
               <textarea
                 id="summary"
                 name="summary"
@@ -372,9 +404,11 @@ const KnowledgePage: React.FC = () => {
               />
             </div>
 
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Add Item'}
-            </button>
+            <div className="knowledge-form-actions">
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Saving...' : 'Add Item'}
+              </button>
+            </div>
           </form>
         </section>
       ) : (
