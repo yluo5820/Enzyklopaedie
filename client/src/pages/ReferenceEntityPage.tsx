@@ -380,6 +380,8 @@ const ReferenceEntityPage: React.FC = () => {
   const [structureModeId, setStructureModeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [showStructureComposer, setShowStructureComposer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -426,6 +428,10 @@ const ReferenceEntityPage: React.FC = () => {
     typeof entity?.metadata?.link === 'string' && entity.metadata.link
       ? entity.metadata.link
       : null;
+  const displayMetadataEntries = useMemo(
+    () => metadataEntries.filter(([key]) => key !== 'legacySource' && key !== 'link'),
+    [metadataEntries]
+  );
 
   const itemRelations = useMemo(
     () => incomingRelations.filter((relation) => relation.fromEntityType === 'knowledge_item'),
@@ -649,96 +655,136 @@ const ReferenceEntityPage: React.FC = () => {
       </Link>
 
       <section className="reference-entity-hero">
-        <div>
+        <div className="reference-entity-hero-main">
           <span className="reference-entity-eyebrow">{kindLabels[entity.kind]}</span>
           <h1>{entity.title}</h1>
           <p>
             {entity.summary ||
               'This page holds the encyclopedic record for one person, nation, civilization, era, or place.'}
           </p>
-        </div>
-        <div className="reference-entity-stats">
-          <div className="reference-entity-stat">
-            <strong>{kindLabels[entity.kind]}</strong>
-            <span>Entity kind</span>
+          <div className="reference-entity-hero-meta">
+            <span>{formatTimespan(entity)}</span>
+            <span>
+              {authoredWorks.length || itemRelations.length}{' '}
+              {entity.kind === 'person' ? 'item links' : 'linked items'}
+            </span>
+            <span>{topicRelations.length + subjectRelations.length} topic links</span>
+            <span>{outgoingRelations.length + incomingEntityRelations.length} entity links</span>
+            <span>Updated {formatDate(entity.updatedAt)}</span>
+            <span>Slug: {entity.slug}</span>
+            {legacySource ? <span>Imported from legacy {legacySource}</span> : <span>Native entity record</span>}
           </div>
-          <div className="reference-entity-stat">
-            <strong>{formatTimespan(entity)}</strong>
-            <span>Chronology</span>
+          <div className="reference-entity-hero-actions">
+            <button
+              type="button"
+              className="reference-entity-secondary-button"
+              onClick={() => setShowEditor((current) => !current)}
+            >
+              {showEditor ? 'Close editor' : 'Edit entity'}
+            </button>
+            {externalLink ? (
+              <a
+                href={externalLink}
+                target="_blank"
+                rel="noreferrer"
+                className="reference-entity-secondary-button reference-entity-link-button"
+              >
+                Open source link
+              </a>
+            ) : null}
           </div>
-          <div className="reference-entity-stat">
-            <strong>{authoredWorks.length || itemRelations.length}</strong>
-            <span>{entity.kind === 'person' ? 'Authored works' : 'Linked items'}</span>
-          </div>
-          <div className="reference-entity-stat">
-            <strong>{topicRelations.length + subjectRelations.length}</strong>
-            <span>Topics and legacy subjects</span>
-          </div>
-          <div className="reference-entity-stat">
-            <strong>{outgoingRelations.length + incomingEntityRelations.length}</strong>
-            <span>Entity links</span>
-          </div>
+          {showEditor ? (
+            <section className="reference-entity-inline-panel">
+              <form className="reference-entity-form" onSubmit={handleSubmit}>
+                <div className="reference-entity-grid-inline">
+                  <div className="reference-entity-field">
+                    <label htmlFor="kind">Kind</label>
+                    <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
+                      {kindOptions.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kindLabels[kind]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="reference-entity-field">
+                    <label htmlFor="title">Title</label>
+                    <input id="title" name="title" value={formState.title} onChange={handleChange} required />
+                  </div>
+                </div>
+
+                <div className="reference-entity-grid-inline">
+                  <div className="reference-entity-field">
+                    <label htmlFor="startYear">Start Year</label>
+                    <input
+                      id="startYear"
+                      name="startYear"
+                      type="number"
+                      value={formState.startYear}
+                      onChange={handleChange}
+                      placeholder="-500 for BCE"
+                    />
+                  </div>
+
+                  <div className="reference-entity-field">
+                    <label htmlFor="endYear">End Year</label>
+                    <input
+                      id="endYear"
+                      name="endYear"
+                      type="number"
+                      value={formState.endYear}
+                      onChange={handleChange}
+                      placeholder="1453"
+                    />
+                  </div>
+                </div>
+
+                <div className="reference-entity-field">
+                  <label htmlFor="summary">Summary</label>
+                  <textarea id="summary" name="summary" value={formState.summary} onChange={handleChange} />
+                </div>
+
+                <div className="reference-entity-field">
+                  <label htmlFor="description">Description</label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={formState.description}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="reference-entity-inline-actions">
+                  <button type="submit" disabled={saving}>
+                    {saving ? 'Saving...' : 'Save changes'}
+                  </button>
+                  <button
+                    type="button"
+                    className="reference-entity-danger"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Removing...' : 'Remove entity'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
         </div>
       </section>
 
       {error ? <div className="reference-entity-error">{error}</div> : null}
 
-      <div className="reference-entity-grid">
-        <aside className="reference-entity-sidebar">
-          <section className="reference-entity-panel">
-            <span className="reference-entity-eyebrow">Identity</span>
-            <h2>Record details</h2>
-            <div className="reference-entity-side-list">
-              <div className="reference-entity-side-item">
-                <strong>Slug</strong>
-                <span>{entity.slug}</span>
-              </div>
-              {legacySource ? (
-                <div className="reference-entity-side-item">
-                  <strong>Origin</strong>
-                  <span>Imported from the legacy {legacySource} table</span>
-                </div>
-              ) : (
-                <div className="reference-entity-side-item">
-                  <strong>Origin</strong>
-                  <span>Created directly in the new reference model</span>
-                </div>
-              )}
-              {externalLink ? (
-                <div className="reference-entity-side-item">
-                  <strong>External link</strong>
-                  <a href={externalLink} target="_blank" rel="noreferrer">
-                    Open source link
-                  </a>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="reference-entity-panel">
-            <span className="reference-entity-eyebrow">Metadata</span>
-            <h2>Attached fields</h2>
-            {metadataEntries.length === 0 ? (
-              <div className="reference-entity-empty">No metadata recorded yet.</div>
-            ) : (
-              <div className="reference-entity-side-list">
-                {metadataEntries.map(([key, value]) => (
-                  <div key={key} className="reference-entity-side-item">
-                    <strong>{key}</strong>
-                    <span>{formatMetadataValue(value)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </aside>
-
-        <div className="reference-entity-main">
+      <div className="reference-entity-main">
           <section className="reference-entity-panel">
             <div className="reference-entity-section-head">
               <div>
                 <span className="reference-entity-eyebrow">Atlas Context</span>
-                <h2>{getTopicSectionLabel(entity.kind)}</h2>
+                <h2>
+                  {getTopicSectionLabel(entity.kind)}
+                  <span className="reference-entity-count-badge">{topicRelations.length + subjectRelations.length}</span>
+                </h2>
               </div>
             </div>
 
@@ -794,7 +840,10 @@ const ReferenceEntityPage: React.FC = () => {
             <div className="reference-entity-section-head">
               <div>
                 <span className="reference-entity-eyebrow">Item Context</span>
-                <h2>{getItemSectionLabel(entity.kind)}</h2>
+                <h2>
+                  {getItemSectionLabel(entity.kind)}
+                  <span className="reference-entity-count-badge">{itemRelations.length}</span>
+                </h2>
               </div>
             </div>
 
@@ -885,100 +934,116 @@ const ReferenceEntityPage: React.FC = () => {
             <div className="reference-entity-section-head">
               <div>
                 <span className="reference-entity-eyebrow">Structure</span>
-                <h2>{getEntityStructureLabel(entity.kind)}</h2>
+                <h2>
+                  {getEntityStructureLabel(entity.kind)}
+                  <span className="reference-entity-count-badge">
+                    {outgoingStructureRelations.length + incomingEntityRelations.length}
+                  </span>
+                </h2>
                 <p className="reference-entity-section-copy">{structurePreset.helperText}</p>
               </div>
-            </div>
-
-            <div className="reference-entity-mode-list">
-              {structurePreset.modes.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  className={
-                    activeStructureMode.id === mode.id
-                      ? 'reference-entity-mode is-active'
-                      : 'reference-entity-mode'
-                  }
-                  onClick={() => {
-                    setStructureModeId(mode.id);
-                    setRelationForm({
-                      toEntityId: '',
-                      relationType: mode.defaultRelationType,
-                      note: '',
-                    });
-                  }}
-                >
-                  <strong>{mode.label}</strong>
-                  <span>{mode.description}</span>
-                </button>
-              ))}
-            </div>
-
-            <form className="reference-entity-form" onSubmit={handleCreateRelation}>
-              <div className="reference-entity-note">
-                <strong>Current mode</strong>
-                <span>{activeStructureMode.description}</span>
-              </div>
-              <div className="reference-entity-grid-inline">
-                <div className="reference-entity-field">
-                  <label htmlFor="entity-relation-type">Relation</label>
-                  <select
-                    id="entity-relation-type"
-                    value={relationForm.relationType}
-                    onChange={(event) =>
-                      setRelationForm((current) => ({
-                        ...current,
-                        relationType: event.target.value as KnowledgeRelationType,
-                      }))
-                    }
-                  >
-                    {activeStructureMode.allowedRelationTypes.map((relationType) => (
-                      <option key={relationType} value={relationType}>
-                        {formatRelationType(relationType)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="reference-entity-field">
-                  <label htmlFor="entity-relation-target">Target entity</label>
-                  <select
-                    id="entity-relation-target"
-                    value={relationForm.toEntityId}
-                    onChange={(event) =>
-                      setRelationForm((current) => ({
-                        ...current,
-                        toEntityId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">{activeStructureMode.targetPrompt}</option>
-                    {selectableEntities.map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.title} ({candidate.kind})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="reference-entity-field">
-                <label htmlFor="entity-relation-note">Note</label>
-                <input
-                  id="entity-relation-note"
-                  value={relationForm.note}
-                  onChange={(event) =>
-                    setRelationForm((current) => ({
-                      ...current,
-                      note: event.target.value,
-                    }))
-                  }
-                  placeholder={activeStructureMode.notePlaceholder}
-                />
-              </div>
-              <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
-                {savingRelation ? 'Linking...' : 'Add entity link'}
+              <button
+                type="button"
+                className="reference-entity-secondary-button"
+                onClick={() => setShowStructureComposer((current) => !current)}
+              >
+                {showStructureComposer ? 'Close' : 'Add entity link'}
               </button>
-            </form>
+            </div>
+
+            {showStructureComposer ? (
+              <section className="reference-entity-inline-panel">
+                <div className="reference-entity-mode-list">
+                  {structurePreset.modes.map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      className={
+                        activeStructureMode.id === mode.id
+                          ? 'reference-entity-mode is-active'
+                          : 'reference-entity-mode'
+                      }
+                      onClick={() => {
+                        setStructureModeId(mode.id);
+                        setRelationForm({
+                          toEntityId: '',
+                          relationType: mode.defaultRelationType,
+                          note: '',
+                        });
+                      }}
+                    >
+                      <strong>{mode.label}</strong>
+                      <span>{mode.description}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <form className="reference-entity-form" onSubmit={handleCreateRelation}>
+                  <div className="reference-entity-note">
+                    <strong>Current mode</strong>
+                    <span>{activeStructureMode.description}</span>
+                  </div>
+                  <div className="reference-entity-grid-inline">
+                    <div className="reference-entity-field">
+                      <label htmlFor="entity-relation-type">Relation</label>
+                      <select
+                        id="entity-relation-type"
+                        value={relationForm.relationType}
+                        onChange={(event) =>
+                          setRelationForm((current) => ({
+                            ...current,
+                            relationType: event.target.value as KnowledgeRelationType,
+                          }))
+                        }
+                      >
+                        {activeStructureMode.allowedRelationTypes.map((relationType) => (
+                          <option key={relationType} value={relationType}>
+                            {formatRelationType(relationType)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="reference-entity-field">
+                      <label htmlFor="entity-relation-target">Target entity</label>
+                      <select
+                        id="entity-relation-target"
+                        value={relationForm.toEntityId}
+                        onChange={(event) =>
+                          setRelationForm((current) => ({
+                            ...current,
+                            toEntityId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">{activeStructureMode.targetPrompt}</option>
+                        {selectableEntities.map((candidate) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.title} ({candidate.kind})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="reference-entity-field">
+                    <label htmlFor="entity-relation-note">Note</label>
+                    <input
+                      id="entity-relation-note"
+                      value={relationForm.note}
+                      onChange={(event) =>
+                        setRelationForm((current) => ({
+                          ...current,
+                          note: event.target.value,
+                        }))
+                      }
+                      placeholder={activeStructureMode.notePlaceholder}
+                    />
+                  </div>
+                  <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
+                    {savingRelation ? 'Linking...' : 'Add entity link'}
+                  </button>
+                </form>
+              </section>
+            ) : null}
 
             {outgoingRelations.length === 0 && incomingEntityRelations.length === 0 ? (
               <div className="reference-entity-empty">
@@ -1047,81 +1112,31 @@ const ReferenceEntityPage: React.FC = () => {
             )}
           </section>
 
-          <section className="reference-entity-panel">
-            <div className="reference-entity-section-head">
-              <div>
-                <span className="reference-entity-eyebrow">Editor</span>
-                <h2>Curate this entity</h2>
-              </div>
-              <button type="button" className="reference-entity-danger" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Removing...' : 'Remove entity'}
-              </button>
-            </div>
-
-            <form className="reference-entity-form" onSubmit={handleSubmit}>
-              <div className="reference-entity-field">
-                <label htmlFor="kind">Kind</label>
-                <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
-                  {kindOptions.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {kindLabels[kind]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="reference-entity-field">
-                <label htmlFor="title">Title</label>
-                <input id="title" name="title" value={formState.title} onChange={handleChange} required />
-              </div>
-
-              <div className="reference-entity-grid-inline">
-                <div className="reference-entity-field">
-                  <label htmlFor="startYear">Start Year</label>
-                  <input
-                    id="startYear"
-                    name="startYear"
-                    type="number"
-                    value={formState.startYear}
-                    onChange={handleChange}
-                    placeholder="-500 for BCE"
-                  />
-                </div>
-
-                <div className="reference-entity-field">
-                  <label htmlFor="endYear">End Year</label>
-                  <input
-                    id="endYear"
-                    name="endYear"
-                    type="number"
-                    value={formState.endYear}
-                    onChange={handleChange}
-                    placeholder="1453"
-                  />
+          {displayMetadataEntries.length > 0 ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Metadata</span>
+                  <h2>
+                    Attached fields
+                    <span className="reference-entity-count-badge">{displayMetadataEntries.length}</span>
+                  </h2>
                 </div>
               </div>
-
-              <div className="reference-entity-field">
-                <label htmlFor="summary">Summary</label>
-                <textarea id="summary" name="summary" value={formState.summary} onChange={handleChange} />
+              <div className="reference-entity-stack">
+                {displayMetadataEntries.map(([key, value]) => (
+                  <article key={key} className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <h3>{key}</h3>
+                      </div>
+                    </div>
+                    <p>{formatMetadataValue(value)}</p>
+                  </article>
+                ))}
               </div>
-
-              <div className="reference-entity-field">
-                <label htmlFor="description">Description</label>
-                <textarea
-                  id="description"
-                  name="description"
-                  value={formState.description}
-                  onChange={handleChange}
-                />
-              </div>
-
-              <button type="submit" disabled={saving}>
-                {saving ? 'Saving...' : 'Save changes'}
-              </button>
-            </form>
-          </section>
-        </div>
+            </section>
+          ) : null}
       </div>
     </div>
   );

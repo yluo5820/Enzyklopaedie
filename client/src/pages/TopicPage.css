@@ -79,6 +79,12 @@
   color: var(--muted);
 }
 
+.topic-page-section-copy {
+  margin: 6px 0 0;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 .topic-page-note {
   display: grid;
   gap: 6px;
