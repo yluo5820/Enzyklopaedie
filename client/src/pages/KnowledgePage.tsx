@@ -4,9 +4,16 @@ import type {
   KnowledgeItemKind,
   KnowledgeItemStatus,
   NewKnowledgeItem,
+  ReferenceEntity,
 } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
-import { createKnowledgeItem, deleteKnowledgeItem, fetchKnowledgeItems } from '../api';
+import {
+  createKnowledgeItem,
+  createKnowledgeRelation,
+  deleteKnowledgeItem,
+  fetchKnowledgeItems,
+  fetchReferenceEntities,
+} from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './KnowledgePage.css';
 
@@ -27,6 +34,7 @@ const initialFormState = {
   kind: 'book' as KnowledgeItemKind,
   title: '',
   creator: '',
+  creatorEntityId: '',
   sourceName: '',
   sourceUrl: '',
   summary: '',
@@ -43,6 +51,7 @@ const formatDate = (value: string) =>
 
 const KnowledgePage: React.FC = () => {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
+  const [people, setPeople] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -51,8 +60,14 @@ const KnowledgePage: React.FC = () => {
   useEffect(() => {
     const loadItems = async () => {
       try {
-        const fetchedItems = await fetchKnowledgeItems();
+        const [fetchedItems, fetchedPeople] = await Promise.all([
+          fetchKnowledgeItems(),
+          fetchReferenceEntities('person'),
+        ]);
         setItems(fetchedItems);
+        setPeople(
+          [...fetchedPeople].sort((left, right) => left.title.localeCompare(right.title))
+        );
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load items.');
@@ -76,6 +91,17 @@ const KnowledgePage: React.FC = () => {
     }));
   };
 
+  const handleCreatorEntityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextId = event.target.value;
+    const selectedPerson = people.find((person) => String(person.id) === nextId);
+
+    setFormState((current) => ({
+      ...current,
+      creatorEntityId: nextId,
+      creator: selectedPerson ? selectedPerson.title : current.creator,
+    }));
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!formState.title.trim()) return;
@@ -96,10 +122,28 @@ const KnowledgePage: React.FC = () => {
 
     try {
       const createdItem = await createKnowledgeItem(payload);
+      let relationFailed = false;
+
+      if (formState.creatorEntityId) {
+        try {
+          await createKnowledgeRelation(createdItem.id, {
+            toEntityType: 'reference_entity',
+            toEntityId: Number(formState.creatorEntityId),
+            relationType: 'created_by',
+          });
+        } catch (relationError) {
+          console.error(relationError);
+          relationFailed = true;
+        }
+      }
+
       startTransition(() => {
         setItems((current) => [createdItem, ...current]);
       });
       setFormState(initialFormState);
+      if (relationFailed) {
+        setError('Item was created, but the creator entity link could not be saved.');
+      }
     } catch (submitError) {
       console.error(submitError);
       setError('Failed to create item.');
@@ -153,6 +197,26 @@ const KnowledgePage: React.FC = () => {
             <div className="knowledge-field">
               <label htmlFor="creator">Creator / Author / Speaker</label>
               <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="creatorEntityId">Creator Entity</label>
+              <select
+                id="creatorEntityId"
+                name="creatorEntityId"
+                value={formState.creatorEntityId}
+                onChange={handleCreatorEntityChange}
+              >
+                <option value="">Keep this as plain text for now</option>
+                {people.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.title}
+                  </option>
+                ))}
+              </select>
+              <span className="knowledge-field-hint">
+                Selecting a person here will also create a formal <code>created_by</code> link.
+              </span>
             </div>
 
             <div className="knowledge-field">

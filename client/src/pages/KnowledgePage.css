@@ -73,6 +73,16 @@
   color: var(--muted);
 }
 
+.knowledge-field-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.knowledge-field-hint code {
+  font-size: 0.8rem;
+}
+
 .knowledge-field input,
 .knowledge-field select,
 .knowledge-field textarea {

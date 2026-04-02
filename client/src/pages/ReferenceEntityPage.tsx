@@ -27,14 +27,63 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
   era: 'Era',
   place: 'Place',
 };
-const entityRelationTypeOptions: KnowledgeRelationType[] = [
-  'contains',
-  'part_of',
-  'during',
-  'located_in',
-  'related_to',
-  'influenced_by',
-];
+
+type EntityStructurePreset = {
+  allowedRelationTypes: KnowledgeRelationType[];
+  defaultRelationType: KnowledgeRelationType;
+  helperText: string;
+  notePlaceholder: string;
+  targetPrompt: string;
+  targetKinds: ReferenceEntityKind[];
+};
+
+const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
+  person: {
+    allowedRelationTypes: ['located_in', 'during', 'part_of', 'related_to', 'influenced_by'],
+    defaultRelationType: 'located_in',
+    helperText:
+      'Use entity links here for provenance and setting: where this person belongs, when they belong, and who influenced them.',
+    notePlaceholder: 'Optional note about this affiliation or influence',
+    targetPrompt: 'Choose a nation, civilization, era, place, or related person',
+    targetKinds: ['nation', 'civilization', 'era', 'place', 'person'],
+  },
+  nation: {
+    allowedRelationTypes: ['contains', 'part_of', 'during', 'located_in', 'related_to', 'influenced_by'],
+    defaultRelationType: 'part_of',
+    helperText:
+      'Use this to place the nation inside a broader civilization, era, or geography, or to record sub-polities when useful.',
+    notePlaceholder: 'Optional note about this national structure',
+    targetPrompt: 'Choose a civilization, era, place, nation, or related polity',
+    targetKinds: ['civilization', 'era', 'place', 'nation'],
+  },
+  civilization: {
+    allowedRelationTypes: ['contains', 'part_of', 'located_in', 'related_to', 'influenced_by'],
+    defaultRelationType: 'contains',
+    helperText:
+      'Civilizations usually contain nations and eras. Use part-of only when you need nested civilizational groupings.',
+    notePlaceholder: 'Optional note about this civilizational scope',
+    targetPrompt: 'Choose a nation, era, place, or sub-/super-civilization',
+    targetKinds: ['nation', 'era', 'place', 'civilization'],
+  },
+  era: {
+    allowedRelationTypes: ['contains', 'part_of', 'related_to', 'influenced_by'],
+    defaultRelationType: 'contains',
+    helperText:
+      'Eras work best as chronological containers. Use contains for sub-eras and part-of for broader historical periods.',
+    notePlaceholder: 'Optional note about this chronological structure',
+    targetPrompt: 'Choose a sub-era, super-era, or closely related period',
+    targetKinds: ['era'],
+  },
+  place: {
+    allowedRelationTypes: ['contains', 'part_of', 'located_in', 'related_to'],
+    defaultRelationType: 'part_of',
+    helperText:
+      'Places usually nest inside other places, and they can also host nations or civilizations when geography matters.',
+    notePlaceholder: 'Optional note about this spatial structure',
+    targetPrompt: 'Choose a place, nation, or civilization',
+    targetKinds: ['place', 'nation', 'civilization'],
+  },
+};
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -119,6 +168,12 @@ const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'place') return 'Place structure';
   return 'Affiliations and influences';
 };
+
+const getKindPriority = (kindOrder: ReferenceEntityKind[]) =>
+  kindOrder.reduce<Record<ReferenceEntityKind, number>>((accumulator, kind, index) => {
+    accumulator[kind] = index;
+    return accumulator;
+  }, { person: 99, nation: 99, civilization: 99, era: 99, place: 99 });
 
 const ReferenceEntityPage: React.FC = () => {
   const { id } = useParams();
@@ -215,13 +270,53 @@ const ReferenceEntityPage: React.FC = () => {
     () => incomingRelations.filter((relation) => relation.fromEntityType === 'reference_entity'),
     [incomingRelations]
   );
-  const selectableEntities = useMemo(
-    () =>
-      [...allEntities]
-        .filter((candidate) => candidate.id !== entity?.id)
-        .sort((left, right) => left.title.localeCompare(right.title)),
-    [allEntities, entity?.id]
-  );
+  const structurePreset = entity ? entityStructurePresets[entity.kind] : entityStructurePresets.person;
+  const selectableEntities = useMemo(() => {
+    const kindPriority = getKindPriority(structurePreset.targetKinds);
+
+    return [...allEntities]
+      .filter(
+        (candidate) =>
+          candidate.id !== entity?.id && structurePreset.targetKinds.includes(candidate.kind)
+      )
+      .sort((left, right) => {
+        const leftPriority = kindPriority[left.kind] ?? 99;
+        const rightPriority = kindPriority[right.kind] ?? 99;
+        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+        const titleComparison = left.title.localeCompare(right.title);
+        if (titleComparison !== 0) return titleComparison;
+
+        return left.id - right.id;
+      });
+  }, [allEntities, entity?.id, structurePreset]);
+
+  useEffect(() => {
+    if (!entity) return;
+
+    setRelationForm((current) => {
+      const nextRelationType = structurePreset.allowedRelationTypes.includes(current.relationType)
+        ? current.relationType
+        : structurePreset.defaultRelationType;
+      const hasSelectedTarget = selectableEntities.some(
+        (candidate) => String(candidate.id) === current.toEntityId
+      );
+      const nextTargetId = hasSelectedTarget ? current.toEntityId : '';
+
+      if (
+        nextRelationType === current.relationType &&
+        nextTargetId === current.toEntityId
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        relationType: nextRelationType,
+        toEntityId: nextTargetId,
+      };
+    });
+  }, [entity, selectableEntities, structurePreset]);
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -295,7 +390,7 @@ const ReferenceEntityPage: React.FC = () => {
 
       setRelationForm({
         toEntityId: '',
-        relationType: 'contains',
+        relationType: structurePreset.defaultRelationType,
         note: '',
       });
     } catch (relationError) {
@@ -597,6 +692,7 @@ const ReferenceEntityPage: React.FC = () => {
               <div>
                 <span className="reference-entity-eyebrow">Structure</span>
                 <h2>{getEntityStructureLabel(entity.kind)}</h2>
+                <p className="reference-entity-section-copy">{structurePreset.helperText}</p>
               </div>
             </div>
 
@@ -614,7 +710,7 @@ const ReferenceEntityPage: React.FC = () => {
                       }))
                     }
                   >
-                    {entityRelationTypeOptions.map((relationType) => (
+                    {structurePreset.allowedRelationTypes.map((relationType) => (
                       <option key={relationType} value={relationType}>
                         {formatRelationType(relationType)}
                       </option>
@@ -633,7 +729,7 @@ const ReferenceEntityPage: React.FC = () => {
                       }))
                     }
                   >
-                    <option value="">Choose a person, nation, civilization, era, or place</option>
+                    <option value="">{structurePreset.targetPrompt}</option>
                     {selectableEntities.map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>
                         {candidate.title} ({candidate.kind})
@@ -653,7 +749,7 @@ const ReferenceEntityPage: React.FC = () => {
                       note: event.target.value,
                     }))
                   }
-                  placeholder="Optional note about the structural link"
+                  placeholder={structurePreset.notePlaceholder}
                 />
               </div>
               <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
