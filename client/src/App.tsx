@@ -1,15 +1,16 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, NavLink, Routes, Route, useLocation } from 'react-router-dom';
-import HomePage from './pages/HomePage';
-import WorldHistoryPage from './pages/WorldHistoryPage';
-import ItemWorkbenchPage from './pages/ItemWorkbenchPage';
-import ItemDetailPage from './pages/ItemDetailPage';
-import ReferenceEntitiesPage from './pages/ReferenceEntitiesPage';
-import ReferenceEntityPage from './pages/ReferenceEntityPage';
-import SubjectTreePage from './pages/SubjectTreePage';
-import SubjectPage from './pages/SubjectPage';
-import TopicPage from './pages/TopicPage';
 import './App.css';
+
+const HomePage = lazy(() => import('./pages/HomePage'));
+const WorldHistoryPage = lazy(() => import('./pages/WorldHistoryPage'));
+const ItemWorkbenchPage = lazy(() => import('./pages/ItemWorkbenchPage'));
+const ItemDetailPage = lazy(() => import('./pages/ItemDetailPage'));
+const ReferenceEntitiesPage = lazy(() => import('./pages/ReferenceEntitiesPage'));
+const ReferenceEntityPage = lazy(() => import('./pages/ReferenceEntityPage'));
+const SubjectTreePage = lazy(() => import('./pages/SubjectTreePage'));
+const SubjectPage = lazy(() => import('./pages/SubjectPage'));
+const TopicPage = lazy(() => import('./pages/TopicPage'));
 
 type NavItem = {
   label: string;
@@ -73,17 +74,26 @@ const AppShell: React.FC = () => {
       </nav>
 
       <main className="app-main">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/knowledge" element={<ItemWorkbenchPage />} />
-          <Route path="/knowledge/:id" element={<ItemDetailPage />} />
-          <Route path="/subjects" element={<SubjectTreePage />} />
-          <Route path="/subjects/:id" element={<SubjectPage />} />
-          <Route path="/topics/:id" element={<TopicPage />} />
-          <Route path="/entities" element={<ReferenceEntitiesPage />} />
-          <Route path="/entities/:id" element={<ReferenceEntityPage />} />
-          <Route path="/world-history" element={<WorldHistoryPage />} />
-        </Routes>
+        <Suspense
+          fallback={
+            <div className="app-route-loading" role="status" aria-live="polite">
+              <span className="app-nav-eyebrow">Loading</span>
+              <strong>Preparing this page…</strong>
+            </div>
+          }
+        >
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/knowledge" element={<ItemWorkbenchPage />} />
+            <Route path="/knowledge/:id" element={<ItemDetailPage />} />
+            <Route path="/subjects" element={<SubjectTreePage />} />
+            <Route path="/subjects/:id" element={<SubjectPage />} />
+            <Route path="/topics/:id" element={<TopicPage />} />
+            <Route path="/entities" element={<ReferenceEntitiesPage />} />
+            <Route path="/entities/:id" element={<ReferenceEntityPage />} />
+            <Route path="/world-history" element={<WorldHistoryPage />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );

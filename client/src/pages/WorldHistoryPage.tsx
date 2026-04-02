@@ -1,6 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import * as maptilersdk from '@maptiler/sdk';
-import '@maptiler/sdk/dist/maptiler-sdk.css';
 import './WorldHistoryPage.css';
 
 type Period = {
@@ -106,7 +104,7 @@ const buildPeriodGeoJson = () => ({
 const WorldHistoryPage: React.FC = () => {
   const [year, setYear] = useState(465);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maptilersdk.Map | null>(null);
+  const mapRef = useRef<import('@maptiler/sdk').Map | null>(null);
   const lastPeriodRef = useRef<string | null>(null);
   const yearRef = useRef<number>(year);
 
@@ -164,68 +162,82 @@ const WorldHistoryPage: React.FC = () => {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current || !maptilerApiKey) return;
 
-    maptilersdk.config.apiKey = maptilerApiKey;
+    let disposed = false;
+    let localMap: import('@maptiler/sdk').Map | null = null;
 
-    const map = new maptilersdk.Map({
-      container: mapContainerRef.current,
-      style: maptilersdk.MapStyle.STREETS,
-      center: [15, 28],
-      zoom: 1.6,
-      minZoom: 1,
-      maxZoom: 6,
-    });
+    const loadMap = async () => {
+      const maptilersdk = await import('@maptiler/sdk');
+      await import('@maptiler/sdk/dist/maptiler-sdk.css');
 
-    map.addControl(new maptilersdk.NavigationControl({ visualizePitch: false }), 'top-right');
+      if (disposed || !mapContainerRef.current) return;
 
-    map.on('load', () => {
-      map.addSource('periods', {
-        type: 'geojson',
-        data: periodGeoJson as any,
+      maptilersdk.config.apiKey = maptilerApiKey;
+
+      const map = new maptilersdk.Map({
+        container: mapContainerRef.current,
+        style: maptilersdk.MapStyle.STREETS,
+        center: [15, 28],
+        zoom: 1.6,
+        minZoom: 1,
+        maxZoom: 6,
       });
 
-      map.addLayer({
-        id: 'periods-fill',
-        type: 'fill',
-        source: 'periods',
-        paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': 0.25,
-        },
+      localMap = map;
+      mapRef.current = map;
+
+      map.addControl(new maptilersdk.NavigationControl({ visualizePitch: false }), 'top-right');
+
+      map.on('load', () => {
+        map.addSource('periods', {
+          type: 'geojson',
+          data: periodGeoJson as any,
+        });
+
+        map.addLayer({
+          id: 'periods-fill',
+          type: 'fill',
+          source: 'periods',
+          paint: {
+            'fill-color': ['get', 'color'],
+            'fill-opacity': 0.25,
+          },
+        });
+
+        map.addLayer({
+          id: 'periods-outline',
+          type: 'line',
+          source: 'periods',
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': 2,
+          },
+        });
+
+        map.addLayer({
+          id: 'periods-label',
+          type: 'symbol',
+          source: 'periods',
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 12,
+            'text-allow-overlap': true,
+          },
+          paint: {
+            'text-color': '#3e2f22',
+            'text-halo-color': '#fdf6ea',
+            'text-halo-width': 1,
+          },
+        });
+
+        syncMapToYear(yearRef.current);
       });
+    };
 
-      map.addLayer({
-        id: 'periods-outline',
-        type: 'line',
-        source: 'periods',
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-width': 2,
-        },
-      });
-
-      map.addLayer({
-        id: 'periods-label',
-        type: 'symbol',
-        source: 'periods',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 12,
-          'text-allow-overlap': true,
-        },
-        paint: {
-          'text-color': '#3e2f22',
-          'text-halo-color': '#fdf6ea',
-          'text-halo-width': 1,
-        },
-      });
-
-      syncMapToYear(yearRef.current);
-    });
-
-    mapRef.current = map;
+    void loadMap();
 
     return () => {
-      map.remove();
+      disposed = true;
+      localMap?.remove();
       mapRef.current = null;
       lastPeriodRef.current = null;
     };
