@@ -64,7 +64,6 @@ const createInitialFormState = (kind: ItemWorkbenchKind = 'book') => ({
   kind: kind as KnowledgeItemKind,
   title: '',
   creator: '',
-  creatorEntityId: '',
   sourceName: '',
   sourceUrl: '',
   summary: '',
@@ -180,15 +179,6 @@ const KnowledgePage: React.FC = () => {
     }));
   };
 
-  const handleCreatorEntityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const nextId = event.target.value;
-
-    setFormState((current) => ({
-      ...current,
-      creatorEntityId: nextId,
-    }));
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!formState.title.trim()) return;
@@ -205,10 +195,17 @@ const KnowledgePage: React.FC = () => {
           ? { durationMinutes: Number(formState.durationMinutes) }
           : undefined;
 
+    const normalizedCreator = formState.creator.trim();
+    const matchedPerson = normalizedCreator
+      ? people.find(
+          (person) => person.title.trim().toLowerCase() === normalizedCreator.toLowerCase()
+        ) ?? null
+      : null;
+
     const payload: NewKnowledgeItem = {
       kind: formState.kind,
       title: formState.title.trim(),
-      creator: formState.creator.trim() || undefined,
+      creator: normalizedCreator || undefined,
       sourceName: formState.sourceName.trim() || undefined,
       sourceUrl: formState.sourceUrl.trim() || undefined,
       summary: formState.summary.trim() || undefined,
@@ -222,11 +219,11 @@ const KnowledgePage: React.FC = () => {
       const savedKind = workbenchKind;
       let relationFailed = false;
 
-      if (formState.creatorEntityId) {
+      if (matchedPerson) {
         try {
           await createKnowledgeRelation(createdItem.id, {
             toEntityType: 'reference_entity',
-            toEntityId: Number(formState.creatorEntityId),
+            toEntityId: matchedPerson.id,
             relationType: 'created_by',
           });
         } catch (relationError) {
@@ -318,34 +315,25 @@ const KnowledgePage: React.FC = () => {
               </select>
             </div>
 
-            <div className="knowledge-field knowledge-field-span-6">
-              <FieldLabel
-                htmlFor="creatorEntityId"
-                hint="Selecting a person here creates the canonical created_by link."
-                label="Creator Entity"
-              />
-              <select
-                id="creatorEntityId"
-                name="creatorEntityId"
-                value={formState.creatorEntityId}
-                onChange={handleCreatorEntityChange}
-              >
-                <option value="">Keep this as plain text for now</option>
-                {people.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-6">
+            <div className="knowledge-field knowledge-field-span-6 is-primary">
               <FieldLabel
                 htmlFor="creator"
-                hint="Only use this when you are importing older material or do not yet have the person entity."
-                label={`${workbenchPreset.creatorLabel} Text Fallback`}
+                hint="Search an existing person here. If no match fits, keep typing and the text will be saved as-is."
+                label={workbenchPreset.creatorLabel}
               />
-              <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
+              <input
+                id="creator"
+                name="creator"
+                list="knowledge-creator-options"
+                value={formState.creator}
+                onChange={handleChange}
+                placeholder={`Search or type a ${workbenchPreset.creatorLabel.toLowerCase()}`}
+              />
+              <datalist id="knowledge-creator-options">
+                {people.map((person) => (
+                  <option key={person.id} value={person.title} />
+                ))}
+              </datalist>
             </div>
 
             <div className="knowledge-field knowledge-field-span-6">
@@ -393,7 +381,7 @@ const KnowledgePage: React.FC = () => {
               />
             </div>
 
-            <div className="knowledge-field knowledge-field-span-6">
+            <div className="knowledge-field knowledge-field-span-8">
               <FieldLabel htmlFor="summary" label="Summary" />
               <textarea
                 id="summary"
@@ -402,6 +390,18 @@ const KnowledgePage: React.FC = () => {
                 onChange={handleChange}
                 placeholder={workbenchPreset.summaryPlaceholder}
               />
+            </div>
+
+            <div className="knowledge-field knowledge-field-span-4">
+              <FieldLabel
+                htmlFor="upload-placeholder"
+                hint="Reserved for future upload-to-autofill. This will later accept a cover or title-page image."
+                label="Upload"
+              />
+              <div id="upload-placeholder" className="knowledge-upload-placeholder">
+                <strong>Upload slot</strong>
+                <span>Placeholder only. No upload flow is connected yet.</span>
+              </div>
             </div>
 
             <div className="knowledge-form-actions">
