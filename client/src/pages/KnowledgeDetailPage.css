@@ -63,6 +63,24 @@
   color: var(--muted);
 }
 
+.knowledge-detail-note {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.knowledge-detail-note strong {
+  color: var(--accent);
+}
+
+.knowledge-detail-note span {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .knowledge-detail-badges,
 .knowledge-detail-meta {
   display: flex;

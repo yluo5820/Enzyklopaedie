@@ -44,18 +44,15 @@ import './KnowledgeDetailPage.css';
 
 const itemStatusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 const taskStatusOptions: KnowledgeTaskStatus[] = ['todo', 'doing', 'done', 'archived'];
-const relationTypeOptions: KnowledgeRelationType[] = [
-  'created_by',
-  'related_to',
-  'about',
-  'references',
-  'influenced_by',
-  'part_of',
-  'located_in',
-  'during',
-];
 
 type ItemRecordFormKind = 'book' | 'lecture';
+type ItemRelationPreset = {
+  allowedRelationTypes: KnowledgeRelationType[];
+  defaultRelationType: KnowledgeRelationType;
+  helperText: string;
+  notePlaceholder: string;
+  targetPrompt: string;
+};
 type ItemRecordPreset = {
   creatorLabel: string;
   extraFieldLabel: string;
@@ -89,6 +86,14 @@ const itemRecordPresets: Record<ItemRecordFormKind, ItemRecordPreset> = {
     yearLabel: 'Release Year',
   },
 };
+
+const relationKindOrder: ReferenceEntity['kind'][] = [
+  'person',
+  'era',
+  'nation',
+  'civilization',
+  'place',
+];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -131,6 +136,80 @@ const getItemFormKind = (item: Pick<KnowledgeItem, 'kind'>): ItemRecordFormKind 
   writtenItemKinds.has(item.kind) ? 'book' : 'lecture';
 const getItemFormLabel = (item: KnowledgeItem) =>
   writtenItemKinds.has(item.kind) ? 'Written work' : 'Lecture / media';
+
+const getItemRelationPreset = (
+  itemFormKind: ItemRecordFormKind,
+  targetType: KnowledgeRelationEntityType,
+  targetEntityKind?: ReferenceEntity['kind']
+): ItemRelationPreset => {
+  if (targetType === 'knowledge_item') {
+    return {
+      allowedRelationTypes: ['references', 'related_to', 'influenced_by', 'part_of'],
+      defaultRelationType: itemFormKind === 'book' ? 'references' : 'related_to',
+      helperText:
+        itemFormKind === 'book'
+          ? 'Use item-to-item links for citations, comparisons, or conceptual continuations between works.'
+          : 'Use item-to-item links for companion lectures, cited resources, or closely related media.',
+      notePlaceholder: 'Optional note about how these items connect',
+      targetPrompt: 'Choose another item',
+    };
+  }
+
+  if (targetEntityKind === 'person') {
+    return {
+      allowedRelationTypes: ['created_by', 'influenced_by', 'related_to'],
+      defaultRelationType: 'created_by',
+      helperText:
+        itemFormKind === 'book'
+          ? 'People usually enter through provenance. Use created_by for the author, or influenced_by for a key figure behind the work.'
+          : 'People usually enter through provenance. Use created_by for the speaker or creator, or influenced_by for a figure behind the resource.',
+      notePlaceholder: 'Optional note about authorship or influence',
+      targetPrompt: 'Choose a person',
+    };
+  }
+
+  if (targetEntityKind === 'era') {
+    return {
+      allowedRelationTypes: ['during', 'about', 'related_to'],
+      defaultRelationType: 'during',
+      helperText:
+        'Use eras for historical setting. Choose during when the item belongs to a period context, or about when the period is the explicit subject.',
+      notePlaceholder: 'Optional note about the period context',
+      targetPrompt: 'Choose an era',
+    };
+  }
+
+  if (targetEntityKind === 'nation' || targetEntityKind === 'place') {
+    return {
+      allowedRelationTypes: ['located_in', 'about', 'related_to'],
+      defaultRelationType: 'located_in',
+      helperText:
+        'Use nations and places for geographic or political setting. Choose about only when the entity is itself the subject matter.',
+      notePlaceholder: 'Optional note about this location or polity',
+      targetPrompt: targetEntityKind === 'nation' ? 'Choose a nation' : 'Choose a place',
+    };
+  }
+
+  if (targetEntityKind === 'civilization') {
+    return {
+      allowedRelationTypes: ['about', 'related_to', 'influenced_by'],
+      defaultRelationType: 'about',
+      helperText:
+        'Civilizations usually enter as higher-order historical context or as an explicit subject of study.',
+      notePlaceholder: 'Optional note about this civilizational context',
+      targetPrompt: 'Choose a civilization',
+    };
+  }
+
+  return {
+    allowedRelationTypes: ['created_by', 'about', 'during', 'located_in', 'related_to', 'influenced_by'],
+    defaultRelationType: 'created_by',
+    helperText:
+      'Choose the entity first. The relation options will narrow once the target is specific.',
+    notePlaceholder: 'Optional note about this context',
+    targetPrompt: 'Choose a person, era, nation, civilization, or place',
+  };
+};
 
 const getItemRecordDetail = (item: KnowledgeItem) => {
   const pageCount = readNumericMetadata(item, 'pageCount');
@@ -436,7 +515,17 @@ const KnowledgeDetailPage: React.FC = () => {
     [item?.id, knowledgeItems]
   );
   const relationReferenceTargets = useMemo(
-    () => [...referenceEntities].sort((left, right) => left.title.localeCompare(right.title)),
+    () =>
+      [...referenceEntities].sort((left, right) => {
+        const leftKindIndex = relationKindOrder.indexOf(left.kind);
+        const rightKindIndex = relationKindOrder.indexOf(right.kind);
+        if (leftKindIndex !== rightKindIndex) return leftKindIndex - rightKindIndex;
+
+        const titleComparison = left.title.localeCompare(right.title);
+        if (titleComparison !== 0) return titleComparison;
+
+        return left.id - right.id;
+      }),
     [referenceEntities]
   );
   const completedTasks = useMemo(
@@ -447,6 +536,39 @@ const KnowledgeDetailPage: React.FC = () => {
   const recordPreset = itemRecordPresets[itemFormKind];
   const recordExtraFieldValue =
     recordPreset.extraFieldName === 'pageCount' ? recordForm.pageCount : recordForm.durationMinutes;
+  const selectedRelationReferenceTarget = useMemo(
+    () =>
+      relationForm.toEntityType === 'reference_entity'
+        ? relationReferenceTargets.find((candidate) => String(candidate.id) === relationForm.toEntityId) ?? null
+        : null,
+    [relationForm.toEntityId, relationForm.toEntityType, relationReferenceTargets]
+  );
+  const relationPreset = useMemo(
+    () =>
+      getItemRelationPreset(
+        itemFormKind,
+        relationForm.toEntityType,
+        selectedRelationReferenceTarget?.kind
+      ),
+    [itemFormKind, relationForm.toEntityType, selectedRelationReferenceTarget?.kind]
+  );
+
+  useEffect(() => {
+    setRelationForm((current) => {
+      const nextRelationType = relationPreset.allowedRelationTypes.includes(current.relationType)
+        ? current.relationType
+        : relationPreset.defaultRelationType;
+
+      if (nextRelationType === current.relationType) {
+        return current;
+      }
+
+      return {
+        ...current,
+        relationType: nextRelationType,
+      };
+    });
+  }, [relationPreset]);
 
   const handleItemStatusChange = async (nextStatus: KnowledgeItemStatus) => {
     if (!item || nextStatus === item.status) return;
@@ -626,7 +748,7 @@ const KnowledgeDetailPage: React.FC = () => {
       setRelationForm({
         toEntityType: relationForm.toEntityType,
         toEntityId: '',
-        relationType: 'related_to',
+        relationType: relationPreset.defaultRelationType,
         note: '',
       });
     } catch (relationError) {
@@ -1066,6 +1188,10 @@ const KnowledgeDetailPage: React.FC = () => {
               <div>
                 <span className="knowledge-detail-eyebrow">Topic Spine</span>
                 <h2>Topic placement</h2>
+                <p className="knowledge-detail-copy">
+                  Topic placement is the primary home of an item. Put the item into at least one topic
+                  before using entity or item relations for extra context.
+                </p>
               </div>
             </div>
 
@@ -1115,7 +1241,7 @@ const KnowledgeDetailPage: React.FC = () => {
                     name: event.target.value,
                   }))
                 }
-                placeholder="Create a new topic"
+                placeholder="Create a new topic in the right subject branch"
               />
               <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-relations">
                 <label>
@@ -1182,11 +1308,19 @@ const KnowledgeDetailPage: React.FC = () => {
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Relations</span>
-                <h2>Connections to items and entities</h2>
+                <h2>Context links</h2>
+                <p className="knowledge-detail-copy">
+                  Use relations for provenance, historical setting, and cross-item references after the
+                  topic home is in place.
+                </p>
               </div>
             </div>
 
             <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
+              <div className="knowledge-detail-note">
+                <strong>Current guidance</strong>
+                <span>{relationPreset.helperText}</span>
+              </div>
               <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
                 <label>
                   Target type
@@ -1197,6 +1331,7 @@ const KnowledgeDetailPage: React.FC = () => {
                         ...current,
                         toEntityType: event.target.value as KnowledgeRelationEntityType,
                         toEntityId: '',
+                        relationType: relationPreset.defaultRelationType,
                       }))
                     }
                   >
@@ -1215,7 +1350,7 @@ const KnowledgeDetailPage: React.FC = () => {
                       }))
                     }
                   >
-                    {relationTypeOptions.map((relationType) => (
+                    {relationPreset.allowedRelationTypes.map((relationType) => (
                       <option key={relationType} value={relationType}>
                         {formatRelationType(relationType)}
                       </option>
@@ -1234,9 +1369,7 @@ const KnowledgeDetailPage: React.FC = () => {
                     }
                   >
                     <option value="">
-                      {relationForm.toEntityType === 'reference_entity'
-                        ? 'Choose a person, nation, civilization, era, or place'
-                        : 'Choose another item'}
+                      {relationPreset.targetPrompt}
                     </option>
                     {relationForm.toEntityType === 'reference_entity'
                       ? relationReferenceTargets.map((candidate) => {
@@ -1265,7 +1398,7 @@ const KnowledgeDetailPage: React.FC = () => {
                     note: event.target.value,
                   }))
                 }
-                placeholder="Optional note about the connection"
+                placeholder={relationPreset.notePlaceholder}
               />
               <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
                 {savingRelation ? 'Linking...' : 'Add relation'}
