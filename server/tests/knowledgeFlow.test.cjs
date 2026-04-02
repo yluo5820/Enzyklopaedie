@@ -521,6 +521,36 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(topicRelations.length, 1);
     assert.equal(topicRelations[0].relationType, 'during');
 
+    const studyTopicRelationResponse = await request(`/api/study-topics/${studyTopic.id}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityType: 'reference_entity',
+        toEntityId: eraEntity.id,
+        relationType: 'about',
+        note: 'This study topic is explicitly about the period.',
+      }),
+    });
+
+    assert.equal(studyTopicRelationResponse.status, 201);
+    const studyTopicRelation = await studyTopicRelationResponse.json();
+    assert.equal(studyTopicRelation.toEntityTitle, 'Late Antiquity');
+    assert.equal(studyTopicRelation.toEntityKind, 'era');
+
+    const studyTopicRelationsResponse = await request(`/api/study-topics/${studyTopic.id}/relations`);
+    assert.equal(studyTopicRelationsResponse.status, 200);
+    const studyTopicRelations = await studyTopicRelationsResponse.json();
+    assert.equal(studyTopicRelations.length, 1);
+    assert.equal(studyTopicRelations[0].relationType, 'about');
+
+    const referenceEntityRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    assert.equal(referenceEntityRelationsResponse.status, 200);
+    const referenceEntityRelations = await referenceEntityRelationsResponse.json();
+    assert.equal(referenceEntityRelations.length, 3);
+    assert.ok(referenceEntityRelations.some((entry) => entry.fromEntityType === 'knowledge_item'));
+    assert.ok(referenceEntityRelations.some((entry) => entry.fromEntityType === 'topic'));
+    assert.ok(referenceEntityRelations.some((entry) => entry.fromEntityType === 'study_topic'));
+
     const activityResponse = await request('/api/activity-events?limit=40');
     assert.equal(activityResponse.status, 200);
     const activityEvents = await activityResponse.json();
@@ -557,6 +587,14 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
           event.entityId === childSubject.id
       )
     );
+    assert.ok(
+      activityEvents.some(
+        (event) =>
+          event.type === 'relation_created' &&
+          event.entityType === 'study_topic' &&
+          event.entityId === studyTopic.id
+      )
+    );
 
     const deleteRelationResponse = await request(
       `/api/knowledge-items/${sourceItem.id}/relations/${relation.id}`,
@@ -570,6 +608,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       `/api/topics/${childSubject.id}/relations/${topicRelation.id}`,
       { method: 'DELETE' }
     );
+    const deleteStudyTopicRelationResponse = await request(
+      `/api/study-topics/${studyTopic.id}/relations/${studyTopicRelation.id}`,
+      { method: 'DELETE' }
+    );
     const removeTopicResponse = await request(
       `/api/knowledge-items/${sourceItem.id}/study-topics/${studyTopic.id}`,
       { method: 'DELETE' }
@@ -578,6 +620,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(deleteRelationResponse.status, 204);
     assert.equal(deleteEntityRelationResponse.status, 204);
     assert.equal(deleteTopicRelationResponse.status, 204);
+    assert.equal(deleteStudyTopicRelationResponse.status, 204);
     assert.equal(removeTopicResponse.status, 204);
   });
 

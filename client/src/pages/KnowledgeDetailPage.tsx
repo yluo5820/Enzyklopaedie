@@ -92,6 +92,7 @@ const buildRelationHref = (relation: KnowledgeRelationDetail) => {
   if (relation.toEntityType === 'knowledge_item') return `/knowledge/${relation.toEntityId}`;
   if (relation.toEntityType === 'reference_entity') return `/entities/${relation.toEntityId}`;
   if (relation.toEntityType === 'topic') return `/topics/${relation.toEntityId}`;
+  if (relation.toEntityType === 'study_topic') return `/study-topics/${relation.toEntityId}`;
   return null;
 };
 

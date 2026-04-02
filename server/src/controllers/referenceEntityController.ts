@@ -7,6 +7,7 @@ import {
 } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
 import { recordActivityEvent } from '../lib/activity';
+import { listKnowledgeRelationsByTarget } from '../lib/knowledgeRelations';
 import {
   generateUniqueReferenceEntitySlug,
   hydrateReferenceEntity,
@@ -81,6 +82,22 @@ export const getReferenceEntityById = asyncErrorHandler(async (req: Request, res
   }
 
   res.json(hydrateReferenceEntity(row));
+});
+
+export const getRelationsByReferenceEntity = asyncErrorHandler(async (req: Request, res: Response) => {
+  const id = parseId(req.params.id);
+  if (!id) {
+    return res.status(400).json({ message: 'Invalid reference entity id' });
+  }
+
+  const db = await getDb();
+  const row = await db.get<ReferenceEntityRow>('SELECT * FROM reference_entities WHERE id = ?', id);
+
+  if (!row) {
+    return res.status(404).json({ message: 'Reference entity not found' });
+  }
+
+  res.json(await listKnowledgeRelationsByTarget('reference_entity', id));
 });
 
 export const createReferenceEntity = asyncErrorHandler(async (req: Request, res: Response) => {

@@ -1,15 +1,28 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
-import type { KnowledgeItem, StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
+import type {
+  KnowledgeItem,
+  KnowledgeRelationDetail,
+  KnowledgeRelationType,
+  ReferenceEntity,
+  StudyTopicSummary,
+  TopicSummary,
+} from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
+  createStudyTopicRelation,
   createStudyTopic,
+  deleteStudyTopicRelation,
+  fetchReferenceEntities,
   fetchStudyTopic,
   fetchStudyTopicKnowledgeItems,
+  fetchStudyTopicRelations,
   fetchStudyTopics,
   fetchTopic,
   fetchTopics,
 } from '../api';
 import './TopicPage.css';
+
+const relationTypeOptions: KnowledgeRelationType[] = ['about', 'related_to', 'during', 'located_in', 'part_of'];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -17,6 +30,23 @@ const formatDate = (value: string) =>
     month: 'short',
     day: 'numeric',
   }).format(new Date(value));
+
+const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
+
+const formatYear = (value?: number) => {
+  if (value === undefined) return null;
+  if (value < 0) return `${Math.abs(value)} BCE`;
+  if (value > 0) return `${value} CE`;
+  return 'Year 0';
+};
+
+const formatReferenceTimespan = (entity: ReferenceEntity) => {
+  const start = formatYear(entity.startYear);
+  const end = formatYear(entity.endYear);
+
+  if (start && end) return `${start} - ${end}`;
+  return start || end || null;
+};
 
 const TopicLineage = ({
   studyTopic,
@@ -71,12 +101,20 @@ const StudyTopicPage: React.FC = () => {
   const [subject, setSubject] = useState<TopicSummary | null>(null);
   const [siblingTopics, setSiblingTopics] = useState<StudyTopicSummary[]>([]);
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
+  const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingChildTopic, setCreatingChildTopic] = useState(false);
+  const [savingRelation, setSavingRelation] = useState(false);
   const [childTopicForm, setChildTopicForm] = useState({
     name: '',
     description: '',
+  });
+  const [relationForm, setRelationForm] = useState({
+    toEntityId: '',
+    relationType: 'about' as KnowledgeRelationType,
+    note: '',
   });
 
   useEffect(() => {
@@ -89,15 +127,25 @@ const StudyTopicPage: React.FC = () => {
     const loadTopicPage = async () => {
       try {
         const fetchedStudyTopic = await fetchStudyTopic(studyTopicId);
-        const [fetchedSubjects, fetchedSiblingTopics, fetchedKnowledgeItems] = await Promise.all([
+        const [
+          fetchedSubjects,
+          fetchedSiblingTopics,
+          fetchedKnowledgeItems,
+          fetchedReferenceEntities,
+          fetchedRelations,
+        ] = await Promise.all([
           fetchTopics(),
           fetchStudyTopics(fetchedStudyTopic.subjectId),
           fetchStudyTopicKnowledgeItems(studyTopicId),
+          fetchReferenceEntities(),
+          fetchStudyTopicRelations(studyTopicId),
         ]);
 
         setStudyTopic(fetchedStudyTopic);
         setSiblingTopics(fetchedSiblingTopics);
         setKnowledgeItems(fetchedKnowledgeItems);
+        setReferenceEntities(fetchedReferenceEntities);
+        setRelations(fetchedRelations);
 
         const fetchedSubject =
           fetchedSubjects.find((entry) => entry.id === fetchedStudyTopic.subjectId) ??
@@ -128,6 +176,10 @@ const StudyTopicPage: React.FC = () => {
         .filter((entry) => entry.parentTopicId === studyTopic?.id)
         .sort((left, right) => left.name.localeCompare(right.name)),
     [studyTopic?.id, siblingTopics]
+  );
+  const relationTargets = useMemo(
+    () => [...referenceEntities].sort((left, right) => left.title.localeCompare(right.title)),
+    [referenceEntities]
   );
 
   const handleCreateChildTopic = async (event: React.FormEvent) => {
@@ -165,6 +217,61 @@ const StudyTopicPage: React.FC = () => {
       setError('Failed to create child topic.');
     } finally {
       setCreatingChildTopic(false);
+    }
+  };
+
+  const handleCreateRelation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!studyTopic || !relationForm.toEntityId) return;
+
+    setSavingRelation(true);
+    setError(null);
+
+    try {
+      const relation = await createStudyTopicRelation(studyTopic.id, {
+        toEntityType: 'reference_entity',
+        toEntityId: Number(relationForm.toEntityId),
+        relationType: relationForm.relationType,
+        note: relationForm.note.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setRelations((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === relation.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = relation;
+            return next;
+          }
+
+          return [relation, ...current];
+        });
+      });
+
+      setRelationForm({
+        toEntityId: '',
+        relationType: 'about',
+        note: '',
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to connect topic to reference entity.');
+    } finally {
+      setSavingRelation(false);
+    }
+  };
+
+  const handleDeleteRelation = async (relationId: number) => {
+    if (!studyTopic) return;
+
+    try {
+      await deleteStudyTopicRelation(studyTopic.id, relationId);
+      startTransition(() => {
+        setRelations((current) => current.filter((relation) => relation.id !== relationId));
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to delete topic relation.');
     }
   };
 
@@ -330,6 +437,94 @@ const StudyTopicPage: React.FC = () => {
                     </div>
                     {knowledgeItem.summary ? <p>{knowledgeItem.summary}</p> : null}
                   </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="topic-page-panel">
+            <div className="topic-page-section-head">
+              <div>
+                <span className="topic-page-eyebrow">Reference Atlas</span>
+                <h2>Reference context</h2>
+              </div>
+            </div>
+
+            <form className="topic-page-form" onSubmit={handleCreateRelation}>
+              <select
+                value={relationForm.relationType}
+                onChange={(event) =>
+                  setRelationForm((current) => ({
+                    ...current,
+                    relationType: event.target.value as KnowledgeRelationType,
+                  }))
+                }
+              >
+                {relationTypeOptions.map((relationType) => (
+                  <option key={relationType} value={relationType}>
+                    {formatRelationType(relationType)}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={relationForm.toEntityId}
+                onChange={(event) =>
+                  setRelationForm((current) => ({
+                    ...current,
+                    toEntityId: event.target.value,
+                  }))
+                }
+              >
+                <option value="">Choose a person, nation, civilization, era, or place</option>
+                {relationTargets.map((entity) => {
+                  const timespan = formatReferenceTimespan(entity);
+
+                  return (
+                    <option key={entity.id} value={entity.id}>
+                      {entity.title}
+                      {timespan ? ` (${entity.kind}, ${timespan})` : ` (${entity.kind})`}
+                    </option>
+                  );
+                })}
+              </select>
+              <input
+                value={relationForm.note}
+                onChange={(event) =>
+                  setRelationForm((current) => ({
+                    ...current,
+                    note: event.target.value,
+                  }))
+                }
+                placeholder="Optional note about why this entity matters here"
+              />
+              <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
+                {savingRelation ? 'Linking...' : 'Link entity'}
+              </button>
+            </form>
+
+            {relations.length === 0 ? (
+              <div className="topic-page-empty">No linked reference entities yet.</div>
+            ) : (
+              <div className="topic-page-item-list">
+                {relations.map((relation) => (
+                  <article key={relation.id} className="topic-page-item-card">
+                    <div className="topic-page-item-top">
+                      <div className="topic-page-item-badges">
+                        <span>{formatRelationType(relation.relationType)}</span>
+                        {relation.toEntityKind ? <span>{relation.toEntityKind}</span> : null}
+                      </div>
+                      <Link to={`/entities/${relation.toEntityId}`} className="topic-page-item-link">
+                        <strong>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</strong>
+                      </Link>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                    <div className="topic-page-item-actions">
+                      <span>Linked {formatDate(relation.createdAt)}</span>
+                      <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}

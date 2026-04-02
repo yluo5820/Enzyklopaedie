@@ -4,12 +4,14 @@ import {
   deleteReferenceEntity,
   getAllReferenceEntities,
   getReferenceEntityById,
+  getRelationsByReferenceEntity,
   updateReferenceEntity,
 } from '../controllers/referenceEntityController';
 
 const router = Router();
 
 router.get('/', getAllReferenceEntities);
+router.get('/:id/relations', getRelationsByReferenceEntity);
 router.get('/:id', getReferenceEntityById);
 router.post('/', createReferenceEntity);
 router.put('/:id', updateReferenceEntity);

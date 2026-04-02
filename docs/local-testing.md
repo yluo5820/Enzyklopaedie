@@ -97,6 +97,7 @@ That test currently covers:
 - Open a topic from a subject page
 - Confirm the topic page shows its subject lineage
 - Confirm child topics can be created from that page
+- Link the topic to a reference entity and confirm it appears in the topic’s reference context section
 - Confirm items assigned to the topic appear in the contained item list
 
 ### 7. Reference Atlas
@@ -105,6 +106,7 @@ That test currently covers:
 - Confirm the page loads and shows imported legacy entities such as `Unknown Author`
 - Create a new entity and confirm it appears in the list immediately
 - Open that entity and update its kind, summary, or chronology
+- Confirm linked items and linked topics/subjects appear on the entity page when relations exist
 - Delete it again and confirm you return to the atlas list
 
 ### 8. World History Prototype

@@ -1,9 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { ReferenceEntity, ReferenceEntityKind, UpdateReferenceEntity } from '@enzyklopaedie/shared';
+import type {
+  KnowledgeRelationDetail,
+  ReferenceEntity,
+  ReferenceEntityKind,
+  UpdateReferenceEntity,
+} from '@enzyklopaedie/shared';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   deleteReferenceEntity,
   fetchReferenceEntity,
+  fetchReferenceEntityRelations,
   updateReferenceEntity,
 } from '../api';
 import './ReferenceEntityPage.css';
@@ -39,6 +45,8 @@ const formatTimespan = (entity: ReferenceEntity) => {
   return start || end || 'No chronology yet';
 };
 
+const formatRelationType = (value: string) => value.replace(/_/g, ' ');
+
 const parseYearInput = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -64,12 +72,21 @@ const formatMetadataValue = (value: unknown) => {
   return JSON.stringify(value);
 };
 
+const buildSourceHref = (relation: KnowledgeRelationDetail) => {
+  if (relation.fromEntityType === 'knowledge_item') return `/knowledge/${relation.fromEntityId}`;
+  if (relation.fromEntityType === 'study_topic') return `/study-topics/${relation.fromEntityId}`;
+  if (relation.fromEntityType === 'topic') return `/topics/${relation.fromEntityId}`;
+  if (relation.fromEntityType === 'reference_entity') return `/entities/${relation.fromEntityId}`;
+  return null;
+};
+
 const ReferenceEntityPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const entityId = Number(id);
 
   const [entity, setEntity] = useState<ReferenceEntity | null>(null);
+  const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
     title: '',
@@ -92,8 +109,12 @@ const ReferenceEntityPage: React.FC = () => {
 
     const loadEntity = async () => {
       try {
-        const fetchedEntity = await fetchReferenceEntity(entityId);
+        const [fetchedEntity, fetchedRelations] = await Promise.all([
+          fetchReferenceEntity(entityId),
+          fetchReferenceEntityRelations(entityId),
+        ]);
         setEntity(fetchedEntity);
+        setRelations(fetchedRelations);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
@@ -115,6 +136,19 @@ const ReferenceEntityPage: React.FC = () => {
     typeof entity?.metadata?.link === 'string' && entity.metadata.link
       ? entity.metadata.link
       : null;
+
+  const itemRelations = useMemo(
+    () => relations.filter((relation) => relation.fromEntityType === 'knowledge_item'),
+    [relations]
+  );
+  const topicRelations = useMemo(
+    () => relations.filter((relation) => relation.fromEntityType === 'study_topic'),
+    [relations]
+  );
+  const subjectRelations = useMemo(
+    () => relations.filter((relation) => relation.fromEntityType === 'topic'),
+    [relations]
+  );
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -212,6 +246,14 @@ const ReferenceEntityPage: React.FC = () => {
             <span>Chronology</span>
           </div>
           <div className="reference-entity-stat">
+            <strong>{topicRelations.length + subjectRelations.length}</strong>
+            <span>Linked topics and subjects</span>
+          </div>
+          <div className="reference-entity-stat">
+            <strong>{itemRelations.length}</strong>
+            <span>Linked items</span>
+          </div>
+          <div className="reference-entity-stat">
             <strong>{formatDate(entity.updatedAt)}</strong>
             <span>Last updated</span>
           </div>
@@ -270,80 +312,181 @@ const ReferenceEntityPage: React.FC = () => {
           </section>
         </aside>
 
-        <section className="reference-entity-panel reference-entity-main">
-          <div className="reference-entity-section-head">
-            <div>
-              <span className="reference-entity-eyebrow">Editor</span>
-              <h2>Curate this entity</h2>
+        <div className="reference-entity-main">
+          <section className="reference-entity-panel">
+            <div className="reference-entity-section-head">
+              <div>
+                <span className="reference-entity-eyebrow">Topic Context</span>
+                <h2>Topics and subjects pointing here</h2>
+              </div>
             </div>
-            <button type="button" className="reference-entity-danger" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Removing...' : 'Remove entity'}
-            </button>
-          </div>
 
-          <form className="reference-entity-form" onSubmit={handleSubmit}>
-            <div className="reference-entity-field">
-              <label htmlFor="kind">Kind</label>
-              <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
-                {kindOptions.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kindLabels[kind]}
-                  </option>
+            {topicRelations.length === 0 && subjectRelations.length === 0 ? (
+              <div className="reference-entity-empty">
+                No topics or subjects point to this entity yet.
+              </div>
+            ) : (
+              <div className="reference-entity-stack">
+                {topicRelations.map((relation) => (
+                  <article key={relation.id} className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <div className="reference-entity-badges">
+                          <span>{formatRelationType(relation.relationType)}</span>
+                          <span>topic</span>
+                        </div>
+                        <Link
+                          to={buildSourceHref(relation) as string}
+                          className="reference-entity-card-link"
+                        >
+                          <h3>{relation.fromEntityTitle || `Topic #${relation.fromEntityId}`}</h3>
+                        </Link>
+                      </div>
+                      <span>{formatDate(relation.createdAt)}</span>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                  </article>
                 ))}
-              </select>
-            </div>
-
-            <div className="reference-entity-field">
-              <label htmlFor="title">Title</label>
-              <input id="title" name="title" value={formState.title} onChange={handleChange} required />
-            </div>
-
-            <div className="reference-entity-grid-inline">
-              <div className="reference-entity-field">
-                <label htmlFor="startYear">Start Year</label>
-                <input
-                  id="startYear"
-                  name="startYear"
-                  type="number"
-                  value={formState.startYear}
-                  onChange={handleChange}
-                  placeholder="-500 for BCE"
-                />
+                {subjectRelations.map((relation) => (
+                  <article key={relation.id} className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <div className="reference-entity-badges">
+                          <span>{formatRelationType(relation.relationType)}</span>
+                          <span>subject</span>
+                        </div>
+                        <Link
+                          to={buildSourceHref(relation) as string}
+                          className="reference-entity-card-link"
+                        >
+                          <h3>{relation.fromEntityTitle || `Subject #${relation.fromEntityId}`}</h3>
+                        </Link>
+                      </div>
+                      <span>{formatDate(relation.createdAt)}</span>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                  </article>
+                ))}
               </div>
+            )}
+          </section>
 
-              <div className="reference-entity-field">
-                <label htmlFor="endYear">End Year</label>
-                <input
-                  id="endYear"
-                  name="endYear"
-                  type="number"
-                  value={formState.endYear}
-                  onChange={handleChange}
-                  placeholder="1453"
-                />
+          <section className="reference-entity-panel">
+            <div className="reference-entity-section-head">
+              <div>
+                <span className="reference-entity-eyebrow">Item Context</span>
+                <h2>Items pointing here</h2>
               </div>
             </div>
 
-            <div className="reference-entity-field">
-              <label htmlFor="summary">Summary</label>
-              <textarea id="summary" name="summary" value={formState.summary} onChange={handleChange} />
+            {itemRelations.length === 0 ? (
+              <div className="reference-entity-empty">No items point to this entity yet.</div>
+            ) : (
+              <div className="reference-entity-stack">
+                {itemRelations.map((relation) => (
+                  <article key={relation.id} className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <div className="reference-entity-badges">
+                          <span>{formatRelationType(relation.relationType)}</span>
+                          {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
+                        </div>
+                        <Link
+                          to={buildSourceHref(relation) as string}
+                          className="reference-entity-card-link"
+                        >
+                          <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
+                        </Link>
+                      </div>
+                      <span>{formatDate(relation.createdAt)}</span>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="reference-entity-panel">
+            <div className="reference-entity-section-head">
+              <div>
+                <span className="reference-entity-eyebrow">Editor</span>
+                <h2>Curate this entity</h2>
+              </div>
+              <button
+                type="button"
+                className="reference-entity-danger"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? 'Removing...' : 'Remove entity'}
+              </button>
             </div>
 
-            <div className="reference-entity-field">
-              <label htmlFor="description">Description</label>
-              <textarea
-                id="description"
-                name="description"
-                value={formState.description}
-                onChange={handleChange}
-              />
-            </div>
+            <form className="reference-entity-form" onSubmit={handleSubmit}>
+              <div className="reference-entity-field">
+                <label htmlFor="kind">Kind</label>
+                <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
+                  {kindOptions.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {kindLabels[kind]}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <button type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Save changes'}
-            </button>
-          </form>
-        </section>
+              <div className="reference-entity-field">
+                <label htmlFor="title">Title</label>
+                <input id="title" name="title" value={formState.title} onChange={handleChange} required />
+              </div>
+
+              <div className="reference-entity-grid-inline">
+                <div className="reference-entity-field">
+                  <label htmlFor="startYear">Start Year</label>
+                  <input
+                    id="startYear"
+                    name="startYear"
+                    type="number"
+                    value={formState.startYear}
+                    onChange={handleChange}
+                    placeholder="-500 for BCE"
+                  />
+                </div>
+
+                <div className="reference-entity-field">
+                  <label htmlFor="endYear">End Year</label>
+                  <input
+                    id="endYear"
+                    name="endYear"
+                    type="number"
+                    value={formState.endYear}
+                    onChange={handleChange}
+                    placeholder="1453"
+                  />
+                </div>
+              </div>
+
+              <div className="reference-entity-field">
+                <label htmlFor="summary">Summary</label>
+                <textarea id="summary" name="summary" value={formState.summary} onChange={handleChange} />
+              </div>
+
+              <div className="reference-entity-field">
+                <label htmlFor="description">Description</label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={formState.description}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <button type="submit" disabled={saving}>
+                {saving ? 'Saving...' : 'Save changes'}
+              </button>
+            </form>
+          </section>
+        </div>
       </div>
     </div>
   );

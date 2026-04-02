@@ -157,7 +157,7 @@ Current limitations:
 
 - entity pages do not yet expose the full containment model back out to topics and items
 - subject-to-entity relations still exist in the backend from an earlier transition state
-- topic-to-entity contextualization still needs a cleaner dedicated pass
+- topic-to-entity contextualization now exists for actual topics, but the entity containment model is still relation-based rather than fully typed
 
 ## Migration Direction
 

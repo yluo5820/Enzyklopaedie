@@ -88,11 +88,12 @@ After `npm start`, use this path:
 5. Create a new entity, open it, update it, and delete it again
 6. Open `Subjects` and confirm the tree loads with `Ontology` as the root
 7. Open a subject page from the tree, create a child subject, and create a topic inside that subject
-8. Open the new topic page and confirm it shows child topics and contained items
+8. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
 9. Open an item, attach or create a topic, then link it to an entity such as a person or era
-10. Add a note, a task, and a review on the item page
-11. Return to `Home` and confirm recent activity entries appear
-12. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+10. Open that entity page and confirm the linked topic and item appear in its context sections
+11. Add a note, a task, and a review on the item page
+12. Return to `Home` and confirm recent activity entries appear
+13. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

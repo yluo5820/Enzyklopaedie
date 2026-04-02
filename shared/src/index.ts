@@ -200,7 +200,11 @@ export interface ReferenceEntity {
   updatedAt: string;
 }
 
-export type KnowledgeRelationEntityType = 'knowledge_item' | 'topic' | 'reference_entity';
+export type KnowledgeRelationEntityType =
+  | 'knowledge_item'
+  | 'topic'
+  | 'study_topic'
+  | 'reference_entity';
 
 export type KnowledgeRelationType =
   | 'about'

@@ -134,6 +134,65 @@
   margin-bottom: 16px;
 }
 
+.reference-entity-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entity-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.reference-entity-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.reference-entity-card-top span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.reference-entity-card h3 {
+  margin: 8px 0 0;
+  font-size: 1.05rem;
+}
+
+.reference-entity-card p {
+  margin: 0;
+  color: #45362a;
+  line-height: 1.65;
+}
+
+.reference-entity-card-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.reference-entity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reference-entity-badges span {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(145, 95, 54, 0.12);
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  text-transform: capitalize;
+}
+
 .reference-entity-form {
   display: grid;
   gap: 12px;

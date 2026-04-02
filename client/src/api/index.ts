@@ -552,6 +552,16 @@ export const fetchReferenceEntity = async (id: number): Promise<ReferenceEntity>
   return response.json();
 };
 
+export const fetchReferenceEntityRelations = async (
+  id: number
+): Promise<KnowledgeRelationDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/relations`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch reference entity relations');
+  }
+  return response.json();
+};
+
 export const createReferenceEntity = async (
   entityData: NewReferenceEntity
 ): Promise<ReferenceEntity> => {
@@ -827,6 +837,50 @@ export const deleteTopicRelation = async (topicId: number, relationId: number): 
   });
   if (!response.ok) {
     throw new Error('Failed to delete topic relation');
+  }
+};
+
+export const fetchStudyTopicRelations = async (
+  studyTopicId: number
+): Promise<KnowledgeRelationDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/relations`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch study topic relations');
+  }
+  return response.json();
+};
+
+export const createStudyTopicRelation = async (
+  studyTopicId: number,
+  relationData: {
+    toEntityType?: KnowledgeRelationEntityType;
+    toEntityId: number;
+    relationType: NewKnowledgeRelation['relationType'];
+    note?: string;
+  }
+): Promise<KnowledgeRelationDetail> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/relations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(relationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create study topic relation');
+  }
+  return response.json();
+};
+
+export const deleteStudyTopicRelation = async (
+  studyTopicId: number,
+  relationId: number
+): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/relations/${relationId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete study topic relation');
   }
 };
 
