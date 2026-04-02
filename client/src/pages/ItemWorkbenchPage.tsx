@@ -209,20 +209,6 @@ const formatLanguageLabel = (code: string) => languageLabelByCode.get(code) ?? c
 const formatProviderLabel = (provider: BookSearchProvider) =>
   providerLabelByValue.get(provider) ?? provider;
 
-const resolveBookSearchProvider = (
-  selectedProvider: BookSearchProvider,
-  filters: BookSearchFilters
-): BookSearchProvider => {
-  const hasQuery = Boolean(filters.query?.trim());
-  const hasAuthor = Boolean(filters.author?.trim());
-
-  if (selectedProvider === 'library_of_congress' && !hasQuery && hasAuthor) {
-    return 'open_library';
-  }
-
-  return selectedProvider;
-};
-
 const normalizeSearchText = (value?: string) =>
   (value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -345,7 +331,6 @@ const ItemWorkbenchPage: React.FC = () => {
   const [bookSearchPage, setBookSearchPage] = useState(1);
   const [bookSearchHasMore, setBookSearchHasMore] = useState(false);
   const [bookSearchTotal, setBookSearchTotal] = useState<number | null>(null);
-  const [bookSearchActiveProvider, setBookSearchActiveProvider] = useState<BookSearchProvider>('library_of_congress');
   const [bookSearchSort, setBookSearchSort] = useState<SearchResultSort>('relevance');
   const [hideResultsWithoutAuthors, setHideResultsWithoutAuthors] = useState(false);
   const [hideResultsWithoutCovers, setHideResultsWithoutCovers] = useState(false);
@@ -470,10 +455,10 @@ const ItemWorkbenchPage: React.FC = () => {
   const currentSearchFilters = useMemo(
     (): BookSearchFilters => ({
       query: bookSearchQuery,
-      author: bookSearchAuthor,
+      author: bookSearchProvider === 'open_library' ? bookSearchAuthor : undefined,
       language: bookSearchLanguage,
     }),
-    [bookSearchAuthor, bookSearchLanguage, bookSearchQuery]
+    [bookSearchAuthor, bookSearchLanguage, bookSearchProvider, bookSearchQuery]
   );
 
   const visibleBookSearchResults = useMemo(() => {
@@ -732,35 +717,27 @@ const ItemWorkbenchPage: React.FC = () => {
 
   const runBookSearch = async (page: number, append = false) => {
     if (!currentSearchFilters.query?.trim() && !currentSearchFilters.author?.trim()) return;
-    const effectiveProvider = append
-      ? bookSearchActiveProvider
-      : resolveBookSearchProvider(bookSearchProvider, currentSearchFilters);
     setSearchingBooks(true);
     setBookSearchError(null);
     if (!append) {
-      setNotice(
-        effectiveProvider !== bookSearchProvider
-          ? `Author-only searches are using ${formatProviderLabel(effectiveProvider)} because Library of Congress contributor matching is too sparse.`
-          : null
-      );
-      setBookSearchActiveProvider(effectiveProvider);
+      setNotice(null);
     }
 
     try {
-      const pageData = await searchBookCatalog(effectiveProvider, currentSearchFilters, page, 10);
+      const pageData = await searchBookCatalog(bookSearchProvider, currentSearchFilters, page, 10);
       handleSearchResponse(pageData, append);
       if (!append) {
         setSelectedBookIds([]);
       }
       if (!append && pageData.matches.length === 0) {
-        setBookSearchError(`No matching books came back from ${formatProviderLabel(effectiveProvider)}.`);
+        setBookSearchError(`No matching books came back from ${formatProviderLabel(bookSearchProvider)}.`);
       }
     } catch (searchError) {
       console.error(searchError);
       setBookSearchError(
         searchError instanceof Error
           ? searchError.message
-          : `Failed to search ${formatProviderLabel(effectiveProvider)} right now.`
+          : `Failed to search ${formatProviderLabel(bookSearchProvider)} right now.`
       );
     } finally {
       setSearchingBooks(false);
@@ -773,7 +750,6 @@ const ItemWorkbenchPage: React.FC = () => {
     setBookSearchPage(1);
     setBookSearchHasMore(false);
     setBookSearchTotal(null);
-    setBookSearchActiveProvider(resolveBookSearchProvider(bookSearchProvider, currentSearchFilters));
     await runBookSearch(1, false);
   };
 
@@ -808,7 +784,7 @@ const ItemWorkbenchPage: React.FC = () => {
       setNotice(
         relationFailures
           ? `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'}, but some creator links could not be saved.`
-          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchActiveProvider)}.`
+          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchProvider)}.`
       );
     } catch (importError) {
       console.error(importError);
@@ -910,7 +886,6 @@ const ItemWorkbenchPage: React.FC = () => {
                       setBookSearchPage(1);
                       setBookSearchHasMore(false);
                       setBookSearchTotal(null);
-                      setBookSearchActiveProvider(option.value);
                     }}
                   >
                     {option.label}
@@ -929,13 +904,19 @@ const ItemWorkbenchPage: React.FC = () => {
                 <input
                   value={bookSearchQuery}
                   onChange={(event) => setBookSearchQuery(event.target.value)}
-                  placeholder="Title or keywords"
+                  placeholder={
+                    bookSearchProvider === 'library_of_congress'
+                      ? 'Title or keywords'
+                      : 'Title or keywords'
+                  }
                 />
-                <input
-                  value={bookSearchAuthor}
-                  onChange={(event) => setBookSearchAuthor(event.target.value)}
-                  placeholder="Author filter"
-                />
+                {bookSearchProvider === 'open_library' ? (
+                  <input
+                    value={bookSearchAuthor}
+                    onChange={(event) => setBookSearchAuthor(event.target.value)}
+                    placeholder="Author filter"
+                  />
+                ) : null}
                 <select
                   value={bookSearchLanguage}
                   onChange={(event) => setBookSearchLanguage(event.target.value)}
@@ -950,7 +931,10 @@ const ItemWorkbenchPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={
-                    searchingBooks || (!bookSearchQuery.trim() && !bookSearchAuthor.trim())
+                    searchingBooks ||
+                    (bookSearchProvider === 'library_of_congress'
+                      ? !bookSearchQuery.trim()
+                      : (!bookSearchQuery.trim() && !bookSearchAuthor.trim()))
                   }
                 >
                   {searchingBooks ? 'Searching...' : `Search ${formatProviderLabel(bookSearchProvider)}`}
@@ -958,7 +942,9 @@ const ItemWorkbenchPage: React.FC = () => {
               </form>
 
               <div className="knowledge-search-filter-note">
-                Author and language filters are applied on top of the main query, so you can tell whether a weak result set is a catalog problem or just a loose search.
+                {bookSearchProvider === 'library_of_congress'
+                  ? 'Library of Congress search here is title-led. Use Open Library when you want author-based discovery.'
+                  : 'Author and language filters are applied on top of the main query, so you can tell whether a weak result set is a catalog problem or just a loose search.'}
               </div>
 
               {bookSearchError ? <div className="knowledge-error">{bookSearchError}</div> : null}
@@ -1001,7 +987,7 @@ const ItemWorkbenchPage: React.FC = () => {
                     <span>
                       Showing {visibleBookSearchResults.length} of {bookSearchResults.length} loaded
                       {bookSearchTotal ? ` of about ${bookSearchTotal}` : ''} matches from{' '}
-                      {formatProviderLabel(bookSearchActiveProvider)}
+                      {formatProviderLabel(bookSearchProvider)}
                     </span>
                     <div className="knowledge-search-action-group">
                       <button
