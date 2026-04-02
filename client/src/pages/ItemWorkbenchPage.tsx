@@ -853,13 +853,15 @@ const ItemWorkbenchPage: React.FC = () => {
                 </button>
               ) : null}
             </div>
-            <button
-              type="button"
-              className={`knowledge-secondary-button${showAdvancedDetails ? ' is-active' : ''}`}
-              onClick={() => setShowAdvancedDetails((current) => !current)}
-            >
-              {showAdvancedDetails ? 'Hide advanced details' : 'Show advanced details'}
-            </button>
+            {captureMode === 'manual' ? (
+              <button
+                type="button"
+                className={`knowledge-secondary-button${showAdvancedDetails ? ' is-active' : ''}`}
+                onClick={() => setShowAdvancedDetails((current) => !current)}
+              >
+                {showAdvancedDetails ? 'Hide advanced details' : 'Show advanced details'}
+              </button>
+            ) : null}
           </div>
 
           {captureMode === 'search' && workbenchKind === 'book' ? (
