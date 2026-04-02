@@ -66,37 +66,32 @@ const HomePage: React.FC = () => {
             <span className="home-eyebrow">Product Spine</span>
             <h2>What we are building next</h2>
             <p>
-              The current rebuild is centered on a four-layer model: items, subjects, topics,
-              and entities. Everything else should hang off that structure instead of living as isolated
-              CRUD screens.
+              The model is mostly in place now. The next phase is making the encyclopedia feel easy to
+              use every day: faster capture, calmer pages, stronger historical context, and clearer
+              ways to see progress.
             </p>
             <div className="home-pillars">
               <div className="home-pillar">
-                <strong>Items</strong>
-                <p>Everything studied now resolves into two concrete forms: written works and lecture/media resources.</p>
+                <strong>Daily capture</strong>
+                <p>Item creation should stay friction-light, so adding a book or lecture feels like the default daily action.</p>
               </div>
               <div className="home-pillar">
-                <strong>Subjects</strong>
-                <p>The current tree is the synchronic taxonomy of knowledge rooted at Ontology.</p>
+                <strong>Subject and topic curation</strong>
+                <p>Subject and topic pages now need to read less like admin screens and more like living encyclopedia surfaces.</p>
               </div>
               <div className="home-pillar">
-                <strong>Topics</strong>
-                <p>Topics sit between subjects and items as the contextual domains where actual study lives.</p>
+                <strong>Entity atlas</strong>
+                <p>People, nations, civilizations, eras, and places should become structured context pages instead of loose records.</p>
               </div>
               <div className="home-pillar">
-                <strong>Reference atlas</strong>
+                <strong>Historical framing</strong>
                 <p>
-                  People, nations, civilizations, eras, and places need their own pages outside the
-                  subject tree.
+                  The next map step is not more rendering tricks. It is better time-and-place data flowing out of topics and entities.
                 </p>
               </div>
               <div className="home-pillar">
-                <strong>Chronology and places</strong>
-                <p>The map only becomes meaningful once items carry time and place data.</p>
-              </div>
-              <div className="home-pillar">
                 <strong>Progress and exhibition</strong>
-                <p>Activity history, milestones, and curated pages turn the archive into something alive.</p>
+                <p>After the core pages feel right, activity history, milestones, and showcase pages can turn the archive outward.</p>
               </div>
             </div>
           </div>
