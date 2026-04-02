@@ -8,7 +8,7 @@ import type {
   ReferenceEntity,
   TopicSummary,
 } from '@enzyklopaedie/shared';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   type BookSearchPage,
   type BookSearchFilters,
@@ -304,6 +304,7 @@ const FieldLabel: React.FC<FieldLabelProps> = ({ htmlFor, hint, label, required 
 );
 
 const ItemWorkbenchPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [people, setPeople] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -316,7 +317,6 @@ const ItemWorkbenchPage: React.FC = () => {
   const [searchingBooks, setSearchingBooks] = useState(false);
   const [importingBooks, setImportingBooks] = useState(false);
   const [bookSearchError, setBookSearchError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'create' | 'list'>('create');
   const [captureMode, setCaptureMode] = useState<CaptureMode>('search');
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -335,6 +335,19 @@ const ItemWorkbenchPage: React.FC = () => {
   const [hideResultsWithoutAuthors, setHideResultsWithoutAuthors] = useState(false);
   const [hideResultsWithoutCovers, setHideResultsWithoutCovers] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
+  const viewMode = searchParams.get('view') === 'list' ? 'list' : 'create';
+
+  const setViewMode = (nextViewMode: 'create' | 'list') => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    if (nextViewMode === 'list') {
+      nextSearchParams.set('view', 'list');
+    } else {
+      nextSearchParams.delete('view');
+    }
+
+    setSearchParams(nextSearchParams);
+  };
 
   useEffect(() => {
     const loadItems = async () => {
@@ -1354,7 +1367,11 @@ const ItemWorkbenchPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="knowledge-item-actions">
-                            <Link to={`/knowledge/${item.id}`} className="knowledge-item-link">
+                            <Link
+                              to={`/knowledge/${item.id}`}
+                              state={{ returnTo: '/knowledge?view=list' }}
+                              className="knowledge-item-link"
+                            >
                               Open
                             </Link>
                             <button type="button" onClick={() => handleDelete(item.id)}>

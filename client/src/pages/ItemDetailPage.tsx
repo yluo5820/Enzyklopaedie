@@ -14,7 +14,7 @@ import type {
   TopicSummary as StudyTopicSummary,
   UpdateKnowledgeItem,
 } from '@enzyklopaedie/shared';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   assignTopicToKnowledgeItem as assignStudyTopicToKnowledgeItem,
   createKnowledgeNote,
@@ -44,6 +44,10 @@ import './ItemDetailPage.css';
 
 const itemStatusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 const taskStatusOptions: KnowledgeTaskStatus[] = ['todo', 'doing', 'done', 'archived'];
+
+type ItemDetailLocationState = {
+  returnTo?: string;
+};
 
 type ItemRecordFormKind = 'book' | 'lecture';
 type ItemRelationPreset = {
@@ -364,7 +368,12 @@ const buildStudyTopicPath = (
 
 const ItemDetailPage: React.FC = () => {
   const { id } = useParams();
+  const location = useLocation();
   const knowledgeItemId = Number(id);
+  const returnTo =
+    (location.state as ItemDetailLocationState | null)?.returnTo === '/knowledge?view=list'
+      ? '/knowledge?view=list'
+      : '/knowledge';
 
   const [item, setItem] = useState<KnowledgeItem | null>(null);
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
@@ -979,7 +988,7 @@ const ItemDetailPage: React.FC = () => {
 
   return (
     <div className="knowledge-detail-page">
-      <Link to="/knowledge" className="knowledge-detail-back">
+      <Link to={returnTo} className="knowledge-detail-back">
         Back to Item Workbench
       </Link>
 
