@@ -132,7 +132,7 @@ const TopicTreePage: React.FC = () => {
         setTopics(await fetchTopics());
       } catch (loadError) {
         console.error(loadError);
-        setError('Failed to load the topic tree.');
+        setError('Failed to load the subject tree.');
       } finally {
         setLoading(false);
       }
@@ -151,21 +151,22 @@ const TopicTreePage: React.FC = () => {
     <div className="topic-tree-page">
       <section className="topic-tree-hero">
         <div>
-          <span className="topic-tree-eyebrow">Taxonomy</span>
-          <h1>Ontology Tree</h1>
+          <span className="topic-tree-eyebrow">Subject Spine</span>
+          <h1>Ontology Subject Tree</h1>
           <p>
-            This is the encyclopedia’s subject spine: a tech-tree style map rooted in Ontology, then
-            branching into the disciplines and sub-disciplines you want to build out over time.
+            This is the encyclopedia’s synchronic subject taxonomy: a tech-tree style map rooted in
+            Ontology, then branching into the disciplines and sub-disciplines you want to build out over
+            time. A separate topic layer will later sit beneath these subjects.
           </p>
         </div>
         <div className="topic-tree-hero-stats">
           <div className="topic-tree-stat">
             <strong>{loading ? '...' : topics.length}</strong>
-            <span>Topics</span>
+            <span>Subjects</span>
           </div>
           <div className="topic-tree-stat">
             <strong>{loading ? '...' : totalAssignedItems}</strong>
-            <span>Direct item links</span>
+            <span>Direct item links for now</span>
           </div>
         </div>
       </section>
@@ -174,7 +175,7 @@ const TopicTreePage: React.FC = () => {
         <div className="topic-tree-toolbar">
           <div>
             <span className="topic-tree-eyebrow">Explorer</span>
-            <h2>Discipline map</h2>
+            <h2>Subject map</h2>
           </div>
           <div className="topic-tree-controls">
             <button type="button" onClick={() => setZoom((current) => Math.max(0.7, current - 0.1))}>
@@ -191,9 +192,9 @@ const TopicTreePage: React.FC = () => {
         </div>
 
         {error ? <div className="topic-tree-empty">{error}</div> : null}
-        {loading ? <div className="topic-tree-empty">Loading topic tree...</div> : null}
+        {loading ? <div className="topic-tree-empty">Loading subject tree...</div> : null}
         {!loading && topics.length === 0 ? (
-          <div className="topic-tree-empty">No topics yet.</div>
+          <div className="topic-tree-empty">No subjects yet.</div>
         ) : null}
 
         {!loading && topics.length > 0 ? (
@@ -214,7 +215,7 @@ const TopicTreePage: React.FC = () => {
                   transformOrigin: '0 0',
                 }}
                 role="img"
-                aria-label="Topic technology tree"
+                aria-label="Subject technology tree"
               >
                 <defs>
                   <linearGradient id="topicTreeRootGradient" x1="0%" y1="0%" x2="100%" y2="100%">

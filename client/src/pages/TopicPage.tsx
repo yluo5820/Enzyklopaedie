@@ -70,7 +70,7 @@ const TopicPage: React.FC = () => {
 
   useEffect(() => {
     if (!Number.isInteger(topicId) || topicId <= 0) {
-      setError('Invalid topic.');
+      setError('Invalid subject.');
       setLoading(false);
       return;
     }
@@ -92,7 +92,7 @@ const TopicPage: React.FC = () => {
         setRelations(fetchedRelations);
       } catch (loadError) {
         console.error(loadError);
-        setError('Failed to load topic page.');
+        setError('Failed to load subject page.');
       } finally {
         setLoading(false);
       }
@@ -169,7 +169,7 @@ const TopicPage: React.FC = () => {
       });
     } catch (createError) {
       console.error(createError);
-      setError('Failed to create child topic.');
+      setError('Failed to create child subject.');
     } finally {
       setCreatingChildTopic(false);
     }
@@ -210,7 +210,7 @@ const TopicPage: React.FC = () => {
       });
     } catch (relationError) {
       console.error(relationError);
-      setError('Failed to connect topic to reference entity.');
+      setError('Failed to connect subject to reference entity.');
     } finally {
       setSavingRelation(false);
     }
@@ -226,14 +226,14 @@ const TopicPage: React.FC = () => {
       });
     } catch (relationError) {
       console.error(relationError);
-      setError('Failed to delete topic relation.');
+      setError('Failed to delete subject relation.');
     }
   };
 
   if (loading) {
     return (
       <div className="topic-page">
-        <div className="topic-page-empty">Loading topic page...</div>
+        <div className="topic-page-empty">Loading subject page...</div>
       </div>
     );
   }
@@ -241,7 +241,7 @@ const TopicPage: React.FC = () => {
   if (!topic) {
     return (
       <div className="topic-page">
-        <div className="topic-page-empty">{error || 'Topic not found.'}</div>
+        <div className="topic-page-empty">{error || 'Subject not found.'}</div>
       </div>
     );
   }
@@ -249,26 +249,26 @@ const TopicPage: React.FC = () => {
   return (
     <div className="topic-page">
       <Link to="/topics" className="topic-page-back">
-        Back to Topic Tree
+        Back to Subject Tree
       </Link>
 
       <section className="topic-page-hero">
         <div>
-          <span className="topic-page-eyebrow">Topic Page</span>
+          <span className="topic-page-eyebrow">Subject Page</span>
           <h1>{topic.name}</h1>
           <p>
             {topic.description ||
-              'This topic page is the curated home for one discipline or sub-discipline in the encyclopedia.'}
+              'This subject page is the current home for one discipline or sub-discipline in the encyclopedia.'}
           </p>
         </div>
         <div className="topic-page-stats">
           <div className="topic-page-stat">
             <strong>{topic.knowledgeItemCount}</strong>
-            <span>Direct knowledge items</span>
+            <span>Direct items for now</span>
           </div>
           <div className="topic-page-stat">
             <strong>{topic.childTopicCount}</strong>
-            <span>Child topics</span>
+            <span>Child subjects</span>
           </div>
           <div className="topic-page-stat">
             <strong>{formatDate(topic.updatedAt)}</strong>
@@ -282,7 +282,7 @@ const TopicPage: React.FC = () => {
       <div className="topic-page-grid">
         <aside className="topic-page-panel topic-page-sidebar">
           <span className="topic-page-eyebrow">Lineage</span>
-          <h2>Where this sits</h2>
+          <h2>Where this subject sits</h2>
           <div className="topic-page-lineage">
             {lineage.map((entry, index) => (
               <React.Fragment key={entry.id}>
@@ -293,19 +293,19 @@ const TopicPage: React.FC = () => {
           </div>
 
           <div className="topic-page-side-section">
-            <h3>Parent</h3>
+            <h3>Parent subject</h3>
             {parentTopic ? (
               <Link to={`/topics/${parentTopic.id}`} className="topic-page-side-card">
                 <strong>{parentTopic.name}</strong>
-                <span>{parentTopic.knowledgeItemCount} direct items</span>
+                <span>{parentTopic.knowledgeItemCount} direct items for now</span>
               </Link>
             ) : (
-              <div className="topic-page-empty">Ontology is the root and has no parent.</div>
+              <div className="topic-page-empty">Ontology is the root subject and has no parent.</div>
             )}
           </div>
 
           <div className="topic-page-side-section">
-            <h3>Create child topic</h3>
+            <h3>Create child subject</h3>
             <form className="topic-page-form" onSubmit={handleCreateChildTopic}>
               <input
                 value={childTopicForm.name}
@@ -328,7 +328,7 @@ const TopicPage: React.FC = () => {
                 placeholder="Optional description"
               />
               <button type="submit" disabled={creatingChildTopic}>
-                {creatingChildTopic ? 'Creating...' : 'Create child topic'}
+                {creatingChildTopic ? 'Creating...' : 'Create child subject'}
               </button>
             </form>
           </div>
@@ -339,19 +339,19 @@ const TopicPage: React.FC = () => {
             <div className="topic-page-section-head">
               <div>
                 <span className="topic-page-eyebrow">Branches</span>
-                <h2>Child topics</h2>
+                <h2>Child subjects</h2>
               </div>
             </div>
 
             {childTopics.length === 0 ? (
-              <div className="topic-page-empty">No child topics yet.</div>
+              <div className="topic-page-empty">No child subjects yet.</div>
             ) : (
               <div className="topic-page-card-grid">
                 {childTopics.map((childTopic) => (
                   <Link key={childTopic.id} to={`/topics/${childTopic.id}`} className="topic-page-card">
                     <strong>{childTopic.name}</strong>
-                    <span>{childTopic.knowledgeItemCount} direct items</span>
-                    <span>{childTopic.childTopicCount} child topics</span>
+                    <span>{childTopic.knowledgeItemCount} direct items for now</span>
+                    <span>{childTopic.childTopicCount} child subjects</span>
                   </Link>
                 ))}
               </div>
@@ -362,7 +362,7 @@ const TopicPage: React.FC = () => {
             <div className="topic-page-section-head">
               <div>
                 <span className="topic-page-eyebrow">Reference Atlas</span>
-                <h2>Linked entities</h2>
+                <h2>Reference context</h2>
               </div>
             </div>
 
@@ -449,13 +449,16 @@ const TopicPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Knowledge</span>
-                <h2>Attached items</h2>
+                <span className="topic-page-eyebrow">Transition State</span>
+                <h2>Direct items attached to this subject</h2>
               </div>
             </div>
 
             {knowledgeItems.length === 0 ? (
-              <div className="topic-page-empty">No knowledge items are attached directly to this topic yet.</div>
+              <div className="topic-page-empty">
+                No items are attached directly to this subject yet. In the target model, a real topic
+                layer will sit between subjects and items.
+              </div>
             ) : (
               <div className="topic-page-item-list">
                 {knowledgeItems.map((knowledgeItem) => (

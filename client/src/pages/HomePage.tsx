@@ -48,13 +48,13 @@ const HomePage: React.FC = () => {
         <h1>A local-first encyclopedia for what you learn.</h1>
         <p>
           The direction is no longer just a reading log. This project is becoming a personal knowledge
-          world: capture books and lectures, classify them into a living taxonomy, place them on a
+          world: capture items, organize them through subjects and future topics, place them in a
           chronology, track tasks and reviews, and eventually publish exhibition pages that show the
           growth of your collection.
         </p>
         <div className="home-links">
-          <Link to="/topics">Open Topic Tree</Link>
-          <Link to="/knowledge">Open Knowledge Workbench</Link>
+          <Link to="/topics">Open Subject Tree</Link>
+          <Link to="/knowledge">Open Item Workbench</Link>
           <Link to="/entities">Open Reference Atlas</Link>
           <Link to="/world-history">Open World History</Link>
         </div>
@@ -66,23 +66,28 @@ const HomePage: React.FC = () => {
             <span className="home-eyebrow">Product Spine</span>
             <h2>What we are building next</h2>
             <p>
-              The current rebuild is centered on one unified knowledge model. Everything else should hang
-              off that model instead of living as isolated CRUD screens.
+              The current rebuild is centered on a four-layer model: items, subjects, future topics,
+              and entities. Everything else should hang off that structure instead of living as isolated
+              CRUD screens.
             </p>
             <div className="home-pillars">
               <div className="home-pillar">
-                <strong>Knowledge objects</strong>
+                <strong>Items</strong>
                 <p>Books, lectures, articles, and courses live in one shared structure.</p>
               </div>
               <div className="home-pillar">
-                <strong>Taxonomy and relations</strong>
-                <p>Topics should branch, relate, and reveal the structure of your encyclopedia.</p>
+                <strong>Subjects</strong>
+                <p>The current tree is the synchronic taxonomy of knowledge rooted at Ontology.</p>
+              </div>
+              <div className="home-pillar">
+                <strong>Topics</strong>
+                <p>The real topic layer will later sit between subjects and items as contextual domains of study.</p>
               </div>
               <div className="home-pillar">
                 <strong>Reference atlas</strong>
                 <p>
                   People, nations, civilizations, eras, and places need their own pages outside the
-                  topic tree.
+                  subject tree.
                 </p>
               </div>
               <div className="home-pillar">
@@ -104,7 +109,7 @@ const HomePage: React.FC = () => {
             <div className="home-stats">
               <div className="home-stat">
                 <strong>{loading ? '...' : stats.total}</strong>
-                <span>Knowledge items</span>
+                <span>Items</span>
               </div>
               <div className="home-stat">
                 <strong>{loading ? '...' : stats.active}</strong>
@@ -134,7 +139,7 @@ const HomePage: React.FC = () => {
           {loading ? <div className="home-empty">Loading activity...</div> : null}
           {!loading && activityEvents.length === 0 ? (
             <div className="home-empty">
-              No recorded activity yet. Add something in the knowledge workbench and it will start
+              No recorded activity yet. Add something in the item workbench and it will start
               appearing here.
             </div>
           ) : null}

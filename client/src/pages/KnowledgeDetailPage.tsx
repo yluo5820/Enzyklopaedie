@@ -183,7 +183,7 @@ const KnowledgeDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (!Number.isInteger(knowledgeItemId) || knowledgeItemId <= 0) {
-      setError('Invalid knowledge item.');
+      setError('Invalid item.');
       setLoading(false);
       return;
     }
@@ -223,7 +223,7 @@ const KnowledgeDetailPage: React.FC = () => {
         setReviews(fetchedReviews);
       } catch (loadError) {
         console.error(loadError);
-        setError('Failed to load the knowledge item detail.');
+        setError('Failed to load the item detail.');
       } finally {
         setLoading(false);
       }
@@ -271,7 +271,7 @@ const KnowledgeDetailPage: React.FC = () => {
     } catch (statusError) {
       console.error(statusError);
       setItem(previousItem);
-      setError('Failed to update knowledge item status.');
+      setError('Failed to update item status.');
     } finally {
       setStatusSaving(false);
     }
@@ -294,7 +294,7 @@ const KnowledgeDetailPage: React.FC = () => {
       setSelectedTopicId('');
     } catch (topicError) {
       console.error(topicError);
-      setError('Failed to attach topic.');
+      setError('Failed to attach subject.');
     } finally {
       setSavingTopicAssignment(false);
     }
@@ -332,7 +332,7 @@ const KnowledgeDetailPage: React.FC = () => {
       });
     } catch (topicError) {
       console.error(topicError);
-      setError('Failed to create and attach topic.');
+      setError('Failed to create and attach subject.');
     } finally {
       setCreatingTopic(false);
     }
@@ -348,7 +348,7 @@ const KnowledgeDetailPage: React.FC = () => {
       });
     } catch (topicError) {
       console.error(topicError);
-      setError('Failed to remove topic.');
+      setError('Failed to remove subject.');
     }
   };
 
@@ -563,7 +563,7 @@ const KnowledgeDetailPage: React.FC = () => {
   if (loading) {
     return (
       <div className="knowledge-detail-page">
-        <div className="knowledge-detail-empty">Loading knowledge item...</div>
+        <div className="knowledge-detail-empty">Loading item...</div>
       </div>
     );
   }
@@ -572,7 +572,7 @@ const KnowledgeDetailPage: React.FC = () => {
     return (
       <div className="knowledge-detail-page">
         <div className="knowledge-detail-empty">
-          {error || 'This knowledge item could not be found.'}
+          {error || 'This item could not be found.'}
         </div>
       </div>
     );
@@ -581,7 +581,7 @@ const KnowledgeDetailPage: React.FC = () => {
   return (
     <div className="knowledge-detail-page">
       <Link to="/knowledge" className="knowledge-detail-back">
-        Back to Knowledge Workbench
+        Back to Item Workbench
       </Link>
 
       <section className="knowledge-detail-hero">
@@ -603,7 +603,7 @@ const KnowledgeDetailPage: React.FC = () => {
         <div className="knowledge-detail-stats">
           <div className="knowledge-detail-stat">
             <strong>{itemTopics.length}</strong>
-            <span>Topics</span>
+            <span>Subjects for now</span>
           </div>
           <div className="knowledge-detail-stat">
             <strong>{relations.length}</strong>
@@ -658,8 +658,9 @@ const KnowledgeDetailPage: React.FC = () => {
               <p>{item.description}</p>
             ) : (
               <p>
-                This workspace now covers taxonomy and cross-links as well as notes, tasks, and reviews.
-                The next layers can grow from these topic placements and item relations.
+                This workspace now covers classification and cross-links as well as notes, tasks, and
+                reviews. The current app still links items directly to subjects; a real topic layer will
+                be introduced later between subjects and items.
               </p>
             )}
             <dl>
@@ -683,14 +684,14 @@ const KnowledgeDetailPage: React.FC = () => {
           <section className="knowledge-detail-panel">
             <div className="knowledge-detail-section-head">
               <div>
-                <span className="knowledge-detail-eyebrow">Taxonomy</span>
-                <h2>Topic placement</h2>
+                <span className="knowledge-detail-eyebrow">Subject Spine</span>
+                <h2>Subject placement for now</h2>
               </div>
             </div>
 
             <div className="knowledge-detail-chips">
               {itemTopics.length === 0 ? (
-                <div className="knowledge-detail-empty">This item is not classified yet.</div>
+                <div className="knowledge-detail-empty">This item is not assigned to a subject yet.</div>
               ) : (
                 itemTopics.map((topic) => (
                   <div key={topic.id} className="knowledge-detail-chip">
@@ -706,10 +707,10 @@ const KnowledgeDetailPage: React.FC = () => {
             <form className="knowledge-detail-form knowledge-detail-form-row" onSubmit={handleAttachTopic}>
               <select
                 value={selectedTopicId}
-                onChange={(event) => setSelectedTopicId(event.target.value)}
-                disabled={savingTopicAssignment || assignableTopics.length === 0}
+                    onChange={(event) => setSelectedTopicId(event.target.value)}
+                    disabled={savingTopicAssignment || assignableTopics.length === 0}
               >
-                <option value="">Attach an existing topic</option>
+                <option value="">Attach an existing subject</option>
                 {assignableTopics.map(({ topic, depth }) => (
                   <option key={topic.id} value={topic.id}>
                     {`${'  '.repeat(depth)}${topic.name}`}
@@ -717,7 +718,7 @@ const KnowledgeDetailPage: React.FC = () => {
                 ))}
               </select>
               <button type="submit" disabled={savingTopicAssignment || !selectedTopicId}>
-                {savingTopicAssignment ? 'Attaching...' : 'Attach topic'}
+                {savingTopicAssignment ? 'Attaching...' : 'Attach subject'}
               </button>
             </form>
 
@@ -730,11 +731,11 @@ const KnowledgeDetailPage: React.FC = () => {
                     name: event.target.value,
                   }))
                 }
-                placeholder="Create a new topic"
+                placeholder="Create a new subject"
               />
               <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-relations">
                 <label>
-                  Parent topic
+                  Parent subject
                   <select
                     value={newTopicForm.parentTopicId}
                     onChange={(event) =>
@@ -762,12 +763,12 @@ const KnowledgeDetailPage: React.FC = () => {
                         description: event.target.value,
                       }))
                     }
-                    placeholder="Optional topic note"
+                    placeholder="Optional subject note"
                   />
                 </label>
               </div>
               <button type="submit" disabled={creatingTopic}>
-                {creatingTopic ? 'Creating topic...' : 'Create and attach topic'}
+                {creatingTopic ? 'Creating subject...' : 'Create and attach subject'}
               </button>
             </form>
           </section>
@@ -795,7 +796,7 @@ const KnowledgeDetailPage: React.FC = () => {
                     }
                   >
                     <option value="reference_entity">Reference entity</option>
-                    <option value="knowledge_item">Knowledge item</option>
+                    <option value="knowledge_item">Item</option>
                   </select>
                 </label>
                 <label>
@@ -830,7 +831,7 @@ const KnowledgeDetailPage: React.FC = () => {
                     <option value="">
                       {relationForm.toEntityType === 'reference_entity'
                         ? 'Choose a person, nation, civilization, era, or place'
-                        : 'Choose another knowledge item'}
+                        : 'Choose another item'}
                     </option>
                     {relationForm.toEntityType === 'reference_entity'
                       ? relationReferenceTargets.map((candidate) => {

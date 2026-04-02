@@ -4,6 +4,15 @@ Enzyklopaedie is a local-first personal encyclopedia for what you learn. The cur
 away from isolated CRUD pages toward a unified knowledge model that can support taxonomy, chronology,
 tasks, reviews, progress tracking, and exhibition pages.
 
+The current canonical domain vocabulary is:
+
+- `Items`
+- `Subjects`
+- `Topics`
+- `Entities`
+
+See [docs/domain-model.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/domain-model.md) for the working design.
+
 ## Stack
 
 - `client/`: React + Vite
@@ -58,7 +67,7 @@ That currently does four things:
 The current automated coverage is intentionally focused on the new foundation:
 
 - shared domain helpers
-- knowledge item create/update API flow
+- item create/update API flow
 - unified reference entity create/update/delete API flow
 - activity event recording for knowledge changes
 
@@ -74,17 +83,18 @@ After `npm start`, use this path:
 
 1. Open `http://localhost:5173`
 2. Check the home dashboard loads
-3. Open `Knowledge` and add a knowledge item
+3. Open `Items` and add an item
 4. Open `Entities` and confirm the reference atlas loads with imported legacy entities like `Unknown Author`
 5. Create a new entity, open it, update it, and delete it again
-6. Open `Topics` and confirm the tree loads with `Ontology` as the root
-7. Open a topic page from the tree, create a child topic, and link that topic to an entity from the reference atlas
-8. Open a knowledge item, attach or create a topic, then link it to an entity such as a person or era
-9. Add a note, a task, and a review on the knowledge item page
+6. Open `Subjects` and confirm the tree loads with `Ontology` as the root
+7. Open a subject page from the tree, create a child subject, and link that subject to an entity from the reference atlas
+8. Open an item, attach or create a subject, then link it to an entity such as a person or era
+9. Add a note, a task, and a review on the item page
 10. Return to `Home` and confirm recent activity entries appear
 11. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 
+- Domain model: [docs/domain-model.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/domain-model.md)
 - Foundation plan: [docs/foundation-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/foundation-plan.md)
 - Local testing guide: [docs/local-testing.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/local-testing.md)

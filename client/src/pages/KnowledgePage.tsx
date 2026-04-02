@@ -55,7 +55,7 @@ const KnowledgePage: React.FC = () => {
         setItems(fetchedItems);
       } catch (loadError) {
         console.error(loadError);
-        setError('Failed to load knowledge items.');
+        setError('Failed to load items.');
       } finally {
         setLoading(false);
       }
@@ -102,7 +102,7 @@ const KnowledgePage: React.FC = () => {
       setFormState(initialFormState);
     } catch (submitError) {
       console.error(submitError);
-      setError('Failed to create knowledge item.');
+      setError('Failed to create item.');
     } finally {
       setSubmitting(false);
     }
@@ -116,7 +116,7 @@ const KnowledgePage: React.FC = () => {
       });
     } catch (deleteError) {
       console.error(deleteError);
-      setError('Failed to delete knowledge item.');
+      setError('Failed to delete item.');
     }
   };
 
@@ -126,10 +126,10 @@ const KnowledgePage: React.FC = () => {
         <aside className="knowledge-panel knowledge-form-panel">
           <div className="knowledge-header">
             <span className="knowledge-eyebrow">Phase 1</span>
-            <h1>Knowledge Workbench</h1>
+            <h1>Item Workbench</h1>
             <p>
-              Capture the raw material of your encyclopedia in one unified model. Books and lectures are
-              now just different kinds of knowledge objects.
+              Capture the concrete works that make up your encyclopedia. Books and lectures are now just
+              different kinds of items.
             </p>
           </div>
 
@@ -211,7 +211,7 @@ const KnowledgePage: React.FC = () => {
             </div>
 
             <button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Add Knowledge Item'}
+              {submitting ? 'Saving...' : 'Add Item'}
             </button>
           </form>
         </aside>
@@ -220,17 +220,16 @@ const KnowledgePage: React.FC = () => {
           <section className="knowledge-panel knowledge-summary">
             <div className="knowledge-header">
               <span className="knowledge-eyebrow">Foundation</span>
-              <h1>Unified Knowledge Model</h1>
+              <h1>Unified Item Model</h1>
               <p>
-                This is the first step away from isolated CRUD pages toward an actual encyclopedia
-                system. The next layers will attach taxonomy, notes, tasks, reviews, places, and
-                exhibitions to these items.
+                This is the concrete inventory layer of the encyclopedia. The next layers will organize
+                these items through subjects, future topics, entities, notes, tasks, places, and exhibitions.
               </p>
             </div>
             <div className="knowledge-summary-grid">
               <div className="knowledge-stat">
                 <strong>{stats.total}</strong>
-                <span>Total knowledge items</span>
+                <span>Total items</span>
               </div>
               <div className="knowledge-stat">
                 <strong>{stats.active}</strong>
@@ -247,15 +246,15 @@ const KnowledgePage: React.FC = () => {
             <div className="knowledge-list-header">
               <div>
                 <span className="knowledge-eyebrow">Inventory</span>
-                <h2>Knowledge Items</h2>
+                <h2>Items</h2>
               </div>
             </div>
 
             {error && <div className="knowledge-error">{error}</div>}
-            {loading ? <div className="knowledge-empty">Loading knowledge items...</div> : null}
+            {loading ? <div className="knowledge-empty">Loading items...</div> : null}
             {!loading && items.length === 0 ? (
               <div className="knowledge-empty">
-                No knowledge items yet. Add the first entry in the workbench to begin the rebuild.
+                No items yet. Add the first entry in the workbench to begin the rebuild.
               </div>
             ) : null}
 
