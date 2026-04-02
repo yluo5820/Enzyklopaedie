@@ -1,14 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   KnowledgeRelationDetail,
+  KnowledgeRelationType,
   ReferenceEntity,
   ReferenceEntityKind,
   UpdateReferenceEntity,
 } from '@enzyklopaedie/shared';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  createReferenceEntityRelation,
   deleteReferenceEntity,
+  deleteReferenceEntityRelation,
+  fetchReferenceEntities,
   fetchReferenceEntity,
+  fetchReferenceEntityOutgoingRelations,
   fetchReferenceEntityRelations,
   updateReferenceEntity,
 } from '../api';
@@ -22,6 +27,14 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
   era: 'Era',
   place: 'Place',
 };
+const entityRelationTypeOptions: KnowledgeRelationType[] = [
+  'contains',
+  'part_of',
+  'during',
+  'located_in',
+  'related_to',
+  'influenced_by',
+];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -45,7 +58,10 @@ const formatTimespan = (entity: ReferenceEntity) => {
   return start || end || 'No chronology yet';
 };
 
-const formatRelationType = (value: string) => value.replace(/_/g, ' ');
+const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
+
+const formatIncomingRelationType = (value: KnowledgeRelationType) =>
+  value === 'contains' ? 'contained by' : formatRelationType(value);
 
 const parseYearInput = (value: string) => {
   const trimmed = value.trim();
@@ -72,12 +88,36 @@ const formatMetadataValue = (value: unknown) => {
   return JSON.stringify(value);
 };
 
-const buildSourceHref = (relation: KnowledgeRelationDetail) => {
-  if (relation.fromEntityType === 'knowledge_item') return `/knowledge/${relation.fromEntityId}`;
-  if (relation.fromEntityType === 'study_topic') return `/study-topics/${relation.fromEntityId}`;
-  if (relation.fromEntityType === 'topic') return `/topics/${relation.fromEntityId}`;
-  if (relation.fromEntityType === 'reference_entity') return `/entities/${relation.fromEntityId}`;
+const buildRelationHref = (relation: KnowledgeRelationDetail, direction: 'incoming' | 'outgoing') => {
+  const entityType = direction === 'incoming' ? relation.fromEntityType : relation.toEntityType;
+  const entityId = direction === 'incoming' ? relation.fromEntityId : relation.toEntityId;
+
+  if (entityType === 'knowledge_item') return `/knowledge/${entityId}`;
+  if (entityType === 'study_topic') return `/study-topics/${entityId}`;
+  if (entityType === 'topic') return `/topics/${entityId}`;
+  if (entityType === 'reference_entity') return `/entities/${entityId}`;
   return null;
+};
+
+const getTopicSectionLabel = (kind: ReferenceEntityKind) => {
+  if (kind === 'person') return 'Topics about this person';
+  if (kind === 'nation') return 'Topics about this nation';
+  if (kind === 'civilization') return 'Topics about this civilization';
+  if (kind === 'era') return 'Topics about this era';
+  return 'Topics about this place';
+};
+
+const getItemSectionLabel = (kind: ReferenceEntityKind) => {
+  if (kind === 'person') return 'Authored works';
+  return 'Linked items';
+};
+
+const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
+  if (kind === 'civilization') return 'Civilizational structure';
+  if (kind === 'nation') return 'National structure';
+  if (kind === 'era') return 'Era structure';
+  if (kind === 'place') return 'Place structure';
+  return 'Affiliations and influences';
 };
 
 const ReferenceEntityPage: React.FC = () => {
@@ -86,7 +126,9 @@ const ReferenceEntityPage: React.FC = () => {
   const entityId = Number(id);
 
   const [entity, setEntity] = useState<ReferenceEntity | null>(null);
-  const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
+  const [allEntities, setAllEntities] = useState<ReferenceEntity[]>([]);
+  const [incomingRelations, setIncomingRelations] = useState<KnowledgeRelationDetail[]>([]);
+  const [outgoingRelations, setOutgoingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
     title: '',
@@ -95,9 +137,15 @@ const ReferenceEntityPage: React.FC = () => {
     startYear: '',
     endYear: '',
   });
+  const [relationForm, setRelationForm] = useState({
+    toEntityId: '',
+    relationType: 'contains' as KnowledgeRelationType,
+    note: '',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingRelation, setSavingRelation] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -109,12 +157,18 @@ const ReferenceEntityPage: React.FC = () => {
 
     const loadEntity = async () => {
       try {
-        const [fetchedEntity, fetchedRelations] = await Promise.all([
-          fetchReferenceEntity(entityId),
-          fetchReferenceEntityRelations(entityId),
-        ]);
+        const [fetchedEntity, fetchedEntities, fetchedIncomingRelations, fetchedOutgoingRelations] =
+          await Promise.all([
+            fetchReferenceEntity(entityId),
+            fetchReferenceEntities(),
+            fetchReferenceEntityRelations(entityId),
+            fetchReferenceEntityOutgoingRelations(entityId),
+          ]);
+
         setEntity(fetchedEntity);
-        setRelations(fetchedRelations);
+        setAllEntities(fetchedEntities);
+        setIncomingRelations(fetchedIncomingRelations);
+        setOutgoingRelations(fetchedOutgoingRelations);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
@@ -138,16 +192,35 @@ const ReferenceEntityPage: React.FC = () => {
       : null;
 
   const itemRelations = useMemo(
-    () => relations.filter((relation) => relation.fromEntityType === 'knowledge_item'),
-    [relations]
+    () => incomingRelations.filter((relation) => relation.fromEntityType === 'knowledge_item'),
+    [incomingRelations]
+  );
+  const authoredWorks = useMemo(
+    () => itemRelations.filter((relation) => relation.relationType === 'created_by'),
+    [itemRelations]
+  );
+  const relatedItems = useMemo(
+    () => itemRelations.filter((relation) => relation.relationType !== 'created_by'),
+    [itemRelations]
   );
   const topicRelations = useMemo(
-    () => relations.filter((relation) => relation.fromEntityType === 'study_topic'),
-    [relations]
+    () => incomingRelations.filter((relation) => relation.fromEntityType === 'study_topic'),
+    [incomingRelations]
   );
   const subjectRelations = useMemo(
-    () => relations.filter((relation) => relation.fromEntityType === 'topic'),
-    [relations]
+    () => incomingRelations.filter((relation) => relation.fromEntityType === 'topic'),
+    [incomingRelations]
+  );
+  const incomingEntityRelations = useMemo(
+    () => incomingRelations.filter((relation) => relation.fromEntityType === 'reference_entity'),
+    [incomingRelations]
+  );
+  const selectableEntities = useMemo(
+    () =>
+      [...allEntities]
+        .filter((candidate) => candidate.id !== entity?.id)
+        .sort((left, right) => left.title.localeCompare(right.title)),
+    [allEntities, entity?.id]
   );
 
   const handleChange = (
@@ -180,11 +253,70 @@ const ReferenceEntityPage: React.FC = () => {
       const updatedEntity = await updateReferenceEntity(entity.id, payload);
       setEntity(updatedEntity);
       setFormState(toFormState(updatedEntity));
+      startTransition(() => {
+        setAllEntities((current) =>
+          current.map((existing) => (existing.id === updatedEntity.id ? updatedEntity : existing))
+        );
+      });
     } catch (saveError) {
       console.error(saveError);
       setError('Failed to update reference entity.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCreateRelation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!entity || !relationForm.toEntityId) return;
+
+    setSavingRelation(true);
+    setError(null);
+
+    try {
+      const relation = await createReferenceEntityRelation(entity.id, {
+        toEntityId: Number(relationForm.toEntityId),
+        relationType: relationForm.relationType,
+        note: relationForm.note.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setOutgoingRelations((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === relation.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = relation;
+            return next;
+          }
+
+          return [relation, ...current];
+        });
+      });
+
+      setRelationForm({
+        toEntityId: '',
+        relationType: 'contains',
+        note: '',
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to create entity relation.');
+    } finally {
+      setSavingRelation(false);
+    }
+  };
+
+  const handleDeleteRelation = async (relationId: number) => {
+    if (!entity) return;
+
+    try {
+      await deleteReferenceEntityRelation(entity.id, relationId);
+      startTransition(() => {
+        setOutgoingRelations((current) => current.filter((relation) => relation.id !== relationId));
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to delete entity relation.');
     }
   };
 
@@ -246,16 +378,16 @@ const ReferenceEntityPage: React.FC = () => {
             <span>Chronology</span>
           </div>
           <div className="reference-entity-stat">
+            <strong>{authoredWorks.length || itemRelations.length}</strong>
+            <span>{entity.kind === 'person' ? 'Authored works' : 'Linked items'}</span>
+          </div>
+          <div className="reference-entity-stat">
             <strong>{topicRelations.length + subjectRelations.length}</strong>
-            <span>Linked topics and subjects</span>
+            <span>Topics and subjects</span>
           </div>
           <div className="reference-entity-stat">
-            <strong>{itemRelations.length}</strong>
-            <span>Linked items</span>
-          </div>
-          <div className="reference-entity-stat">
-            <strong>{formatDate(entity.updatedAt)}</strong>
-            <span>Last updated</span>
+            <strong>{outgoingRelations.length + incomingEntityRelations.length}</strong>
+            <span>Entity links</span>
           </div>
         </div>
       </section>
@@ -316,15 +448,13 @@ const ReferenceEntityPage: React.FC = () => {
           <section className="reference-entity-panel">
             <div className="reference-entity-section-head">
               <div>
-                <span className="reference-entity-eyebrow">Topic Context</span>
-                <h2>Topics and subjects pointing here</h2>
+                <span className="reference-entity-eyebrow">Atlas Context</span>
+                <h2>{getTopicSectionLabel(entity.kind)}</h2>
               </div>
             </div>
 
             {topicRelations.length === 0 && subjectRelations.length === 0 ? (
-              <div className="reference-entity-empty">
-                No topics or subjects point to this entity yet.
-              </div>
+              <div className="reference-entity-empty">No topics or subjects point here yet.</div>
             ) : (
               <div className="reference-entity-stack">
                 {topicRelations.map((relation) => (
@@ -336,7 +466,7 @@ const ReferenceEntityPage: React.FC = () => {
                           <span>topic</span>
                         </div>
                         <Link
-                          to={buildSourceHref(relation) as string}
+                          to={buildRelationHref(relation, 'incoming') as string}
                           className="reference-entity-card-link"
                         >
                           <h3>{relation.fromEntityTitle || `Topic #${relation.fromEntityId}`}</h3>
@@ -356,7 +486,7 @@ const ReferenceEntityPage: React.FC = () => {
                           <span>subject</span>
                         </div>
                         <Link
-                          to={buildSourceHref(relation) as string}
+                          to={buildRelationHref(relation, 'incoming') as string}
                           className="reference-entity-card-link"
                         >
                           <h3>{relation.fromEntityTitle || `Subject #${relation.fromEntityId}`}</h3>
@@ -375,11 +505,38 @@ const ReferenceEntityPage: React.FC = () => {
             <div className="reference-entity-section-head">
               <div>
                 <span className="reference-entity-eyebrow">Item Context</span>
-                <h2>Items pointing here</h2>
+                <h2>{getItemSectionLabel(entity.kind)}</h2>
               </div>
             </div>
 
-            {itemRelations.length === 0 ? (
+            {entity.kind === 'person' ? (
+              authoredWorks.length === 0 ? (
+                <div className="reference-entity-empty">No authored works point to this person yet.</div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {authoredWorks.map((relation) => (
+                    <article key={relation.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>{formatRelationType(relation.relationType)}</span>
+                            {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
+                          </div>
+                          <Link
+                            to={buildRelationHref(relation, 'incoming') as string}
+                            className="reference-entity-card-link"
+                          >
+                            <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
+                          </Link>
+                        </div>
+                        <span>{formatDate(relation.createdAt)}</span>
+                      </div>
+                      {relation.note ? <p>{relation.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              )
+            ) : itemRelations.length === 0 ? (
               <div className="reference-entity-empty">No items point to this entity yet.</div>
             ) : (
               <div className="reference-entity-stack">
@@ -392,10 +549,159 @@ const ReferenceEntityPage: React.FC = () => {
                           {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
                         </div>
                         <Link
-                          to={buildSourceHref(relation) as string}
+                          to={buildRelationHref(relation, 'incoming') as string}
                           className="reference-entity-card-link"
                         >
                           <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
+                        </Link>
+                      </div>
+                      <span>{formatDate(relation.createdAt)}</span>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {entity.kind === 'person' && relatedItems.length > 0 ? (
+              <div className="reference-entity-subsection">
+                <h3>Other item links</h3>
+                <div className="reference-entity-stack">
+                  {relatedItems.map((relation) => (
+                    <article key={relation.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>{formatRelationType(relation.relationType)}</span>
+                            {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
+                          </div>
+                          <Link
+                            to={buildRelationHref(relation, 'incoming') as string}
+                            className="reference-entity-card-link"
+                          >
+                            <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
+                          </Link>
+                        </div>
+                        <span>{formatDate(relation.createdAt)}</span>
+                      </div>
+                      {relation.note ? <p>{relation.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="reference-entity-panel">
+            <div className="reference-entity-section-head">
+              <div>
+                <span className="reference-entity-eyebrow">Structure</span>
+                <h2>{getEntityStructureLabel(entity.kind)}</h2>
+              </div>
+            </div>
+
+            <form className="reference-entity-form" onSubmit={handleCreateRelation}>
+              <div className="reference-entity-grid-inline">
+                <div className="reference-entity-field">
+                  <label htmlFor="entity-relation-type">Relation</label>
+                  <select
+                    id="entity-relation-type"
+                    value={relationForm.relationType}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        relationType: event.target.value as KnowledgeRelationType,
+                      }))
+                    }
+                  >
+                    {entityRelationTypeOptions.map((relationType) => (
+                      <option key={relationType} value={relationType}>
+                        {formatRelationType(relationType)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="reference-entity-field">
+                  <label htmlFor="entity-relation-target">Target entity</label>
+                  <select
+                    id="entity-relation-target"
+                    value={relationForm.toEntityId}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        toEntityId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Choose a person, nation, civilization, era, or place</option>
+                    {selectableEntities.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.title} ({candidate.kind})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="reference-entity-field">
+                <label htmlFor="entity-relation-note">Note</label>
+                <input
+                  id="entity-relation-note"
+                  value={relationForm.note}
+                  onChange={(event) =>
+                    setRelationForm((current) => ({
+                      ...current,
+                      note: event.target.value,
+                    }))
+                  }
+                  placeholder="Optional note about the structural link"
+                />
+              </div>
+              <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
+                {savingRelation ? 'Linking...' : 'Add entity link'}
+              </button>
+            </form>
+
+            {outgoingRelations.length === 0 && incomingEntityRelations.length === 0 ? (
+              <div className="reference-entity-empty">
+                No entity-to-entity links have been recorded yet.
+              </div>
+            ) : (
+              <div className="reference-entity-stack">
+                {outgoingRelations.map((relation) => (
+                  <article key={relation.id} className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <div className="reference-entity-badges">
+                          <span>{formatRelationType(relation.relationType)}</span>
+                          <span>outgoing</span>
+                        </div>
+                        <Link
+                          to={buildRelationHref(relation, 'outgoing') as string}
+                          className="reference-entity-card-link"
+                        >
+                          <h3>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</h3>
+                        </Link>
+                      </div>
+                      <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
+                        Delete
+                      </button>
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                  </article>
+                ))}
+                {incomingEntityRelations.map((relation) => (
+                  <article key={relation.id} className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <div className="reference-entity-badges">
+                          <span>{formatIncomingRelationType(relation.relationType)}</span>
+                          <span>incoming</span>
+                        </div>
+                        <Link
+                          to={buildRelationHref(relation, 'incoming') as string}
+                          className="reference-entity-card-link"
+                        >
+                          <h3>{relation.fromEntityTitle || `Entity #${relation.fromEntityId}`}</h3>
                         </Link>
                       </div>
                       <span>{formatDate(relation.createdAt)}</span>
@@ -413,12 +719,7 @@ const ReferenceEntityPage: React.FC = () => {
                 <span className="reference-entity-eyebrow">Editor</span>
                 <h2>Curate this entity</h2>
               </div>
-              <button
-                type="button"
-                className="reference-entity-danger"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
+              <button type="button" className="reference-entity-danger" onClick={handleDelete} disabled={deleting}>
                 {deleting ? 'Removing...' : 'Remove entity'}
               </button>
             </div>

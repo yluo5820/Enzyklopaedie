@@ -562,6 +562,49 @@ export const fetchReferenceEntityRelations = async (
   return response.json();
 };
 
+export const fetchReferenceEntityOutgoingRelations = async (
+  id: number
+): Promise<KnowledgeRelationDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/outgoing-relations`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch outgoing reference entity relations');
+  }
+  return response.json();
+};
+
+export const createReferenceEntityRelation = async (
+  id: number,
+  relationData: {
+    toEntityId: number;
+    relationType: NewKnowledgeRelation['relationType'];
+    note?: string;
+  }
+): Promise<KnowledgeRelationDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/outgoing-relations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(relationData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create reference entity relation');
+  }
+  return response.json();
+};
+
+export const deleteReferenceEntityRelation = async (
+  id: number,
+  relationId: number
+): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/outgoing-relations/${relationId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete reference entity relation');
+  }
+};
+
 export const createReferenceEntity = async (
   entityData: NewReferenceEntity
 ): Promise<ReferenceEntity> => {

@@ -293,6 +293,13 @@ export const deleteReferenceEntity = asyncErrorHandler(async (req: Request, res:
   }
 
   const db = await getDb();
+  await db.run(
+    `DELETE FROM knowledge_relations
+     WHERE (fromEntityType = 'reference_entity' AND fromEntityId = ?)
+        OR (toEntityType = 'reference_entity' AND toEntityId = ?)`,
+    id,
+    id
+  );
   const result = await db.run('DELETE FROM reference_entities WHERE id = ?', id);
 
   if (!result.changes) {

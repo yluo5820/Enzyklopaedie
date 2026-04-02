@@ -208,6 +208,7 @@ export type KnowledgeRelationEntityType =
 
 export type KnowledgeRelationType =
   | 'about'
+  | 'contains'
   | 'created_by'
   | 'related_to'
   | 'influenced_by'

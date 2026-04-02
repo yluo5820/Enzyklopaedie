@@ -61,6 +61,15 @@ Current kinds:
 Entities can have their own pages, descriptions, and same-layer relations, but they are not part of the
 subject hierarchy.
 
+Useful same-layer entity relations include:
+
+- `contains`
+- `part_of`
+- `during`
+- `located_in`
+- `related_to`
+- `influenced_by`
+
 ### Item
 
 `Item` is the ultimate individual substance of the system.
@@ -158,6 +167,12 @@ Current limitations:
 - entity pages do not yet expose the full containment model back out to topics and items
 - subject-to-entity relations still exist in the backend from an earlier transition state
 - topic-to-entity contextualization now exists for actual topics, but the entity containment model is still relation-based rather than fully typed
+
+Current strengths:
+
+- person pages can now show authored works through `created_by` item links
+- entity pages can now show topics and subjects that point to them
+- entity pages can now carry explicit structural links to other entities, including `contains`
 
 ## Migration Direction
 

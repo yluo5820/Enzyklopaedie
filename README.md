@@ -91,9 +91,10 @@ After `npm start`, use this path:
 8. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
 9. Open an item, attach or create a topic, then link it to an entity such as a person or era
 10. Open that entity page and confirm the linked topic and item appear in its context sections
-11. Add a note, a task, and a review on the item page
-12. Return to `Home` and confirm recent activity entries appear
-13. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+11. Add an entity-to-entity structural link such as a civilization containing an era or nation
+12. Add a note, a task, and a review on the item page
+13. Return to `Home` and confirm recent activity entries appear
+14. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

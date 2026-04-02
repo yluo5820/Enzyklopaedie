@@ -171,6 +171,16 @@
   line-height: 1.65;
 }
 
+.reference-entity-card button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--accent-dark);
+  font: inherit;
+  cursor: pointer;
+}
+
 .reference-entity-card-link {
   color: var(--ink);
   text-decoration: none;
@@ -191,6 +201,17 @@
   color: var(--accent-dark);
   font-size: 0.82rem;
   text-transform: capitalize;
+}
+
+.reference-entity-subsection {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entity-subsection h3 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
 }
 
 .reference-entity-form {

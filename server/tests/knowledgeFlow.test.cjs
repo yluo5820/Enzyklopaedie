@@ -699,6 +699,132 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(updatedEntity.slug, 'civilization-eastern-roman-empire');
     assert.equal(updatedEntity.startYear, 330);
 
+    const eraResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'era',
+        title: 'Middle Byzantine Period',
+        startYear: 843,
+        endYear: 1204,
+      }),
+    });
+    assert.equal(eraResponse.status, 201);
+    const eraEntity = await eraResponse.json();
+
+    const nationResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'nation',
+        title: 'Anatolian Theme',
+        startYear: 669,
+        endYear: 1077,
+      }),
+    });
+    assert.equal(nationResponse.status, 201);
+    const nationEntity = await nationResponse.json();
+
+    const personResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Michael Psellos',
+        startYear: 1017,
+        endYear: 1078,
+      }),
+    });
+    assert.equal(personResponse.status, 201);
+    const personEntity = await personResponse.json();
+
+    const authoredItemResponse = await request('/api/knowledge-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'book',
+        title: 'Chronographia',
+        creator: 'Michael Psellos',
+      }),
+    });
+    assert.equal(authoredItemResponse.status, 201);
+    const authoredItem = await authoredItemResponse.json();
+
+    const createdByResponse = await request(`/api/knowledge-items/${authoredItem.id}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityType: 'reference_entity',
+        toEntityId: personEntity.id,
+        relationType: 'created_by',
+      }),
+    });
+    assert.equal(createdByResponse.status, 201);
+
+    const civilizationToEraResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEntityId: eraEntity.id,
+          relationType: 'contains',
+          note: 'This civilization includes the middle Byzantine period.',
+        }),
+      }
+    );
+    assert.equal(civilizationToEraResponse.status, 201);
+    const civilizationToEraRelation = await civilizationToEraResponse.json();
+    assert.equal(civilizationToEraRelation.toEntityTitle, 'Middle Byzantine Period');
+
+    const civilizationToNationResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEntityId: nationEntity.id,
+          relationType: 'contains',
+          note: 'This civilization includes the Anatolian Theme.',
+        }),
+      }
+    );
+    assert.equal(civilizationToNationResponse.status, 201);
+    const civilizationToNationRelation = await civilizationToNationResponse.json();
+    assert.equal(civilizationToNationRelation.toEntityTitle, 'Anatolian Theme');
+
+    const outgoingRelationsResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/outgoing-relations`
+    );
+    assert.equal(outgoingRelationsResponse.status, 200);
+    const outgoingRelations = await outgoingRelationsResponse.json();
+    assert.equal(outgoingRelations.length, 2);
+    assert.ok(outgoingRelations.every((relation) => relation.relationType === 'contains'));
+
+    const personRelationsResponse = await request(`/api/reference-entities/${personEntity.id}/relations`);
+    assert.equal(personRelationsResponse.status, 200);
+    const personRelations = await personRelationsResponse.json();
+    assert.ok(
+      personRelations.some(
+        (relation) =>
+          relation.fromEntityType === 'knowledge_item' &&
+          relation.relationType === 'created_by' &&
+          relation.fromEntityTitle === 'Chronographia'
+      )
+    );
+
+    const eraRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    assert.equal(eraRelationsResponse.status, 200);
+    const eraRelations = await eraRelationsResponse.json();
+    assert.ok(
+      eraRelations.some(
+        (relation) =>
+          relation.fromEntityType === 'reference_entity' &&
+          relation.relationType === 'contains' &&
+          relation.fromEntityTitle === 'Eastern Roman Empire'
+      )
+    );
+
     const activityResponse = await request('/api/activity-events?limit=50');
     assert.equal(activityResponse.status, 200);
     const activityEvents = await activityResponse.json();
@@ -708,14 +834,31 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         event.entityId === createdEntity.id
     );
 
-    assert.equal(entityEvents.length, 2);
-    assert.equal(entityEvents[0].type, 'reference_entity_updated');
-    assert.equal(entityEvents[1].type, 'reference_entity_created');
+    assert.ok(
+      entityEvents.some((event) => event.type === 'reference_entity_created')
+    );
+    assert.ok(
+      entityEvents.some((event) => event.type === 'reference_entity_updated')
+    );
+    assert.ok(
+      entityEvents.filter((event) => event.type === 'relation_created').length >= 2
+    );
 
     const deleteResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
       method: 'DELETE',
     });
     assert.equal(deleteResponse.status, 204);
+
+    const danglingRelationResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    assert.equal(danglingRelationResponse.status, 200);
+    const danglingRelations = await danglingRelationResponse.json();
+    assert.ok(
+      !danglingRelations.some(
+        (relation) =>
+          relation.fromEntityType === 'reference_entity' &&
+          relation.fromEntityTitle === 'Eastern Roman Empire'
+      )
+    );
 
     const missingResponse = await request(`/api/reference-entities/${createdEntity.id}`);
     assert.equal(missingResponse.status, 404);

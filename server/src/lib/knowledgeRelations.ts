@@ -18,6 +18,7 @@ export interface RelationEntityLookup {
 
 export const isKnowledgeRelationType = (value: unknown): value is KnowledgeRelationType =>
   value === 'about' ||
+  value === 'contains' ||
   value === 'created_by' ||
   value === 'related_to' ||
   value === 'influenced_by' ||

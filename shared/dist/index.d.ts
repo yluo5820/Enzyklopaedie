@@ -162,7 +162,7 @@ export interface ReferenceEntity {
     updatedAt: string;
 }
 export type KnowledgeRelationEntityType = 'knowledge_item' | 'topic' | 'study_topic' | 'reference_entity';
-export type KnowledgeRelationType = 'about' | 'created_by' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
+export type KnowledgeRelationType = 'about' | 'contains' | 'created_by' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
 export interface KnowledgeRelation {
     id: number;
     fromEntityType: KnowledgeRelationEntityType;

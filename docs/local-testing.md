@@ -107,6 +107,7 @@ That test currently covers:
 - Create a new entity and confirm it appears in the list immediately
 - Open that entity and update its kind, summary, or chronology
 - Confirm linked items and linked topics/subjects appear on the entity page when relations exist
+- Add an entity-to-entity link such as `contains` and confirm it appears as outgoing structure on the source entity and incoming structure on the target entity
 - Delete it again and confirm you return to the atlas list
 
 ### 8. World History Prototype
