@@ -83,6 +83,29 @@ const buildLocFacets = (author?: string, language?: string) => {
   return facets;
 };
 
+const fetchLocPayload = async (params: URLSearchParams) => {
+  const upstreamResponse = await fetch(`https://www.loc.gov/books/?${params.toString()}`, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Enzyklopaedie/1.0',
+    },
+  });
+
+  if (!upstreamResponse.ok) {
+    return {
+      ok: false as const,
+      status: upstreamResponse.status,
+      payload: null,
+    };
+  }
+
+  return {
+    ok: true as const,
+    payload: await upstreamResponse.json() as LibraryOfCongressPayload,
+    status: upstreamResponse.status,
+  };
+};
+
 const normalizeLanguageCodes = (values?: string[]) =>
   (values ?? [])
     .map((value) => value.trim().toLowerCase())
@@ -120,36 +143,51 @@ export const searchLibraryOfCongressBooks = asyncErrorHandler(async (req: Reques
 
   const page = parsePage(req.query.page);
   const limit = parseMaxResults(req.query.maxResults);
-  const facets = buildLocFacets(author, language);
+  const buildBaseParams = () =>
+    new URLSearchParams({
+      fo: 'json',
+      c: String(limit),
+      sp: String(page),
+    });
 
-  const params = new URLSearchParams({
-    fo: 'json',
-    c: String(limit),
-    sp: String(page),
-  });
-
+  const primaryParams = buildBaseParams();
   if (query) {
-    params.set('q', query);
+    primaryParams.set('q', query);
+    const facets = buildLocFacets(author, language);
+    if (facets.length > 0) {
+      primaryParams.set('fa', facets.join('|'));
+    }
+  } else if (author) {
+    primaryParams.set('q', author);
+    const facets = buildLocFacets(undefined, language);
+    if (facets.length > 0) {
+      primaryParams.set('fa', facets.join('|'));
+    }
   }
 
-  if (facets.length > 0) {
-    params.set('fa', facets.join('|'));
-  }
+  let upstreamResult = await fetchLocPayload(primaryParams);
 
-  const upstreamResponse = await fetch(`https://www.loc.gov/books/?${params.toString()}`, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'Enzyklopaedie/1.0',
-    },
-  });
-
-  if (!upstreamResponse.ok) {
-    return res.status(upstreamResponse.status).json({
+  if (!upstreamResult.ok) {
+    return res.status(upstreamResult.status).json({
       message: 'Library of Congress search failed.',
     });
   }
 
-  const payload = await upstreamResponse.json() as LibraryOfCongressPayload;
+  let payload = upstreamResult.payload;
+
+  if (query && author && (payload.results?.length ?? 0) === 0) {
+    const fallbackParams = buildBaseParams();
+    fallbackParams.set('q', `${query} ${author}`.trim());
+    const fallbackFacets = buildLocFacets(undefined, language);
+    if (fallbackFacets.length > 0) {
+      fallbackParams.set('fa', fallbackFacets.join('|'));
+    }
+
+    const fallbackResult = await fetchLocPayload(fallbackParams);
+    if (fallbackResult.ok) {
+      payload = fallbackResult.payload;
+    }
+  }
 
   const matches = (payload.results ?? [])
     .map((result) => {

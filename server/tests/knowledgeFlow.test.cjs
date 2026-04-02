@@ -1222,8 +1222,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
       const parsedUrl = new URL(url);
       assert.match(parsedUrl.toString(), /loc\.gov\/books\/\?/);
-      assert.equal(parsedUrl.searchParams.get('q'), null);
-      assert.equal(parsedUrl.searchParams.get('fa'), 'contributor:asimov');
+      assert.equal(parsedUrl.searchParams.get('q'), 'asimov');
+      assert.equal(parsedUrl.searchParams.get('fa'), null);
 
       return new Response(
         JSON.stringify({
@@ -1258,6 +1258,83 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(books.matches.length, 1);
       assert.equal(books.matches[0].title, 'Author-only result');
       assert.deepEqual(books.matches[0].authors, ['Isaac Asimov']);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await t.test('GET /api/library-of-congress/search falls back to a looser query when facet filtering returns nothing', async () => {
+    const originalFetch = global.fetch;
+    let callCount = 0;
+
+    global.fetch = async (input) => {
+      callCount += 1;
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      const parsedUrl = new URL(url);
+      assert.match(parsedUrl.toString(), /loc\.gov\/books\/\?/);
+
+      if (callCount === 1) {
+        assert.equal(parsedUrl.searchParams.get('q'), 'phenomenology');
+        assert.equal(parsedUrl.searchParams.get('fa'), 'contributor:hegel');
+
+        return new Response(
+          JSON.stringify({
+            pagination: {
+              of: 0,
+            },
+            results: [],
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      assert.equal(parsedUrl.searchParams.get('q'), 'phenomenology hegel');
+      assert.equal(parsedUrl.searchParams.get('fa'), null);
+
+      return new Response(
+        JSON.stringify({
+          pagination: {
+            of: 1,
+          },
+          results: [
+            {
+              id: 'https://www.loc.gov/item/777777/',
+              title: 'Fallback result',
+              contributor: ['G. W. F. Hegel'],
+              url: 'https://www.loc.gov/item/777777/',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const response = await requestThroughHttp(
+        '/api/library-of-congress/search?q=phenomenology&author=hegel&page=1&maxResults=10'
+      );
+      assert.equal(response.status, 200);
+
+      const books = await response.json();
+      assert.equal(callCount, 2);
+      assert.equal(books.matches.length, 1);
+      assert.equal(books.matches[0].title, 'Fallback result');
     } finally {
       global.fetch = originalFetch;
     }

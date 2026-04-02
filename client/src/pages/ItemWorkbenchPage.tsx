@@ -317,7 +317,7 @@ const ItemWorkbenchPage: React.FC = () => {
   const [importingBooks, setImportingBooks] = useState(false);
   const [bookSearchError, setBookSearchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'create' | 'list'>('create');
-  const [captureMode, setCaptureMode] = useState<CaptureMode>('manual');
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('search');
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [groupBy, setGroupBy] = useState<ItemListGroupBy>('none');
