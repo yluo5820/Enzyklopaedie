@@ -3,9 +3,7 @@ import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
   createStudyTopic,
-  createTopic,
   deleteStudyTopic,
-  deleteTopic,
   fetchStudyTopics,
   fetchTopic,
   fetchTopics,
@@ -57,13 +55,9 @@ const TopicPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [savingSubject, setSavingSubject] = useState(false);
   const [showSubjectEditor, setShowSubjectEditor] = useState(false);
-  const [showChildSubjectCreator, setShowChildSubjectCreator] = useState(false);
   const [showStudyTopicCreator, setShowStudyTopicCreator] = useState(false);
-  const [creatingChildSubject, setCreatingChildSubject] = useState(false);
   const [creatingStudyTopic, setCreatingStudyTopic] = useState(false);
-  const [deletingChildSubjectId, setDeletingChildSubjectId] = useState<number | null>(null);
   const [deletingStudyTopicId, setDeletingStudyTopicId] = useState<number | null>(null);
-  const [childSubjectDraft, setChildSubjectDraft] = useState('');
   const [subjectForm, setSubjectForm] = useState({
     description: '',
     name: '',
@@ -143,7 +137,6 @@ const TopicPage: React.FC = () => {
   }, [subject]);
 
   const isRootSubject = subject?.slug === 'ontology';
-  const canDeleteChildSubject = (entry: TopicSummary) => entry.childTopicCount === 0 && entry.topicCount === 0;
   const canDeleteStudyTopic = (entry: StudyTopicSummary) => entry.childTopicCount === 0 && entry.itemCount === 0;
 
   const handleSaveSubject = async (event: React.FormEvent) => {
@@ -170,55 +163,6 @@ const TopicPage: React.FC = () => {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save subject.');
     } finally {
       setSavingSubject(false);
-    }
-  };
-
-  const handleCreateChildSubject = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!subject || !childSubjectDraft.trim()) return;
-
-    setCreatingChildSubject(true);
-    setError(null);
-
-    try {
-      const createdSubject = await createTopic({
-        name: childSubjectDraft.trim(),
-        parentTopicId: subject.id,
-      });
-      const childAlreadyPresent = subjects.some((entry) => entry.id === createdSubject.id);
-
-      const nextSubject: TopicSummary = {
-        ...createdSubject,
-        childTopicCount: 0,
-        knowledgeItemCount: 0,
-        topicCount: 0,
-      };
-
-      startTransition(() => {
-        setSubjects((current) => {
-          const alreadyPresent = current.some((entry) => entry.id === nextSubject.id);
-          const updated = current.map((entry) =>
-            entry.id === subject.id && !alreadyPresent
-              ? { ...entry, childTopicCount: entry.childTopicCount + 1 }
-              : entry
-          );
-
-          return alreadyPresent ? updated : updated.concat(nextSubject);
-        });
-        setSubject((current) =>
-          current && current.id === subject.id && !childAlreadyPresent
-            ? { ...current, childTopicCount: current.childTopicCount + 1 }
-            : current
-        );
-      });
-
-      setChildSubjectDraft('');
-      setShowChildSubjectCreator(false);
-    } catch (createError) {
-      console.error(createError);
-      setError(createError instanceof Error ? createError.message : 'Failed to create child subject.');
-    } finally {
-      setCreatingChildSubject(false);
     }
   };
 
@@ -266,40 +210,6 @@ const TopicPage: React.FC = () => {
       setError('Failed to create topic.');
     } finally {
       setCreatingStudyTopic(false);
-    }
-  };
-
-  const handleDeleteChildSubject = async (childSubject: TopicSummary) => {
-    if (!canDeleteChildSubject(childSubject)) return;
-
-    const confirmed = window.confirm(`Remove "${childSubject.name}" from this subject?`);
-    if (!confirmed) return;
-
-    setDeletingChildSubjectId(childSubject.id);
-    setError(null);
-
-    try {
-      await deleteTopic(childSubject.id);
-
-      startTransition(() => {
-        setSubjects((current) =>
-          current
-            .filter((entry) => entry.id !== childSubject.id)
-            .map((entry) =>
-              entry.id === subject?.id
-                ? { ...entry, childTopicCount: Math.max(0, entry.childTopicCount - 1) }
-                : entry
-            )
-        );
-        setSubject((current) =>
-          current ? { ...current, childTopicCount: Math.max(0, current.childTopicCount - 1) } : current
-        );
-      });
-    } catch (deleteError) {
-      console.error(deleteError);
-      setError(deleteError instanceof Error ? deleteError.message : 'Failed to remove child subject.');
-    } finally {
-      setDeletingChildSubjectId(null);
     }
   };
 
@@ -382,6 +292,7 @@ const TopicPage: React.FC = () => {
             ) : (
               <span>Root subject</span>
             )}
+            <span>{childSubjects.length} child subject{childSubjects.length === 1 ? '' : 's'} in tree</span>
           </div>
           <div className="topic-page-hero-actions">
             <button
@@ -434,77 +345,6 @@ const TopicPage: React.FC = () => {
       {error ? <div className="topic-page-error">{error}</div> : null}
 
       <div className="topic-page-main">
-          <section className="topic-page-panel">
-            <div className="topic-page-section-head">
-              <div>
-                <span className="topic-page-eyebrow">Branches</span>
-                <h2>
-                  Child subjects
-                  <span className="topic-page-count-badge">{childSubjects.length}</span>
-                </h2>
-              </div>
-              <button
-                type="button"
-                className="topic-page-secondary-button"
-                onClick={() => setShowChildSubjectCreator((current) => !current)}
-              >
-                {showChildSubjectCreator ? 'Close' : 'Add child subject'}
-              </button>
-            </div>
-
-            {showChildSubjectCreator ? (
-              <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateChildSubject}>
-                <div className="topic-page-form-row">
-                  <input
-                    value={childSubjectDraft}
-                    onChange={(event) => setChildSubjectDraft(event.target.value)}
-                    placeholder={`New child under ${subject.name}`}
-                  />
-                </div>
-                <button type="submit" disabled={creatingChildSubject}>
-                  {creatingChildSubject ? 'Creating...' : 'Create child subject'}
-                </button>
-              </form>
-            ) : null}
-
-            {childSubjects.length === 0 ? (
-              <div className="topic-page-empty">No child subjects yet.</div>
-            ) : (
-              <div className="topic-page-card-grid">
-                {childSubjects.map((childSubject) => (
-                  <article key={childSubject.id} className="topic-page-card">
-                    <Link to={`/topics/${childSubject.id}`} className="topic-page-card-link">
-                      <strong>{childSubject.name}</strong>
-                    </Link>
-                    <div className="topic-page-card-meta">
-                      <span>{childSubject.topicCount} topics</span>
-                      <span>{childSubject.childTopicCount} child subjects</span>
-                    </div>
-                    {childSubject.description ? <p>{childSubject.description}</p> : null}
-                    <div className="topic-page-card-actions">
-                      <Link to={`/topics/${childSubject.id}`} className="topic-page-card-button">
-                        Open subject
-                      </Link>
-                      <button
-                        type="button"
-                        className="topic-page-danger-button"
-                        onClick={() => handleDeleteChildSubject(childSubject)}
-                        disabled={!canDeleteChildSubject(childSubject) || deletingChildSubjectId === childSubject.id}
-                        title={
-                          canDeleteChildSubject(childSubject)
-                            ? 'Remove this empty leaf subject'
-                            : 'Only empty leaf subjects can be removed here'
-                        }
-                      >
-                        {deletingChildSubjectId === childSubject.id ? 'Removing...' : 'Remove'}
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
