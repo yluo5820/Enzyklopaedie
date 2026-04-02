@@ -113,7 +113,7 @@ export interface KnowledgeReview {
     createdAt: string;
     updatedAt: string;
 }
-export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'reference_entity_created' | 'reference_entity_updated' | 'subject_created' | 'topic_created' | 'topic_deleted' | 'note_created' | 'task_created' | 'relation_created' | 'review_created' | 'task_completed' | 'exhibit_published';
+export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'reference_entity_created' | 'reference_entity_updated' | 'subject_created' | 'topic_created' | 'topic_updated' | 'topic_deleted' | 'note_created' | 'task_created' | 'relation_created' | 'review_created' | 'task_completed' | 'exhibit_published';
 export interface ActivityEvent {
     id: number;
     type: ActivityEventType;

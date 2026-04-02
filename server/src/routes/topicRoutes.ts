@@ -5,6 +5,7 @@ import {
   getAllTopics,
   getKnowledgeItemsByTopic,
   getTopicById,
+  updateTopic,
 } from '../controllers/topicController';
 import {
   createTopicRelation,
@@ -19,6 +20,7 @@ router.get('/:id', getTopicById);
 router.get('/:id/knowledge-items', getKnowledgeItemsByTopic);
 router.get('/:id/relations', getRelationsByTopic);
 router.post('/', createTopic);
+router.put('/:id', updateTopic);
 router.post('/:id/relations', createTopicRelation);
 router.delete('/:id', deleteTopic);
 router.delete('/:id/relations/:relationId', deleteTopicRelation);

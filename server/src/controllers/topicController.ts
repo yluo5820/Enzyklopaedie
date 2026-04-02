@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { NewTopic, Topic } from '@enzyklopaedie/shared';
+import { NewTopic, Topic, UpdateTopic } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
 import { recordActivityEvent } from '../lib/activity';
 import {
@@ -148,6 +148,104 @@ export const createTopic = asyncErrorHandler(async (req: Request, res: Response)
   });
 
   res.status(201).json(createdTopic);
+});
+
+export const updateTopic = asyncErrorHandler(async (req: Request, res: Response) => {
+  const db = await getDb();
+  const topicId = parseId(req.params.id);
+  if (!topicId) {
+    return res.status(400).json({ message: 'Invalid topic id' });
+  }
+
+  const existingTopic = await db.get<Topic>('SELECT * FROM study_topics WHERE id = ?', topicId);
+  if (!existingTopic) {
+    return res.status(404).json({ message: 'Topic not found' });
+  }
+
+  const existingSummary = await getTopicSummaryById(topicId);
+  if (!existingSummary) {
+    return res.status(404).json({ message: 'Topic not found' });
+  }
+
+  const updates: UpdateTopic = req.body ?? {};
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let nextName = existingTopic.name;
+  let nextSlug = existingTopic.slug;
+
+  if (updates.name !== undefined) {
+    const name = typeof updates.name === 'string' ? updates.name.trim() : '';
+    if (!name) {
+      return res.status(400).json({ message: 'Topic name is required' });
+    }
+
+    const duplicate = existingTopic.parentTopicId
+      ? await db.get<Topic>(
+          `SELECT * FROM study_topics
+           WHERE subjectId = ? AND parentTopicId = ? AND lower(name) = lower(?) AND id != ?`,
+          existingTopic.subjectId,
+          existingTopic.parentTopicId,
+          name,
+          topicId
+        )
+      : await db.get<Topic>(
+          `SELECT * FROM study_topics
+           WHERE subjectId = ? AND parentTopicId IS NULL AND lower(name) = lower(?) AND id != ?`,
+          existingTopic.subjectId,
+          name,
+          topicId
+        );
+
+    if (duplicate) {
+      return res.status(409).json({ message: 'A sibling topic with that name already exists' });
+    }
+
+    nextName = name;
+    nextSlug =
+      name === existingTopic.name
+        ? existingTopic.slug
+        : await generateUniqueTopicSlug(db, name, existingSummary.subjectSlug);
+
+    fields.push('name = ?', 'slug = ?');
+    values.push(nextName, nextSlug);
+  }
+
+  if (updates.summary !== undefined) {
+    fields.push('summary = ?');
+    values.push(typeof updates.summary === 'string' ? updates.summary.trim() || null : null);
+  }
+
+  if (updates.description !== undefined) {
+    fields.push('description = ?');
+    values.push(typeof updates.description === 'string' ? updates.description.trim() || null : null);
+  }
+
+  if (fields.length === 0) {
+    return res.status(400).json({ message: 'No fields to update' });
+  }
+
+  const now = new Date().toISOString();
+  fields.push('updatedAt = ?');
+  values.push(now, topicId);
+
+  await db.run(`UPDATE study_topics SET ${fields.join(', ')} WHERE id = ?`, ...values);
+
+  const updatedTopic = await getTopicSummaryById(topicId);
+
+  await recordActivityEvent({
+    type: 'topic_updated',
+    entityType: 'topic',
+    entityId: topicId,
+    message: `Updated topic "${nextName}"`,
+    metadata: {
+      slug: nextSlug,
+      subjectId: existingTopic.subjectId,
+      subjectName: existingSummary.subjectName,
+      parentTopicId: existingTopic.parentTopicId ?? null,
+    },
+  });
+
+  res.json(updatedTopic);
 });
 
 export const deleteTopic = asyncErrorHandler(async (req: Request, res: Response) => {

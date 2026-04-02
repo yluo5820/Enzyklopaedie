@@ -471,6 +471,21 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(fetchedStudyTopic.subjectId, childSubject.id);
     assert.equal(fetchedStudyTopic.itemCount, 1);
 
+    const updatedStudyTopicResponse = await request(`/api/topics/${studyTopic.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Late Antique Mediterranean Thought',
+        summary: 'A tighter curation summary for the topic page.',
+        description: 'Updated from the API test to verify topic editing.',
+      }),
+    });
+    assert.equal(updatedStudyTopicResponse.status, 200);
+    const updatedStudyTopic = await updatedStudyTopicResponse.json();
+    assert.equal(updatedStudyTopic.name, 'Late Antique Mediterranean Thought');
+    assert.equal(updatedStudyTopic.summary, 'A tighter curation summary for the topic page.');
+    assert.equal(updatedStudyTopic.description, 'Updated from the API test to verify topic editing.');
+
     const topicKnowledgeItemsResponse = await request(`/api/topics/${studyTopic.id}/knowledge-items`);
     assert.equal(topicKnowledgeItemsResponse.status, 200);
     const topicKnowledgeItems = await topicKnowledgeItemsResponse.json();

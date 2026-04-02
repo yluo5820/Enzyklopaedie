@@ -19,6 +19,7 @@ import {
   fetchTopicKnowledgeItems as fetchStudyTopicKnowledgeItems,
   fetchTopicRelations as fetchStudyTopicRelations,
   fetchTopics as fetchStudyTopics,
+  updateTopic as updateStudyTopic,
 } from '../api';
 import './TopicPage.css';
 
@@ -176,8 +177,15 @@ const TopicPage: React.FC = () => {
   const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showTopicEditor, setShowTopicEditor] = useState(false);
+  const [savingTopic, setSavingTopic] = useState(false);
   const [showRelationComposer, setShowRelationComposer] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
+  const [topicForm, setTopicForm] = useState({
+    description: '',
+    name: '',
+    summary: '',
+  });
   const [relationForm, setRelationForm] = useState({
     toEntityId: '',
     relationType: 'about' as KnowledgeRelationType,
@@ -266,6 +274,24 @@ const TopicPage: React.FC = () => {
     () => getStudyTopicRelationPreset(selectedRelationTarget?.kind),
     [selectedRelationTarget?.kind]
   );
+  const relationCountsByKind = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const relation of relations) {
+      const kind = relation.toEntityKind ?? 'other';
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    return counts;
+  }, [relations]);
+
+  useEffect(() => {
+    if (!studyTopic) return;
+
+    setTopicForm({
+      description: studyTopic.description ?? '',
+      name: studyTopic.name,
+      summary: studyTopic.summary ?? '',
+    });
+  }, [studyTopic]);
 
   useEffect(() => {
     setRelationForm((current) => {
@@ -283,6 +309,35 @@ const TopicPage: React.FC = () => {
       };
     });
   }, [relationPreset]);
+
+  const handleSaveTopic = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!studyTopic || !topicForm.name.trim()) return;
+
+    setSavingTopic(true);
+    setError(null);
+
+    try {
+      const updatedTopic = await updateStudyTopic(studyTopic.id, {
+        name: topicForm.name.trim(),
+        summary: topicForm.summary.trim() || undefined,
+        description: topicForm.description.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setStudyTopic(updatedTopic);
+        setSiblingTopics((current) =>
+          current.map((entry) => (entry.id === updatedTopic.id ? updatedTopic : entry))
+        );
+      });
+      setShowTopicEditor(false);
+    } catch (topicError) {
+      console.error(topicError);
+      setError(topicError instanceof Error ? topicError.message : 'Failed to save topic.');
+    } finally {
+      setSavingTopic(false);
+    }
+  };
 
   const handleCreateRelation = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -380,7 +435,84 @@ const TopicPage: React.FC = () => {
             )}
             <span>{studyTopic.childTopicCount} child topic{studyTopic.childTopicCount === 1 ? '' : 's'}</span>
             <span>{studyTopic.itemCount} item{studyTopic.itemCount === 1 ? '' : 's'}</span>
+            <span>{relations.length} linked entit{relations.length === 1 ? 'y' : 'ies'}</span>
             <span>Updated {formatDate(studyTopic.updatedAt)}</span>
+          </div>
+          <div className="topic-page-hero-actions">
+            <button
+              type="button"
+              className="topic-page-secondary-button"
+              onClick={() => setShowTopicEditor((current) => !current)}
+            >
+              {showTopicEditor ? 'Close topic editor' : 'Edit topic'}
+            </button>
+          </div>
+          {showTopicEditor ? (
+            <form className="topic-page-form topic-page-inline-panel" onSubmit={handleSaveTopic}>
+              <div className="topic-page-form-row">
+                <input
+                  value={topicForm.name}
+                  onChange={(event) =>
+                    setTopicForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Topic name"
+                />
+              </div>
+              <input
+                value={topicForm.summary}
+                onChange={(event) =>
+                  setTopicForm((current) => ({
+                    ...current,
+                    summary: event.target.value,
+                  }))
+                }
+                placeholder="Short topic summary"
+              />
+              <textarea
+                value={topicForm.description}
+                onChange={(event) =>
+                  setTopicForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="Longer description for the topic page"
+              />
+              <button type="submit" disabled={savingTopic}>
+                {savingTopic ? 'Saving...' : 'Save topic'}
+              </button>
+            </form>
+          ) : null}
+          <div className="topic-page-overview-grid">
+            <article className="topic-page-overview-card">
+              <span className="topic-page-eyebrow">Placement</span>
+              <strong>{parentTopic ? parentTopic.name : 'Top-level topic'}</strong>
+              <p>{parentTopic ? 'This topic lives inside a larger branch.' : 'This topic begins a branch directly under the subject.'}</p>
+            </article>
+            <article className="topic-page-overview-card">
+              <span className="topic-page-eyebrow">Study Material</span>
+              <strong>{knowledgeItems.length} item{knowledgeItems.length === 1 ? '' : 's'}</strong>
+              <p>These are the concrete works currently placed in this topic.</p>
+            </article>
+            <article className="topic-page-overview-card">
+              <span className="topic-page-eyebrow">Subtopics</span>
+              <strong>{childTopics.length} child topic{childTopics.length === 1 ? '' : 's'}</strong>
+              <p>Browse the narrower branches already growing beneath this topic.</p>
+            </article>
+            <article className="topic-page-overview-card">
+              <span className="topic-page-eyebrow">Historical Frame</span>
+              <strong>{relations.length} linked entit{relations.length === 1 ? 'y' : 'ies'}</strong>
+              <p>
+                {relations.length > 0
+                  ? [...relationCountsByKind.entries()]
+                      .map(([kind, count]) => `${count} ${kind}`)
+                      .join(', ')
+                  : 'No people, eras, nations, civilizations, or places are linked yet.'}
+              </p>
+            </article>
           </div>
         </div>
       </section>
@@ -391,41 +523,14 @@ const TopicPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Branches</span>
-                <h2>
-                  Child topics
-                  <span className="topic-page-count-badge">{childTopics.length}</span>
-                </h2>
-                <p className="topic-page-copy">
-                  Topic branching is managed from the subject page. Use this section to navigate the
-                  subtopics that already live under the current topic.
-                </p>
-              </div>
-            </div>
-
-            {childTopics.length === 0 ? (
-              <div className="topic-page-empty">No child topics yet.</div>
-            ) : (
-              <div className="topic-page-card-grid">
-                {childTopics.map((childTopic) => (
-                  <Link key={childTopic.id} to={`/topics/${childTopic.id}`} className="topic-page-card">
-                    <strong>{childTopic.name}</strong>
-                    <span>{childTopic.itemCount} contained items</span>
-                    <span>{childTopic.childTopicCount} child topics</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="topic-page-panel">
-            <div className="topic-page-section-head">
-              <div>
-                <span className="topic-page-eyebrow">Contained Items</span>
+                <span className="topic-page-eyebrow">Study Material</span>
                 <h2>
                   Items in this topic
                   <span className="topic-page-count-badge">{knowledgeItems.length}</span>
                 </h2>
+                <p className="topic-page-copy">
+                  This is the concrete reading and viewing list that gives the topic its substance.
+                </p>
               </div>
             </div>
 
@@ -457,14 +562,13 @@ const TopicPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Reference Atlas</span>
+                <span className="topic-page-eyebrow">Historical Frame</span>
                 <h2>
                   Context composition
                   <span className="topic-page-count-badge">{relations.length}</span>
                 </h2>
                 <p className="topic-page-copy">
-                  This is where a topic becomes historically or geographically specific. Keep the topic
-                  structure conceptual; use entities to add era, place, polity, civilization, or person.
+                  This is where a topic becomes historically or geographically specific. Keep the branch conceptual; use entities to add era, place, polity, civilization, or person.
                 </p>
               </div>
               <button
@@ -559,6 +663,39 @@ const TopicPage: React.FC = () => {
                       </button>
                     </div>
                   </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="topic-page-panel">
+            <div className="topic-page-section-head">
+              <div>
+                <span className="topic-page-eyebrow">Branches</span>
+                <h2>
+                  Child topics
+                  <span className="topic-page-count-badge">{childTopics.length}</span>
+                </h2>
+                <p className="topic-page-copy">
+                  Topic branching is managed from the subject page. Use this section to navigate the
+                  subtopics that already live under the current topic.
+                </p>
+              </div>
+            </div>
+
+            {childTopics.length === 0 ? (
+              <div className="topic-page-empty">No child topics yet.</div>
+            ) : (
+              <div className="topic-page-card-grid">
+                {childTopics.map((childTopic) => (
+                  <Link key={childTopic.id} to={`/topics/${childTopic.id}`} className="topic-page-card">
+                    <strong>{childTopic.name}</strong>
+                    <div className="topic-page-card-meta">
+                      <span>{childTopic.itemCount} contained items</span>
+                      <span>{childTopic.childTopicCount} child topics</span>
+                    </div>
+                    {childTopic.summary || childTopic.description ? <p>{childTopic.summary || childTopic.description}</p> : null}
+                  </Link>
                 ))}
               </div>
             )}

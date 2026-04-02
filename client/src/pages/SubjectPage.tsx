@@ -47,6 +47,25 @@ const orderStudyTopics = (studyTopics: StudyTopicSummary[]) => {
   return ordered;
 };
 
+const buildTopicPath = (
+  topic: StudyTopicSummary,
+  topicMap: Map<number, StudyTopicSummary>
+) => {
+  const parts = [topic.name];
+  let currentParentId = topic.parentTopicId;
+  let guard = 0;
+
+  while (currentParentId && guard < 16) {
+    const parent = topicMap.get(currentParentId);
+    if (!parent) break;
+    parts.unshift(parent.name);
+    currentParentId = parent.parentTopicId;
+    guard += 1;
+  }
+
+  return parts.join(' / ');
+};
+
 const SubjectPage: React.FC = () => {
   const { id } = useParams();
   const subjectId = Number(id);
@@ -129,6 +148,22 @@ const SubjectPage: React.FC = () => {
     return path;
   }, [subject, subjectMap]);
   const orderedStudyTopics = useMemo(() => orderStudyTopics(studyTopics), [studyTopics]);
+  const topicMap = useMemo(() => new Map(studyTopics.map((entry) => [entry.id, entry])), [studyTopics]);
+  const topLevelStudyTopics = useMemo(
+    () => orderedStudyTopics.filter(({ depth }) => depth === 0),
+    [orderedStudyTopics]
+  );
+  const nestedStudyTopics = useMemo(
+    () =>
+      orderedStudyTopics
+        .filter(({ depth }) => depth > 0)
+        .map(({ topic, depth }) => ({
+          depth,
+          path: buildTopicPath(topic, topicMap),
+          topic,
+        })),
+    [orderedStudyTopics, topicMap]
+  );
 
   useEffect(() => {
     if (!subject) return;
@@ -295,6 +330,8 @@ const SubjectPage: React.FC = () => {
             ) : (
               <span>Root subject</span>
             )}
+            <span>{orderedStudyTopics.length} topic{orderedStudyTopics.length === 1 ? '' : 's'}</span>
+            <span>{subject.knowledgeItemCount} item{subject.knowledgeItemCount === 1 ? '' : 's'} through topics</span>
             <span>{childSubjects.length} child subject{childSubjects.length === 1 ? '' : 's'} in tree</span>
           </div>
           <div className="topic-page-hero-actions">
@@ -351,12 +388,14 @@ const SubjectPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Contained Topics</span>
+                <span className="topic-page-eyebrow">Topic Landscape</span>
                 <h2>
                   Topics inside this subject
                   <span className="topic-page-count-badge">{orderedStudyTopics.length}</span>
                 </h2>
-                <p className="topic-page-section-copy">{subject.knowledgeItemCount} items through these topics.</p>
+                <p className="topic-page-section-copy">
+                  Keep the subject itself synchronic. The contextual branches below it are where specific lines of study, periods, and item clusters actually live.
+                </p>
               </div>
               <button
                 type="button"
@@ -408,38 +447,98 @@ const SubjectPage: React.FC = () => {
                 No topics yet. Create the first contextual topic under this subject.
               </div>
             ) : (
-              <div className="topic-page-card-grid">
-                {orderedStudyTopics.map(({ topic, depth }) => (
-                  <article key={topic.id} className="topic-page-card">
-                    <Link to={`/topics/${topic.id}`} className="topic-page-card-link">
-                      <strong>{topic.name}</strong>
-                    </Link>
-                    <div className="topic-page-card-meta">
-                      {depth > 0 ? <span>Depth {depth + 1}</span> : <span>Top-level topic</span>}
-                      <span>{topic.itemCount} items</span>
-                      <span>{topic.childTopicCount} child topics</span>
+              <div className="topic-page-subsection-stack">
+                <section className="topic-page-subsection">
+                  <div className="topic-page-subsection-head">
+                    <h3>Top-level topics</h3>
+                    <span className="topic-page-count-badge">{topLevelStudyTopics.length}</span>
+                  </div>
+                  <p className="topic-page-section-copy">
+                    These are the first practical branches directly beneath this subject.
+                  </p>
+                  <div className="topic-page-card-grid">
+                    {topLevelStudyTopics.map(({ topic }) => (
+                      <article key={topic.id} className="topic-page-card">
+                        <Link to={`/topics/${topic.id}`} className="topic-page-card-link">
+                          <strong>{topic.name}</strong>
+                        </Link>
+                        <div className="topic-page-card-meta">
+                          <span>{topic.itemCount} items</span>
+                          <span>{topic.childTopicCount} child topics</span>
+                        </div>
+                        {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
+                        <div className="topic-page-card-actions">
+                          <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
+                            Open topic
+                          </Link>
+                          <button
+                            type="button"
+                            className="topic-page-danger-button"
+                            onClick={() => handleDeleteStudyTopic(topic)}
+                            disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
+                            title={
+                              canDeleteStudyTopic(topic)
+                                ? 'Remove this empty leaf topic'
+                                : 'Only empty leaf topics with no items can be removed here'
+                            }
+                          >
+                            {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                {nestedStudyTopics.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>Nested branches</h3>
+                      <span className="topic-page-count-badge">{nestedStudyTopics.length}</span>
                     </div>
-                    {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
-                    <div className="topic-page-card-actions">
-                      <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
-                        Open topic
-                      </Link>
-                      <button
-                        type="button"
-                        className="topic-page-danger-button"
-                        onClick={() => handleDeleteStudyTopic(topic)}
-                        disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
-                        title={
-                          canDeleteStudyTopic(topic)
-                            ? 'Remove this empty leaf topic'
-                            : 'Only empty leaf topics with no items can be removed here'
-                        }
-                      >
-                        {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
-                      </button>
+                    <p className="topic-page-section-copy">
+                      Deeper topic branches stay readable here as paths instead of flattening the whole subject into one long card grid.
+                    </p>
+                    <div className="topic-page-item-list">
+                      {nestedStudyTopics.map(({ topic, depth, path }) => (
+                        <article key={topic.id} className="topic-page-item-card">
+                          <div className="topic-page-item-top">
+                            <div className="topic-page-item-badges">
+                              <span>Depth {depth + 1}</span>
+                              <span>{topic.childTopicCount} child topics</span>
+                              <span>{topic.itemCount} items</span>
+                            </div>
+                            <Link to={`/topics/${topic.id}`} className="topic-page-item-link">
+                              <strong>{topic.name}</strong>
+                            </Link>
+                          </div>
+                          <div className="topic-page-item-meta">
+                            <span>{path}</span>
+                          </div>
+                          {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
+                          <div className="topic-page-item-actions">
+                            <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
+                              Open topic
+                            </Link>
+                            <button
+                              type="button"
+                              className="topic-page-danger-button"
+                              onClick={() => handleDeleteStudyTopic(topic)}
+                              disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
+                              title={
+                                canDeleteStudyTopic(topic)
+                                  ? 'Remove this empty leaf topic'
+                                  : 'Only empty leaf topics with no items can be removed here'
+                              }
+                            >
+                              {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
                     </div>
-                  </article>
-                ))}
+                  </section>
+                ) : null}
               </div>
             )}
           </section>
