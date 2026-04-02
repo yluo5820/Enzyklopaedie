@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, NavLink, Routes, Route, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import WorldHistoryPage from './pages/WorldHistoryPage';
 import KnowledgePage from './pages/KnowledgePage';
@@ -9,71 +9,90 @@ import ReferenceEntityPage from './pages/ReferenceEntityPage';
 import TopicTreePage from './pages/TopicTreePage';
 import TopicPage from './pages/TopicPage';
 import StudyTopicPage from './pages/StudyTopicPage';
+import './App.css';
+
+type NavItem = {
+  label: string;
+  match: (pathname: string) => boolean;
+  to: string;
+};
+
+const navItems: NavItem[] = [
+  {
+    label: 'Home',
+    to: '/',
+    match: (pathname) => pathname === '/',
+  },
+  {
+    label: 'Items',
+    to: '/knowledge',
+    match: (pathname) => pathname.startsWith('/knowledge'),
+  },
+  {
+    label: 'Subjects',
+    to: '/topics',
+    match: (pathname) => pathname.startsWith('/topics') || pathname.startsWith('/study-topics'),
+  },
+  {
+    label: 'Entities',
+    to: '/entities',
+    match: (pathname) => pathname.startsWith('/entities'),
+  },
+  {
+    label: 'World History',
+    to: '/world-history',
+    match: (pathname) => pathname.startsWith('/world-history'),
+  },
+];
+
+const AppShell: React.FC = () => {
+  const location = useLocation();
+  const currentNavItem = navItems.find((item) => item.match(location.pathname)) ?? navItems[0];
+
+  return (
+    <div className="app-shell">
+      <nav className="app-nav">
+        <div className="app-nav-inner">
+          <div className="app-nav-brand">
+            <span className="app-nav-eyebrow">Enzyklopaedie</span>
+            <strong>{currentNavItem.label}</strong>
+          </div>
+
+          <div className="app-nav-links" aria-label="Main navigation">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={item.match(location.pathname) ? 'app-nav-link is-active' : 'app-nav-link'}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      <main className="app-main">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
+          <Route path="/topics" element={<TopicTreePage />} />
+          <Route path="/topics/:id" element={<TopicPage />} />
+          <Route path="/study-topics/:id" element={<StudyTopicPage />} />
+          <Route path="/entities" element={<ReferenceEntitiesPage />} />
+          <Route path="/entities/:id" element={<ReferenceEntityPage />} />
+          <Route path="/world-history" element={<WorldHistoryPage />} />
+        </Routes>
+      </main>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   return (
     <Router>
-      <div
-        style={{
-          minHeight: '100vh',
-          backgroundColor: '#f8f9fa',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <nav style={{
-          padding: '15px 0',
-          backgroundColor: 'white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          marginBottom: '20px',
-        }}>
-          <div style={{
-            maxWidth: '1200px',
-            margin: '0 auto',
-            padding: '0 20px',
-          }}>
-            <ul style={{
-              listStyle: 'none',
-              padding: 0,
-              margin: 0,
-              display: 'flex',
-              gap: '20px',
-              justifyContent: 'center',
-              flexWrap: 'wrap',
-            }}>
-              <li><Link to="/" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Home</Link></li>
-              <li><Link to="/knowledge" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Items</Link></li>
-              <li><Link to="/topics" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Subjects</Link></li>
-              <li><Link to="/entities" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>Entities</Link></li>
-              <li><Link to="/world-history" style={{ textDecoration: 'none', color: '#333', fontWeight: '500', padding: '8px 12px', borderRadius: '6px', transition: 'background-color 0.2s' }}>World History</Link></li>
-            </ul>
-          </div>
-        </nav>
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'flex-start',
-            width: '100%',
-            minHeight: 'calc(100vh - 70px)', // adjust for nav height
-            padding: '40px 0',
-          }}
-        >
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/knowledge" element={<KnowledgePage />} />
-            <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
-            <Route path="/topics" element={<TopicTreePage />} />
-            <Route path="/topics/:id" element={<TopicPage />} />
-            <Route path="/study-topics/:id" element={<StudyTopicPage />} />
-            <Route path="/entities" element={<ReferenceEntitiesPage />} />
-            <Route path="/entities/:id" element={<ReferenceEntityPage />} />
-            <Route path="/world-history" element={<WorldHistoryPage />} />
-          </Routes>
-        </div>
-      </div>
+      <AppShell />
     </Router>
   );
 };
