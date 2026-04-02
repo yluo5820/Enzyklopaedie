@@ -40,7 +40,7 @@ import {
   updateKnowledgeItem,
   updateKnowledgeTask,
 } from '../api';
-import './KnowledgeDetailPage.css';
+import './ItemDetailPage.css';
 
 const itemStatusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 const taskStatusOptions: KnowledgeTaskStatus[] = ['todo', 'doing', 'done', 'archived'];
@@ -362,7 +362,7 @@ const buildStudyTopicPath = (
   return parts.join(' / ');
 };
 
-const KnowledgeDetailPage: React.FC = () => {
+const ItemDetailPage: React.FC = () => {
   const { id } = useParams();
   const knowledgeItemId = Number(id);
 
@@ -1721,4 +1721,4 @@ const KnowledgeDetailPage: React.FC = () => {
   );
 };
 
-export default KnowledgeDetailPage;
+export default ItemDetailPage;

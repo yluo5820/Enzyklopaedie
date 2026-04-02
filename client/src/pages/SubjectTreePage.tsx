@@ -2,7 +2,7 @@ import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type { TopicSummary } from '@enzyklopaedie/shared';
 import { useNavigate } from 'react-router-dom';
 import { createTopic, deleteTopic, fetchTopics } from '../api';
-import './TopicTreePage.css';
+import './SubjectTreePage.css';
 
 interface PositionedTopic {
   topic: TopicSummary;
@@ -125,7 +125,7 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
   };
 };
 
-const TopicTreePage: React.FC = () => {
+const SubjectTreePage: React.FC = () => {
   const navigate = useNavigate();
   const [topics, setTopics] = useState<TopicSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -494,4 +494,4 @@ const TopicTreePage: React.FC = () => {
   );
 };
 
-export default TopicTreePage;
+export default SubjectTreePage;

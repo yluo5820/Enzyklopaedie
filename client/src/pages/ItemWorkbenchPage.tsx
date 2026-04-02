@@ -19,7 +19,7 @@ import {
   fetchReferenceEntities,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
-import './KnowledgePage.css';
+import './ItemWorkbenchPage.css';
 
 type ItemWorkbenchPreset = {
   creatorLabel: string;
@@ -180,7 +180,7 @@ const FieldLabel: React.FC<FieldLabelProps> = ({ htmlFor, hint, label, required 
   </label>
 );
 
-const KnowledgePage: React.FC = () => {
+const ItemWorkbenchPage: React.FC = () => {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [people, setPeople] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -751,4 +751,4 @@ const KnowledgePage: React.FC = () => {
   );
 };
 
-export default KnowledgePage;
+export default ItemWorkbenchPage;

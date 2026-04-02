@@ -1,15 +1,99 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
-import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
+import type {
+  KnowledgeItem,
+  KnowledgeRelationDetail,
+  KnowledgeRelationType,
+  ReferenceEntity,
+  ReferenceEntityKind,
+  StudyTopicSummary,
+  TopicSummary,
+} from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
-  createStudyTopic,
-  deleteStudyTopic,
+  createStudyTopicRelation,
+  deleteStudyTopicRelation,
+  fetchReferenceEntities,
+  fetchStudyTopic,
+  fetchStudyTopicKnowledgeItems,
+  fetchStudyTopicRelations,
   fetchStudyTopics,
   fetchTopic,
   fetchTopics,
-  updateTopic,
 } from '../api';
 import './TopicPage.css';
+
+type StudyTopicRelationPreset = {
+  allowedRelationTypes: KnowledgeRelationType[];
+  defaultRelationType: KnowledgeRelationType;
+  helperText: string;
+  notePlaceholder: string;
+  targetPrompt: string;
+};
+
+const relationKindOrder: ReferenceEntityKind[] = [
+  'person',
+  'era',
+  'nation',
+  'civilization',
+  'place',
+];
+
+const getStudyTopicRelationPreset = (
+  targetEntityKind?: ReferenceEntityKind
+): StudyTopicRelationPreset => {
+  if (targetEntityKind === 'person') {
+    return {
+      allowedRelationTypes: ['about', 'influenced_by', 'related_to'],
+      defaultRelationType: 'about',
+      helperText:
+        'Use people here when a topic centers on a thinker, school founder, or historically decisive figure.',
+      notePlaceholder: 'Optional note about this person in the topic context',
+      targetPrompt: 'Choose a person',
+    };
+  }
+
+  if (targetEntityKind === 'era') {
+    return {
+      allowedRelationTypes: ['during', 'about', 'related_to'],
+      defaultRelationType: 'during',
+      helperText:
+        'Use eras to temporalize the topic. Choose during when the topic belongs to a period, or about when the period is itself the explicit object.',
+      notePlaceholder: 'Optional note about the period context',
+      targetPrompt: 'Choose an era',
+    };
+  }
+
+  if (targetEntityKind === 'nation' || targetEntityKind === 'place') {
+    return {
+      allowedRelationTypes: ['located_in', 'about', 'related_to'],
+      defaultRelationType: 'located_in',
+      helperText:
+        'Use nations and places to localize the topic in geography or political space. Choose about only when the entity is itself the object of study.',
+      notePlaceholder: 'Optional note about this place or polity',
+      targetPrompt: targetEntityKind === 'nation' ? 'Choose a nation' : 'Choose a place',
+    };
+  }
+
+  if (targetEntityKind === 'civilization') {
+    return {
+      allowedRelationTypes: ['part_of', 'about', 'related_to'],
+      defaultRelationType: 'part_of',
+      helperText:
+        'Use civilizations as the broad spatial-temporal horizon around the topic, or as the explicit civilizational subject.',
+      notePlaceholder: 'Optional note about this civilizational frame',
+      targetPrompt: 'Choose a civilization',
+    };
+  }
+
+  return {
+    allowedRelationTypes: ['about', 'during', 'located_in', 'part_of', 'related_to'],
+    defaultRelationType: 'about',
+    helperText:
+      'Choose the reference entity first. The relation verbs will narrow once the topic’s historical or geographic frame is clear.',
+    notePlaceholder: 'Optional note about why this entity matters here',
+    targetPrompt: 'Choose a person, era, nation, civilization, or place',
+  };
+};
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -18,327 +102,286 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
-const orderStudyTopics = (studyTopics: StudyTopicSummary[]) => {
-  const children = new Map<number | null, StudyTopicSummary[]>();
+const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
 
-  for (const topic of studyTopics) {
-    const key = topic.parentTopicId ?? null;
-    const branch = children.get(key) ?? [];
-    branch.push(topic);
-    children.set(key, branch);
+const formatYear = (value?: number) => {
+  if (value === undefined) return null;
+  if (value < 0) return `${Math.abs(value)} BCE`;
+  if (value > 0) return `${value} CE`;
+  return 'Year 0';
+};
+
+const formatReferenceTimespan = (entity: ReferenceEntity) => {
+  const start = formatYear(entity.startYear);
+  const end = formatYear(entity.endYear);
+
+  if (start && end) return `${start} - ${end}`;
+  return start || end || null;
+};
+
+const TopicLineage = ({
+  studyTopic,
+  topicMap,
+  subject,
+}: {
+  studyTopic: StudyTopicSummary;
+  topicMap: Map<number, StudyTopicSummary>;
+  subject: TopicSummary | null;
+}) => {
+  const path: Array<{ id: number; name: string; href: string }> = [];
+
+  if (subject) {
+    path.push({ id: subject.id, name: subject.name, href: `/topics/${subject.id}` });
   }
 
-  for (const branch of children.values()) {
-    branch.sort((left, right) => left.name.localeCompare(right.name));
+  const ancestors: StudyTopicSummary[] = [];
+  let currentParentId = studyTopic.parentTopicId;
+  let guard = 0;
+
+  while (currentParentId && guard < 16) {
+    const parent = topicMap.get(currentParentId);
+    if (!parent) break;
+    ancestors.unshift(parent);
+    currentParentId = parent.parentTopicId;
+    guard += 1;
   }
 
-  const ordered: Array<{ topic: StudyTopicSummary; depth: number }> = [];
-  const visit = (parentTopicId: number | null, depth: number) => {
-    for (const topic of children.get(parentTopicId) ?? []) {
-      ordered.push({ topic, depth });
-      visit(topic.id, depth + 1);
-    }
-  };
+  for (const ancestor of ancestors) {
+    path.push({ id: ancestor.id, name: ancestor.name, href: `/study-topics/${ancestor.id}` });
+  }
 
-  visit(null, 0);
-  return ordered;
+  path.push({ id: studyTopic.id, name: studyTopic.name, href: `/study-topics/${studyTopic.id}` });
+
+  return (
+    <div className="topic-page-lineage">
+      {path.map((entry, index) => (
+        <React.Fragment key={`${entry.href}-${entry.id}`}>
+          <Link to={entry.href}>{entry.name}</Link>
+          {index < path.length - 1 ? <span>/</span> : null}
+        </React.Fragment>
+      ))}
+    </div>
+  );
 };
 
 const TopicPage: React.FC = () => {
   const { id } = useParams();
-  const subjectId = Number(id);
+  const studyTopicId = Number(id);
 
+  const [studyTopic, setStudyTopic] = useState<StudyTopicSummary | null>(null);
   const [subject, setSubject] = useState<TopicSummary | null>(null);
-  const [subjects, setSubjects] = useState<TopicSummary[]>([]);
-  const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
+  const [siblingTopics, setSiblingTopics] = useState<StudyTopicSummary[]>([]);
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
+  const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [savingSubject, setSavingSubject] = useState(false);
-  const [showSubjectEditor, setShowSubjectEditor] = useState(false);
-  const [showStudyTopicCreator, setShowStudyTopicCreator] = useState(false);
-  const [creatingStudyTopic, setCreatingStudyTopic] = useState(false);
-  const [deletingStudyTopicId, setDeletingStudyTopicId] = useState<number | null>(null);
-  const [subjectForm, setSubjectForm] = useState({
-    description: '',
-    name: '',
-  });
-  const [studyTopicForm, setStudyTopicForm] = useState({
-    name: '',
-    parentTopicId: '',
+  const [showRelationComposer, setShowRelationComposer] = useState(false);
+  const [savingRelation, setSavingRelation] = useState(false);
+  const [relationForm, setRelationForm] = useState({
+    toEntityId: '',
+    relationType: 'about' as KnowledgeRelationType,
+    note: '',
   });
 
   useEffect(() => {
-    if (!Number.isInteger(subjectId) || subjectId <= 0) {
-      setError('Invalid subject.');
+    if (!Number.isInteger(studyTopicId) || studyTopicId <= 0) {
+      setError('Invalid topic.');
       setLoading(false);
       return;
     }
 
-    const loadSubjectPage = async () => {
+    const loadTopicPage = async () => {
       try {
-        const [fetchedSubject, fetchedSubjects, fetchedStudyTopics] = await Promise.all([
-          fetchTopic(subjectId),
+        const fetchedStudyTopic = await fetchStudyTopic(studyTopicId);
+        const [
+          fetchedSubjects,
+          fetchedSiblingTopics,
+          fetchedKnowledgeItems,
+          fetchedReferenceEntities,
+          fetchedRelations,
+        ] = await Promise.all([
           fetchTopics(),
-          fetchStudyTopics(subjectId),
+          fetchStudyTopics(fetchedStudyTopic.subjectId),
+          fetchStudyTopicKnowledgeItems(studyTopicId),
+          fetchReferenceEntities(),
+          fetchStudyTopicRelations(studyTopicId),
         ]);
 
+        setStudyTopic(fetchedStudyTopic);
+        setSiblingTopics(fetchedSiblingTopics);
+        setKnowledgeItems(fetchedKnowledgeItems);
+        setReferenceEntities(fetchedReferenceEntities);
+        setRelations(fetchedRelations);
+
+        const fetchedSubject =
+          fetchedSubjects.find((entry) => entry.id === fetchedStudyTopic.subjectId) ??
+          (await fetchTopic(fetchedStudyTopic.subjectId));
         setSubject(fetchedSubject);
-        setSubjects(fetchedSubjects);
-        setStudyTopics(fetchedStudyTopics);
       } catch (loadError) {
         console.error(loadError);
-        setError('Failed to load subject page.');
+        setError('Failed to load topic page.');
       } finally {
         setLoading(false);
       }
     };
 
-    loadSubjectPage();
-  }, [subjectId]);
+    loadTopicPage();
+  }, [studyTopicId]);
 
-  const subjectMap = useMemo(() => new Map(subjects.map((entry) => [entry.id, entry])), [subjects]);
-  const parentSubject = useMemo(
-    () => (subject?.parentTopicId ? subjectMap.get(subject.parentTopicId) ?? null : null),
-    [subject?.parentTopicId, subjectMap]
+  const topicMap = useMemo(
+    () => new Map(siblingTopics.map((entry) => [entry.id, entry])),
+    [siblingTopics]
   );
-  const childSubjects = useMemo(
+  const parentTopic = useMemo(
+    () => (studyTopic?.parentTopicId ? topicMap.get(studyTopic.parentTopicId) ?? null : null),
+    [studyTopic?.parentTopicId, topicMap]
+  );
+  const childTopics = useMemo(
     () =>
-      subjects
-        .filter((entry) => entry.parentTopicId === subject?.id)
+      siblingTopics
+        .filter((entry) => entry.parentTopicId === studyTopic?.id)
         .sort((left, right) => left.name.localeCompare(right.name)),
-    [subject?.id, subjects]
+    [studyTopic?.id, siblingTopics]
   );
-  const lineage = useMemo(() => {
-    if (!subject) return [];
+  const relationTargets = useMemo(
+    () =>
+      [...referenceEntities].sort((left, right) => {
+        const leftKindIndex = relationKindOrder.indexOf(left.kind);
+        const rightKindIndex = relationKindOrder.indexOf(right.kind);
+        if (leftKindIndex !== rightKindIndex) return leftKindIndex - rightKindIndex;
 
-    const path: TopicSummary[] = [subject];
-    let currentParentId = subject.parentTopicId;
-    let guard = 0;
+        const titleComparison = left.title.localeCompare(right.title);
+        if (titleComparison !== 0) return titleComparison;
 
-    while (currentParentId && guard < 16) {
-      const parent = subjectMap.get(currentParentId);
-      if (!parent) break;
-      path.unshift(parent);
-      currentParentId = parent.parentTopicId;
-      guard += 1;
-    }
-
-    return path;
-  }, [subject, subjectMap]);
-  const orderedStudyTopics = useMemo(() => orderStudyTopics(studyTopics), [studyTopics]);
+        return left.id - right.id;
+      }),
+    [referenceEntities]
+  );
+  const selectedRelationTarget = useMemo(
+    () => relationTargets.find((entity) => String(entity.id) === relationForm.toEntityId) ?? null,
+    [relationForm.toEntityId, relationTargets]
+  );
+  const relationPreset = useMemo(
+    () => getStudyTopicRelationPreset(selectedRelationTarget?.kind),
+    [selectedRelationTarget?.kind]
+  );
 
   useEffect(() => {
-    if (!subject) return;
+    setRelationForm((current) => {
+      const nextRelationType = relationPreset.allowedRelationTypes.includes(current.relationType)
+        ? current.relationType
+        : relationPreset.defaultRelationType;
 
-    setSubjectForm({
-      description: subject.description ?? '',
-      name: subject.name,
-    });
-  }, [subject]);
+      if (nextRelationType === current.relationType) {
+        return current;
+      }
 
-  const isRootSubject = subject?.slug === 'ontology';
-  const canDeleteStudyTopic = (entry: StudyTopicSummary) => entry.childTopicCount === 0 && entry.itemCount === 0;
-
-  const handleSaveSubject = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!subject || !subjectForm.name.trim()) return;
-
-    setSavingSubject(true);
-    setError(null);
-
-    try {
-      const updatedSubject = await updateTopic(subject.id, {
-        description: subjectForm.description.trim() || undefined,
-        ...(isRootSubject ? {} : { name: subjectForm.name.trim() }),
-      });
-
-      startTransition(() => {
-        setSubject(updatedSubject);
-        setSubjects((current) =>
-          current.map((entry) => (entry.id === updatedSubject.id ? updatedSubject : entry))
-        );
-      });
-    } catch (saveError) {
-      console.error(saveError);
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save subject.');
-    } finally {
-      setSavingSubject(false);
-    }
-  };
-
-  const handleCreateStudyTopic = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!subject || !studyTopicForm.name.trim()) return;
-
-    setCreatingStudyTopic(true);
-    setError(null);
-
-    try {
-      const createdStudyTopic = await createStudyTopic({
-        subjectId: subject.id,
-        name: studyTopicForm.name.trim(),
-        parentTopicId: studyTopicForm.parentTopicId ? Number(studyTopicForm.parentTopicId) : undefined,
-      });
-      const studyTopicAlreadyPresent = studyTopics.some((entry) => entry.id === createdStudyTopic.id);
-
-      startTransition(() => {
-        setStudyTopics((current) => {
-          const alreadyPresent = current.some((entry) => entry.id === createdStudyTopic.id);
-          const updated = current.map((entry) =>
-            entry.id === createdStudyTopic.parentTopicId && !alreadyPresent
-              ? { ...entry, childTopicCount: entry.childTopicCount + 1 }
-              : entry
-          );
-
-          return alreadyPresent ? updated : [...updated, createdStudyTopic];
-        });
-        setSubject((current) =>
-          current && current.id === subject.id && !studyTopicAlreadyPresent
-            ? { ...current, topicCount: current.topicCount + 1 }
-            : current
-        );
-      });
-
-      setStudyTopicForm((current) => ({
+      return {
         ...current,
-        name: '',
-        parentTopicId: '',
-      }));
-      setShowStudyTopicCreator(false);
-    } catch (createError) {
-      console.error(createError);
-      setError('Failed to create topic.');
-    } finally {
-      setCreatingStudyTopic(false);
-    }
-  };
+        relationType: nextRelationType,
+      };
+    });
+  }, [relationPreset]);
 
-  const handleDeleteStudyTopic = async (studyTopic: StudyTopicSummary) => {
-    if (!canDeleteStudyTopic(studyTopic)) return;
+  const handleCreateRelation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!studyTopic || !relationForm.toEntityId) return;
 
-    const confirmed = window.confirm(`Remove "${studyTopic.name}" from this subject?`);
-    if (!confirmed) return;
-
-    setDeletingStudyTopicId(studyTopic.id);
+    setSavingRelation(true);
     setError(null);
 
     try {
-      await deleteStudyTopic(studyTopic.id);
+      const relation = await createStudyTopicRelation(studyTopic.id, {
+        toEntityType: 'reference_entity',
+        toEntityId: Number(relationForm.toEntityId),
+        relationType: relationForm.relationType,
+        note: relationForm.note.trim() || undefined,
+      });
 
       startTransition(() => {
-        setStudyTopics((current) =>
-          current
-            .filter((entry) => entry.id !== studyTopic.id)
-            .map((entry) =>
-              entry.id === studyTopic.parentTopicId
-                ? { ...entry, childTopicCount: Math.max(0, entry.childTopicCount - 1) }
-                : entry
-            )
-        );
-        setSubject((current) =>
-          current ? { ...current, topicCount: Math.max(0, current.topicCount - 1) } : current
-        );
+        setRelations((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === relation.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = relation;
+            return next;
+          }
+
+          return [relation, ...current];
+        });
       });
-    } catch (deleteError) {
-      console.error(deleteError);
-      setError(deleteError instanceof Error ? deleteError.message : 'Failed to remove topic.');
+
+      setRelationForm({
+        toEntityId: '',
+        relationType: relationPreset.defaultRelationType,
+        note: '',
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to connect topic to reference entity.');
     } finally {
-      setDeletingStudyTopicId(null);
+      setSavingRelation(false);
+    }
+  };
+
+  const handleDeleteRelation = async (relationId: number) => {
+    if (!studyTopic) return;
+
+    try {
+      await deleteStudyTopicRelation(studyTopic.id, relationId);
+      startTransition(() => {
+        setRelations((current) => current.filter((relation) => relation.id !== relationId));
+      });
+    } catch (relationError) {
+      console.error(relationError);
+      setError('Failed to delete topic relation.');
     }
   };
 
   if (loading) {
     return (
       <div className="topic-page">
-        <div className="topic-page-empty">Loading subject page...</div>
+        <div className="topic-page-empty">Loading topic page...</div>
       </div>
     );
   }
 
-  if (!subject) {
+  if (!studyTopic) {
     return (
       <div className="topic-page">
-        <div className="topic-page-empty">{error || 'Subject not found.'}</div>
+        <div className="topic-page-empty">{error || 'Topic not found.'}</div>
       </div>
     );
   }
 
   return (
     <div className="topic-page">
-      <Link to="/topics" className="topic-page-back">
-        Back to Subject Tree
+      <Link to={`/topics/${studyTopic.subjectId}`} className="topic-page-back">
+        Back to Subject
       </Link>
 
       <section className="topic-page-hero">
         <div className="topic-page-hero-main">
-          <span className="topic-page-eyebrow">Subject Page</span>
-          <h1>{subject.name}</h1>
+          <span className="topic-page-eyebrow">Topic Page</span>
+          <h1>{studyTopic.name}</h1>
           <p>
-            {subject.description ||
-              'A subject is part of the synchronic taxonomy rooted at Ontology. It contains contextual topics, and those topics contain the concrete items.'}
+            {studyTopic.summary ||
+              studyTopic.description ||
+              'A topic is the contextual layer beneath a subject. It is where items actually live.'}
           </p>
-          <div className="topic-page-lineage">
-            {lineage.map((entry, index) => (
-              <React.Fragment key={entry.id}>
-                <Link to={`/topics/${entry.id}`}>{entry.name}</Link>
-                {index < lineage.length - 1 ? <span>/</span> : null}
-              </React.Fragment>
-            ))}
-          </div>
+          <TopicLineage studyTopic={studyTopic} topicMap={topicMap} subject={subject} />
           <div className="topic-page-hero-meta">
-            <span>Updated {formatDate(subject.updatedAt)}</span>
-            {parentSubject ? (
-              <Link to={`/topics/${parentSubject.id}`}>Parent: {parentSubject.name}</Link>
+            <Link to={`/topics/${studyTopic.subjectId}`}>Subject: {subject?.name || studyTopic.subjectName}</Link>
+            {parentTopic ? (
+              <Link to={`/study-topics/${parentTopic.id}`}>Parent: {parentTopic.name}</Link>
             ) : (
-              <span>Root subject</span>
+              <span>Top-level topic in this subject</span>
             )}
-            <span>{childSubjects.length} child subject{childSubjects.length === 1 ? '' : 's'} in tree</span>
+            <span>{studyTopic.childTopicCount} child topic{studyTopic.childTopicCount === 1 ? '' : 's'}</span>
+            <span>{studyTopic.itemCount} item{studyTopic.itemCount === 1 ? '' : 's'}</span>
+            <span>Updated {formatDate(studyTopic.updatedAt)}</span>
           </div>
-          <div className="topic-page-hero-actions">
-            <button
-              type="button"
-              className="topic-page-secondary-button"
-              onClick={() => setShowSubjectEditor((current) => !current)}
-            >
-              {showSubjectEditor ? 'Close subject editor' : 'Edit subject'}
-            </button>
-          </div>
-          {showSubjectEditor ? (
-            <form className="topic-page-form topic-page-inline-panel" onSubmit={handleSaveSubject}>
-              <div className="topic-page-form-row">
-                <input
-                  value={subjectForm.name}
-                  onChange={(event) =>
-                    setSubjectForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                  disabled={isRootSubject}
-                  placeholder="Subject name"
-                />
-              </div>
-              <textarea
-                value={subjectForm.description}
-                onChange={(event) =>
-                  setSubjectForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Subject description"
-              />
-              <button type="submit" disabled={savingSubject}>
-                {savingSubject ? 'Saving...' : 'Save subject'}
-              </button>
-              {isRootSubject ? (
-                <div className="topic-page-note">
-                  <strong>Ontology stays the root.</strong>
-                  <span>The title is fixed, but you can still revise the description here.</span>
-                </div>
-              ) : null}
-            </form>
-          ) : null}
         </div>
       </section>
 
@@ -348,91 +391,171 @@ const TopicPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Contained Topics</span>
+                <span className="topic-page-eyebrow">Branches</span>
                 <h2>
-                  Topics inside this subject
-                  <span className="topic-page-count-badge">{orderedStudyTopics.length}</span>
+                  Child topics
+                  <span className="topic-page-count-badge">{childTopics.length}</span>
                 </h2>
-                <p className="topic-page-section-copy">{subject.knowledgeItemCount} items through these topics.</p>
+                <p className="topic-page-copy">
+                  Topic branching is managed from the subject page. Use this section to navigate the
+                  subtopics that already live under the current topic.
+                </p>
+              </div>
+            </div>
+
+            {childTopics.length === 0 ? (
+              <div className="topic-page-empty">No child topics yet.</div>
+            ) : (
+              <div className="topic-page-card-grid">
+                {childTopics.map((childTopic) => (
+                  <Link key={childTopic.id} to={`/study-topics/${childTopic.id}`} className="topic-page-card">
+                    <strong>{childTopic.name}</strong>
+                    <span>{childTopic.itemCount} contained items</span>
+                    <span>{childTopic.childTopicCount} child topics</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="topic-page-panel">
+            <div className="topic-page-section-head">
+              <div>
+                <span className="topic-page-eyebrow">Contained Items</span>
+                <h2>
+                  Items in this topic
+                  <span className="topic-page-count-badge">{knowledgeItems.length}</span>
+                </h2>
+              </div>
+            </div>
+
+            {knowledgeItems.length === 0 ? (
+              <div className="topic-page-empty">No items are assigned to this topic yet.</div>
+            ) : (
+              <div className="topic-page-item-list">
+                {knowledgeItems.map((knowledgeItem) => (
+                  <Link key={knowledgeItem.id} to={`/knowledge/${knowledgeItem.id}`} className="topic-page-item-card">
+                    <div className="topic-page-item-top">
+                      <div className="topic-page-item-badges">
+                        <span>{knowledgeItem.kind}</span>
+                        <span>{knowledgeItem.status}</span>
+                      </div>
+                      <strong>{knowledgeItem.title}</strong>
+                    </div>
+                    <div className="topic-page-item-meta">
+                      {knowledgeItem.creator ? <span>{knowledgeItem.creator}</span> : null}
+                      {knowledgeItem.publishedYear ? <span>{knowledgeItem.publishedYear}</span> : null}
+                      <span>Updated {formatDate(knowledgeItem.updatedAt)}</span>
+                    </div>
+                    {knowledgeItem.summary ? <p>{knowledgeItem.summary}</p> : null}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="topic-page-panel">
+            <div className="topic-page-section-head">
+              <div>
+                <span className="topic-page-eyebrow">Reference Atlas</span>
+                <h2>
+                  Context composition
+                  <span className="topic-page-count-badge">{relations.length}</span>
+                </h2>
+                <p className="topic-page-copy">
+                  This is where a topic becomes historically or geographically specific. Keep the topic
+                  structure conceptual; use entities to add era, place, polity, civilization, or person.
+                </p>
               </div>
               <button
                 type="button"
                 className="topic-page-secondary-button"
-                onClick={() => setShowStudyTopicCreator((current) => !current)}
+                onClick={() => setShowRelationComposer((current) => !current)}
               >
-                {showStudyTopicCreator ? 'Close' : 'Add topic'}
+                {showRelationComposer ? 'Close' : 'Link entity'}
               </button>
             </div>
 
-            {showStudyTopicCreator ? (
-              <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateStudyTopic}>
+            {showRelationComposer ? (
+              <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateRelation}>
+                <div className="topic-page-note">
+                  <strong>Current guidance</strong>
+                  <span>{relationPreset.helperText}</span>
+                </div>
                 <div className="topic-page-form-row topic-page-form-row-split">
-                  <input
-                    value={studyTopicForm.name}
-                    onChange={(event) =>
-                      setStudyTopicForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Name the topic"
-                  />
                   <select
-                    value={studyTopicForm.parentTopicId}
+                    value={relationForm.relationType}
                     onChange={(event) =>
-                      setStudyTopicForm((current) => ({
+                      setRelationForm((current) => ({
                         ...current,
-                        parentTopicId: event.target.value,
+                        relationType: event.target.value as KnowledgeRelationType,
                       }))
                     }
                   >
-                    <option value="">No parent topic</option>
-                    {orderedStudyTopics.map(({ topic, depth }) => (
-                      <option key={topic.id} value={topic.id}>
-                        {`${'  '.repeat(depth)}${topic.name}`}
+                    {relationPreset.allowedRelationTypes.map((relationType) => (
+                      <option key={relationType} value={relationType}>
+                        {formatRelationType(relationType)}
                       </option>
                     ))}
                   </select>
+                  <select
+                    value={relationForm.toEntityId}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        toEntityId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">{relationPreset.targetPrompt}</option>
+                    {relationTargets.map((entity) => {
+                      const timespan = formatReferenceTimespan(entity);
+
+                      return (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.title}
+                          {timespan ? ` (${entity.kind}, ${timespan})` : ` (${entity.kind})`}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
-                <button type="submit" disabled={creatingStudyTopic}>
-                  {creatingStudyTopic ? 'Creating...' : 'Create topic'}
+                <input
+                  value={relationForm.note}
+                  onChange={(event) =>
+                    setRelationForm((current) => ({
+                      ...current,
+                      note: event.target.value,
+                    }))
+                  }
+                  placeholder={relationPreset.notePlaceholder}
+                />
+                <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
+                  {savingRelation ? 'Linking...' : 'Link entity'}
                 </button>
               </form>
             ) : null}
 
-            {orderedStudyTopics.length === 0 ? (
-              <div className="topic-page-empty">
-                No topics yet. Create the first contextual topic under this subject.
-              </div>
+            {relations.length === 0 ? (
+              <div className="topic-page-empty">No linked reference entities yet.</div>
             ) : (
-              <div className="topic-page-card-grid">
-                {orderedStudyTopics.map(({ topic, depth }) => (
-                  <article key={topic.id} className="topic-page-card">
-                    <Link to={`/study-topics/${topic.id}`} className="topic-page-card-link">
-                      <strong>{topic.name}</strong>
-                    </Link>
-                    <div className="topic-page-card-meta">
-                      {depth > 0 ? <span>Depth {depth + 1}</span> : <span>Top-level topic</span>}
-                      <span>{topic.itemCount} items</span>
-                      <span>{topic.childTopicCount} child topics</span>
-                    </div>
-                    {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
-                    <div className="topic-page-card-actions">
-                      <Link to={`/study-topics/${topic.id}`} className="topic-page-card-button">
-                        Open topic
+              <div className="topic-page-item-list">
+                {relations.map((relation) => (
+                  <article key={relation.id} className="topic-page-item-card">
+                    <div className="topic-page-item-top">
+                      <div className="topic-page-item-badges">
+                        <span>{formatRelationType(relation.relationType)}</span>
+                        {relation.toEntityKind ? <span>{relation.toEntityKind}</span> : null}
+                      </div>
+                      <Link to={`/entities/${relation.toEntityId}`} className="topic-page-item-link">
+                        <strong>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</strong>
                       </Link>
-                      <button
-                        type="button"
-                        className="topic-page-danger-button"
-                        onClick={() => handleDeleteStudyTopic(topic)}
-                        disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
-                        title={
-                          canDeleteStudyTopic(topic)
-                            ? 'Remove this empty leaf topic'
-                            : 'Only empty leaf topics with no items can be removed here'
-                        }
-                      >
-                        {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
+                    </div>
+                    {relation.note ? <p>{relation.note}</p> : null}
+                    <div className="topic-page-item-actions">
+                      <span>Linked {formatDate(relation.createdAt)}</span>
+                      <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
+                        Delete
                       </button>
                     </div>
                   </article>

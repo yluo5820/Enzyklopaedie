@@ -2,13 +2,13 @@ import React from 'react';
 import { BrowserRouter as Router, NavLink, Routes, Route, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import WorldHistoryPage from './pages/WorldHistoryPage';
-import KnowledgePage from './pages/KnowledgePage';
-import KnowledgeDetailPage from './pages/KnowledgeDetailPage';
+import ItemWorkbenchPage from './pages/ItemWorkbenchPage';
+import ItemDetailPage from './pages/ItemDetailPage';
 import ReferenceEntitiesPage from './pages/ReferenceEntitiesPage';
 import ReferenceEntityPage from './pages/ReferenceEntityPage';
-import TopicTreePage from './pages/TopicTreePage';
+import SubjectTreePage from './pages/SubjectTreePage';
+import SubjectPage from './pages/SubjectPage';
 import TopicPage from './pages/TopicPage';
-import StudyTopicPage from './pages/StudyTopicPage';
 import './App.css';
 
 type NavItem = {
@@ -75,11 +75,11 @@ const AppShell: React.FC = () => {
       <main className="app-main">
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/knowledge" element={<KnowledgePage />} />
-          <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
-          <Route path="/topics" element={<TopicTreePage />} />
-          <Route path="/topics/:id" element={<TopicPage />} />
-          <Route path="/study-topics/:id" element={<StudyTopicPage />} />
+          <Route path="/knowledge" element={<ItemWorkbenchPage />} />
+          <Route path="/knowledge/:id" element={<ItemDetailPage />} />
+          <Route path="/topics" element={<SubjectTreePage />} />
+          <Route path="/topics/:id" element={<SubjectPage />} />
+          <Route path="/study-topics/:id" element={<TopicPage />} />
           <Route path="/entities" element={<ReferenceEntitiesPage />} />
           <Route path="/entities/:id" element={<ReferenceEntityPage />} />
           <Route path="/world-history" element={<WorldHistoryPage />} />
