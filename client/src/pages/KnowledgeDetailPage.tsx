@@ -12,6 +12,7 @@ import type {
   ReferenceEntity,
   StudyTopicSummary,
   TopicSummary,
+  UpdateKnowledgeItem,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -54,6 +55,41 @@ const relationTypeOptions: KnowledgeRelationType[] = [
   'during',
 ];
 
+type ItemRecordFormKind = 'book' | 'lecture';
+type ItemRecordPreset = {
+  creatorLabel: string;
+  extraFieldLabel: string;
+  extraFieldName: 'pageCount' | 'durationMinutes';
+  extraFieldPlaceholder: string;
+  helperText: string;
+  sourceLabel: string;
+  sourcePlaceholder: string;
+  yearLabel: string;
+};
+
+const itemRecordPresets: Record<ItemRecordFormKind, ItemRecordPreset> = {
+  book: {
+    creatorLabel: 'Author',
+    extraFieldLabel: 'Pages',
+    extraFieldName: 'pageCount',
+    extraFieldPlaceholder: '320',
+    helperText: 'Edit the bibliographic record for written material here. Topics, notes, and relations stay separate below.',
+    sourceLabel: 'Publisher / Journal / Collection',
+    sourcePlaceholder: 'Publisher, journal, archive...',
+    yearLabel: 'Published Year',
+  },
+  lecture: {
+    creatorLabel: 'Speaker / Lecturer / Creator',
+    extraFieldLabel: 'Duration (minutes)',
+    extraFieldName: 'durationMinutes',
+    extraFieldPlaceholder: '90',
+    helperText: 'Edit the media record here. Use this for lectures, videos, podcasts, courses, and related non-written sources.',
+    sourceLabel: 'Platform / Channel / Series',
+    sourcePlaceholder: 'Channel, platform, course series...',
+    yearLabel: 'Release Year',
+  },
+};
+
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
@@ -91,6 +127,8 @@ const readNumericMetadata = (item: KnowledgeItem, key: 'pageCount' | 'durationMi
 };
 
 const writtenItemKinds = new Set<KnowledgeItem['kind']>(['book', 'article', 'essay']);
+const getItemFormKind = (item: Pick<KnowledgeItem, 'kind'>): ItemRecordFormKind =>
+  writtenItemKinds.has(item.kind) ? 'book' : 'lecture';
 const getItemFormLabel = (item: KnowledgeItem) =>
   writtenItemKinds.has(item.kind) ? 'Written work' : 'Lecture / media';
 
@@ -102,6 +140,25 @@ const getItemRecordDetail = (item: KnowledgeItem) => {
   if (durationMinutes) return `${durationMinutes} min`;
 
   return null;
+};
+
+const toRecordFormState = (item: KnowledgeItem) => ({
+  title: item.title,
+  creator: item.creator || '',
+  sourceName: item.sourceName || '',
+  sourceUrl: item.sourceUrl || '',
+  summary: item.summary || '',
+  publishedYear: item.publishedYear === undefined ? '' : String(item.publishedYear),
+  pageCount: readNumericMetadata(item, 'pageCount')?.toString() || '',
+  durationMinutes: readNumericMetadata(item, 'durationMinutes')?.toString() || '',
+});
+
+const parseIntegerInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) ? parsed : null;
 };
 
 const formatReferenceTimespan = (entity: ReferenceEntity) => {
@@ -242,6 +299,7 @@ const KnowledgeDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [savingRecord, setSavingRecord] = useState(false);
   const [savingTopicAssignment, setSavingTopicAssignment] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
@@ -271,6 +329,16 @@ const KnowledgeDetailPage: React.FC = () => {
     score: '',
     summary: '',
     body: '',
+  });
+  const [recordForm, setRecordForm] = useState({
+    title: '',
+    creator: '',
+    sourceName: '',
+    sourceUrl: '',
+    summary: '',
+    publishedYear: '',
+    pageCount: '',
+    durationMinutes: '',
   });
 
   useEffect(() => {
@@ -316,6 +384,7 @@ const KnowledgeDetailPage: React.FC = () => {
         setNotes(fetchedNotes);
         setTasks(fetchedTasks);
         setReviews(fetchedReviews);
+        setRecordForm(toRecordFormState(fetchedItem));
         setNewStudyTopicForm((current) => ({
           ...current,
           subjectId: current.subjectId
@@ -374,6 +443,10 @@ const KnowledgeDetailPage: React.FC = () => {
     () => tasks.filter((task) => task.status === 'done').length,
     [tasks]
   );
+  const itemFormKind = item ? getItemFormKind(item) : 'book';
+  const recordPreset = itemRecordPresets[itemFormKind];
+  const recordExtraFieldValue =
+    recordPreset.extraFieldName === 'pageCount' ? recordForm.pageCount : recordForm.durationMinutes;
 
   const handleItemStatusChange = async (nextStatus: KnowledgeItemStatus) => {
     if (!item || nextStatus === item.status) return;
@@ -397,6 +470,48 @@ const KnowledgeDetailPage: React.FC = () => {
       setError('Failed to update item status.');
     } finally {
       setStatusSaving(false);
+    }
+  };
+
+  const handleRecordSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!item || !recordForm.title.trim()) return;
+
+    setSavingRecord(true);
+    setError(null);
+
+    const nextMetadata = { ...(item.metadata ?? {}) };
+    delete nextMetadata.pageCount;
+    delete nextMetadata.durationMinutes;
+
+    const pageCount = parseIntegerInput(recordForm.pageCount);
+    const durationMinutes = parseIntegerInput(recordForm.durationMinutes);
+    if (itemFormKind === 'book' && pageCount !== null) {
+      nextMetadata.pageCount = pageCount;
+    }
+    if (itemFormKind === 'lecture' && durationMinutes !== null) {
+      nextMetadata.durationMinutes = durationMinutes;
+    }
+
+    const payload = {
+      title: recordForm.title.trim(),
+      creator: recordForm.creator.trim(),
+      sourceName: recordForm.sourceName.trim(),
+      sourceUrl: recordForm.sourceUrl.trim(),
+      summary: recordForm.summary.trim(),
+      publishedYear: parseIntegerInput(recordForm.publishedYear),
+      metadata: nextMetadata,
+    } as UpdateKnowledgeItem;
+
+    try {
+      const updatedItem = await updateKnowledgeItem(item.id, payload);
+      setItem(updatedItem);
+      setRecordForm(toRecordFormState(updatedItem));
+    } catch (recordError) {
+      console.error(recordError);
+      setError('Failed to update the item record.');
+    } finally {
+      setSavingRecord(false);
     }
   };
 
@@ -759,67 +874,190 @@ const KnowledgeDetailPage: React.FC = () => {
       {error ? <div className="knowledge-detail-error">{error}</div> : null}
 
       <div className="knowledge-detail-grid">
-        <aside className="knowledge-detail-panel knowledge-detail-sidebar">
-          <span className="knowledge-detail-eyebrow">Overview</span>
-          <h2>Working context</h2>
+        <aside className="knowledge-detail-sidebar">
+          <section className="knowledge-detail-panel">
+            <span className="knowledge-detail-eyebrow">Overview</span>
+            <h2>Working context</h2>
 
-          <div className="knowledge-detail-field">
-            <label htmlFor="item-status">Status</label>
-            <select
-              id="item-status"
-              value={item.status}
-              onChange={(event) => handleItemStatusChange(event.target.value as KnowledgeItemStatus)}
-              disabled={statusSaving}
-            >
-              {itemStatusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div className="knowledge-detail-field">
+              <label htmlFor="item-status">Status</label>
+              <select
+                id="item-status"
+                value={item.status}
+                onChange={(event) => handleItemStatusChange(event.target.value as KnowledgeItemStatus)}
+                disabled={statusSaving}
+              >
+                {itemStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {item.sourceUrl ? (
-            <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="knowledge-detail-link">
-              Open source
-            </a>
-          ) : null}
+            {item.sourceUrl ? (
+              <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="knowledge-detail-link">
+                Open source
+              </a>
+            ) : null}
 
-          <div className="knowledge-detail-overview">
-            {item.description ? (
-              <p>{item.description}</p>
-            ) : (
-              <p>
-                This workspace now covers notes, tasks, reviews, and the real topic layer. Subjects
-                provide the synchronic taxonomy; topics are the contextual places where items actually
-                live.
-              </p>
-            )}
-            <dl>
-              <div>
-                <dt>Created</dt>
-                <dd>{formatDate(item.createdAt)}</dd>
-              </div>
-              <div>
-                <dt>Last updated</dt>
-                <dd>{formatDate(item.updatedAt)}</dd>
-              </div>
-              <div>
-                <dt>Type</dt>
-                <dd>{item.kind}</dd>
-              </div>
-              <div>
-                <dt>Form</dt>
-                <dd>{getItemFormLabel(item)}</dd>
-              </div>
-              {itemRecordDetail ? (
+            <div className="knowledge-detail-overview">
+              {item.description ? (
+                <p>{item.description}</p>
+              ) : (
+                <p>
+                  This workspace now covers notes, tasks, reviews, and the real topic layer. Subjects
+                  provide the synchronic taxonomy; topics are the contextual places where items actually
+                  live.
+                </p>
+              )}
+              <dl>
                 <div>
-                  <dt>Record detail</dt>
-                  <dd>{itemRecordDetail}</dd>
+                  <dt>Created</dt>
+                  <dd>{formatDate(item.createdAt)}</dd>
                 </div>
-              ) : null}
-            </dl>
-          </div>
+                <div>
+                  <dt>Last updated</dt>
+                  <dd>{formatDate(item.updatedAt)}</dd>
+                </div>
+                <div>
+                  <dt>Type</dt>
+                  <dd>{item.kind}</dd>
+                </div>
+                <div>
+                  <dt>Form</dt>
+                  <dd>{getItemFormLabel(item)}</dd>
+                </div>
+                {itemRecordDetail ? (
+                  <div>
+                    <dt>Record detail</dt>
+                    <dd>{itemRecordDetail}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          </section>
+
+          <section className="knowledge-detail-panel">
+            <span className="knowledge-detail-eyebrow">Record</span>
+            <h2>Core item record</h2>
+            <p className="knowledge-detail-copy">{recordPreset.helperText}</p>
+
+            <form className="knowledge-detail-form" onSubmit={handleRecordSubmit}>
+              <label className="knowledge-detail-inline-label">
+                Title
+                <input
+                  value={recordForm.title}
+                  onChange={(event) =>
+                    setRecordForm((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                  required
+                />
+              </label>
+
+              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                <label className="knowledge-detail-inline-label">
+                  {recordPreset.creatorLabel}
+                  <input
+                    value={recordForm.creator}
+                    onChange={(event) =>
+                      setRecordForm((current) => ({
+                        ...current,
+                        creator: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+
+                <label className="knowledge-detail-inline-label">
+                  {recordPreset.sourceLabel}
+                  <input
+                    value={recordForm.sourceName}
+                    onChange={(event) =>
+                      setRecordForm((current) => ({
+                        ...current,
+                        sourceName: event.target.value,
+                      }))
+                    }
+                    placeholder={recordPreset.sourcePlaceholder}
+                  />
+                </label>
+              </div>
+
+              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                <label className="knowledge-detail-inline-label">
+                  Source URL
+                  <input
+                    type="url"
+                    value={recordForm.sourceUrl}
+                    onChange={(event) =>
+                      setRecordForm((current) => ({
+                        ...current,
+                        sourceUrl: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+
+                <label className="knowledge-detail-inline-label">
+                  {recordPreset.yearLabel}
+                  <input
+                    type="number"
+                    value={recordForm.publishedYear}
+                    onChange={(event) =>
+                      setRecordForm((current) => ({
+                        ...current,
+                        publishedYear: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <label className="knowledge-detail-inline-label">
+                {recordPreset.extraFieldLabel}
+                <input
+                  type="number"
+                  value={recordExtraFieldValue}
+                  onChange={(event) =>
+                    setRecordForm((current) => ({
+                      ...current,
+                      pageCount:
+                        recordPreset.extraFieldName === 'pageCount'
+                          ? event.target.value
+                          : current.pageCount,
+                      durationMinutes:
+                        recordPreset.extraFieldName === 'durationMinutes'
+                          ? event.target.value
+                          : current.durationMinutes,
+                    }))
+                  }
+                  placeholder={recordPreset.extraFieldPlaceholder}
+                />
+              </label>
+
+              <label className="knowledge-detail-inline-label">
+                Summary
+                <textarea
+                  value={recordForm.summary}
+                  onChange={(event) =>
+                    setRecordForm((current) => ({
+                      ...current,
+                      summary: event.target.value,
+                    }))
+                  }
+                  placeholder="A short record-level description"
+                />
+              </label>
+
+              <button type="submit" disabled={savingRecord}>
+                {savingRecord ? 'Saving record...' : 'Save record'}
+              </button>
+            </form>
+          </section>
         </aside>
 
         <div className="knowledge-detail-main">

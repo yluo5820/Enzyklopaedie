@@ -57,6 +57,12 @@
   color: #423428;
 }
 
+.knowledge-detail-copy {
+  margin: 0 0 16px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
 .knowledge-detail-badges,
 .knowledge-detail-meta {
   display: flex;
