@@ -84,58 +84,13 @@ export const searchGoogleBooks = async (
     maxResults: String(Math.min(Math.max(maxResults, 1), 20)),
   });
 
-  const apiKey = (import.meta.env as { VITE_GOOGLE_BOOKS_API_KEY?: string }).VITE_GOOGLE_BOOKS_API_KEY;
-  if (apiKey) {
-    params.set('key', apiKey);
-  }
-
-  const response = await fetch(`https://www.googleapis.com/books/v1/volumes?${params.toString()}`);
+  const response = await fetch(`${API_BASE_URL}/google-books/search?${params.toString()}`);
   if (!response.ok) {
-    throw new Error('Failed to search Google Books');
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to search Google Books');
   }
 
-  const payload = (await response.json()) as {
-    items?: Array<{
-      id?: string;
-      volumeInfo?: {
-        authors?: string[];
-        description?: string;
-        imageLinks?: {
-          smallThumbnail?: string;
-          thumbnail?: string;
-        };
-        infoLink?: string;
-        pageCount?: number;
-        publishedDate?: string;
-        publisher?: string;
-        subtitle?: string;
-        title?: string;
-      };
-    }>;
-  };
-
-  return (payload.items ?? [])
-    .map((item) => {
-      const volumeInfo = item.volumeInfo ?? {};
-      const publishedYearMatch =
-        typeof volumeInfo.publishedDate === 'string'
-          ? volumeInfo.publishedDate.match(/^-?\d{4}/)
-          : null;
-
-      return {
-        id: item.id ?? crypto.randomUUID(),
-        authors: volumeInfo.authors ?? [],
-        coverImageUrl: volumeInfo.imageLinks?.thumbnail ?? volumeInfo.imageLinks?.smallThumbnail,
-        description: volumeInfo.description,
-        pageCount: volumeInfo.pageCount,
-        publishedYear: publishedYearMatch ? Number(publishedYearMatch[0]) : undefined,
-        publisher: volumeInfo.publisher,
-        sourceUrl: volumeInfo.infoLink,
-        subtitle: volumeInfo.subtitle,
-        title: volumeInfo.title ?? 'Untitled volume',
-      } satisfies GoogleBookMatch;
-    })
-    .filter((book) => Boolean(book.title));
+  return response.json();
 };
 
 export const updateKnowledgeItem = async (

@@ -12,6 +12,39 @@ let tempDir;
 
 const request = (pathname, options) => fetch(`${baseUrl}${pathname}`, options);
 
+const requestThroughHttp = (pathname, options = {}) =>
+  new Promise((resolve, reject) => {
+    const url = new URL(pathname, baseUrl);
+    const req = http.request(
+      url,
+      {
+        method: options.method || 'GET',
+        headers: options.headers,
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode,
+            json: () => Promise.resolve(body ? JSON.parse(body) : null),
+          });
+        });
+      }
+    );
+
+    req.on('error', reject);
+
+    if (options.body) {
+      req.write(options.body);
+    }
+
+    req.end();
+  });
+
 before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enzyklopaedie-server-test-'));
   process.env.DB_PATH = path.join(tempDir, 'knowledge-flow.db');
@@ -1024,5 +1057,72 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     const missingResponse = await request(`/api/reference-entities/${createdEntity.id}`);
     assert.equal(missingResponse.status, 404);
+  });
+
+  await t.test('GET /api/google-books/search proxies and normalizes Google Books results', async () => {
+    const originalFetch = global.fetch;
+
+    global.fetch = async (input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      assert.match(url, /googleapis\.com\/books\/v1\/volumes/);
+      assert.match(url, /q=foundation/);
+
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 'book-1',
+              volumeInfo: {
+                title: 'Foundation',
+                subtitle: 'A Novel',
+                authors: ['Isaac Asimov'],
+                publisher: 'Spectra',
+                publishedDate: '1951-06-01',
+                pageCount: 255,
+                description: 'Classic science fiction.',
+                infoLink: 'https://books.google.com/books?id=book-1',
+                imageLinks: {
+                  thumbnail: 'https://books.google.com/thumbnail?id=book-1',
+                },
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const response = await requestThroughHttp('/api/google-books/search?q=foundation&maxResults=5');
+      assert.equal(response.status, 200);
+
+      const books = await response.json();
+      assert.equal(books.length, 1);
+      assert.deepEqual(books[0], {
+        id: 'book-1',
+        authors: ['Isaac Asimov'],
+        coverImageUrl: 'https://books.google.com/thumbnail?id=book-1',
+        description: 'Classic science fiction.',
+        pageCount: 255,
+        publishedYear: 1951,
+        publisher: 'Spectra',
+        sourceUrl: 'https://books.google.com/books?id=book-1',
+        subtitle: 'A Novel',
+        title: 'Foundation',
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

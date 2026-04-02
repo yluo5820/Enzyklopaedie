@@ -562,7 +562,9 @@ const ItemWorkbenchPage: React.FC = () => {
       }
     } catch (searchError) {
       console.error(searchError);
-      setBookSearchError('Failed to search Google Books right now.');
+      setBookSearchError(
+        searchError instanceof Error ? searchError.message : 'Failed to search Google Books right now.'
+      );
     } finally {
       setSearchingBooks(false);
     }
