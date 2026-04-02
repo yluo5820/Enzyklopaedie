@@ -12,6 +12,13 @@
   --danger: #8a3933;
 }
 
+.reference-entity-page,
+.reference-entity-page *,
+.reference-entity-page *::before,
+.reference-entity-page *::after {
+  box-sizing: border-box;
+}
+
 .reference-entity-back {
   display: inline-flex;
   margin-bottom: 18px;
@@ -88,10 +95,15 @@
   align-items: start;
 }
 
+.reference-entity-grid > * {
+  min-width: 0;
+}
+
 .reference-entity-sidebar,
 .reference-entity-main {
   display: grid;
   gap: 20px;
+  min-width: 0;
 }
 
 .reference-entity-panel {
@@ -262,17 +274,20 @@
 .reference-entity-form {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .reference-entity-grid-inline {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .reference-entity-field {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .reference-entity-field label {
@@ -284,6 +299,8 @@
 .reference-entity-field select,
 .reference-entity-field textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 11px 12px;

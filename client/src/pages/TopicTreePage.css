@@ -137,19 +137,22 @@
 }
 
 .topic-tree-canvas-shell {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
   overflow: auto;
   border-radius: 22px;
   border: 1px solid var(--line);
   background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 238, 226, 0.94));
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(246, 238, 226, 0.95));
   min-height: 640px;
+  padding: 20px;
 }
 
 .topic-tree-canvas {
   position: relative;
-  min-width: 100%;
-  min-height: 100%;
+  flex: 0 0 auto;
 }
 
 .topic-tree-empty {
@@ -160,10 +163,26 @@
   color: var(--muted);
 }
 
+.topic-tree-tier-lane-rect {
+  fill: rgba(255, 255, 255, 0.5);
+  stroke: rgba(220, 203, 185, 0.72);
+  stroke-width: 1.5;
+}
+
+.topic-tree-tier-lane-label {
+  fill: #93633b;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-anchor: middle;
+  text-transform: uppercase;
+}
+
 .topic-tree-edge {
   fill: none;
-  stroke: rgba(111, 69, 37, 0.28);
+  stroke: rgba(111, 69, 37, 0.22);
   stroke-width: 4;
+  stroke-linecap: round;
 }
 
 .topic-tree-node {
@@ -174,12 +193,14 @@
   fill: #fffefb;
   stroke: rgba(111, 69, 37, 0.26);
   stroke-width: 2;
-  transition: transform 0.18s ease, stroke 0.18s ease;
+  filter: drop-shadow(0 8px 16px rgba(88, 58, 31, 0.08));
+  transition: transform 0.18s ease, stroke 0.18s ease, filter 0.18s ease;
 }
 
 .topic-tree-node:hover .topic-tree-node-circle {
   stroke: rgba(111, 69, 37, 0.55);
   transform: scale(1.04);
+  filter: drop-shadow(0 12px 22px rgba(88, 58, 31, 0.12));
 }
 
 .topic-tree-node.is-selected .topic-tree-node-circle {
@@ -192,22 +213,14 @@
   stroke: rgba(111, 69, 37, 0.5);
 }
 
-.topic-tree-node-depth {
-  font-size: 0.75rem;
-  fill: #8d5d35;
-  text-anchor: middle;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
 .topic-tree-node-title {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 700;
   fill: #2e2219;
 }
 
 .topic-tree-node-count {
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   fill: #6d5b4b;
 }
 

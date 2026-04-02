@@ -80,7 +80,10 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
       x: BASE_X + depth * NODE_X_STEP,
       y,
       depth,
-      radius: Math.min(68, 34 + topic.topicCount * 4 + topic.childTopicCount * 2),
+      radius: Math.min(
+        74,
+        Math.max(42, 34 + topic.topicCount * 3 + topic.childTopicCount * 2 + Math.ceil(topic.name.length / 8) * 2)
+      ),
     });
 
     return y;
@@ -116,6 +119,7 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
     topicMap,
     positioned: Array.from(positioned.values()),
     edges,
+    maxDepth,
     width,
     height,
   };
@@ -346,6 +350,25 @@ const TopicTreePage: React.FC = () => {
                     </linearGradient>
                   </defs>
 
+                  {Array.from({ length: layout.maxDepth + 1 }, (_, depth) => {
+                    const laneX = BASE_X + depth * NODE_X_STEP;
+                    return (
+                      <g key={`lane-${depth}`} className="topic-tree-tier-lane">
+                        <rect
+                          x={laneX - 96}
+                          y={28}
+                          width={192}
+                          height={layout.height - 56}
+                          rx={42}
+                          className="topic-tree-tier-lane-rect"
+                        />
+                        <text className="topic-tree-tier-lane-label" x={laneX} y={58}>
+                          Tier {depth}
+                        </text>
+                      </g>
+                    );
+                  })}
+
                   {layout.edges.map((edge) => (
                     <path
                       key={edge.key}
@@ -358,6 +381,12 @@ const TopicTreePage: React.FC = () => {
                     const labelLines = wrapLabel(position.topic.name);
                     const isRoot = position.topic.slug === 'ontology';
                     const isSelected = position.topic.id === selectedTopicId;
+                    const nodeMeta =
+                      position.topic.topicCount > 0
+                        ? `${position.topic.topicCount} topic${position.topic.topicCount === 1 ? '' : 's'}`
+                        : position.topic.childTopicCount > 0
+                          ? `${position.topic.childTopicCount} branch${position.topic.childTopicCount === 1 ? '' : 'es'}`
+                          : null;
 
                     return (
                       <g
@@ -372,9 +401,6 @@ const TopicTreePage: React.FC = () => {
                           className={isRoot ? 'topic-tree-node-circle topic-tree-node-root' : 'topic-tree-node-circle'}
                           fill={isRoot ? 'url(#topicTreeRootGradient)' : undefined}
                         />
-                        <text className="topic-tree-node-depth" y={-position.radius - 16}>
-                          {isSelected ? 'Selected' : `Tier ${position.depth}`}
-                        </text>
                         <text className="topic-tree-node-title" textAnchor="middle">
                           {labelLines.map((line, index) => (
                             <tspan
@@ -382,16 +408,18 @@ const TopicTreePage: React.FC = () => {
                               x="0"
                               dy={index === 0 ? -6 : 16}
                             >
-                              {line}
-                            </tspan>
-                          ))}
-                        </text>
+                            {line}
+                          </tspan>
+                        ))}
+                      </text>
+                      {nodeMeta ? (
                         <text className="topic-tree-node-count" y={position.radius - 12} textAnchor="middle">
-                          {position.topic.topicCount} topic{position.topic.topicCount === 1 ? '' : 's'}
+                          {nodeMeta}
                         </text>
-                      </g>
-                    );
-                  })}
+                      ) : null}
+                    </g>
+                  );
+                })}
                 </svg>
               </div>
             </div>

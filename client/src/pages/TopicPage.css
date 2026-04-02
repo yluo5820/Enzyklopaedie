@@ -11,6 +11,13 @@
   --accent-dark: #6f4525;
 }
 
+.topic-page,
+.topic-page *,
+.topic-page *::before,
+.topic-page *::after {
+  box-sizing: border-box;
+}
+
 .topic-page-back {
   display: inline-flex;
   margin-bottom: 18px;
@@ -113,6 +120,10 @@
   align-items: start;
 }
 
+.topic-page-grid > * {
+  min-width: 0;
+}
+
 .topic-page-panel {
   padding: 22px;
 }
@@ -121,6 +132,7 @@
 .topic-page-main {
   display: grid;
   gap: 20px;
+  min-width: 0;
 }
 
 .topic-page-lineage {
@@ -169,12 +181,15 @@
 .topic-page-form {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .topic-page-form input,
 .topic-page-form select,
 .topic-page-form textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 11px 12px;
