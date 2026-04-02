@@ -1,7 +1,16 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
-import { createStudyTopic, fetchStudyTopics, fetchTopic, fetchTopics, updateTopic } from '../api';
+import {
+  createStudyTopic,
+  createTopic,
+  deleteStudyTopic,
+  deleteTopic,
+  fetchStudyTopics,
+  fetchTopic,
+  fetchTopics,
+  updateTopic,
+} from '../api';
 import './TopicPage.css';
 
 const formatDate = (value: string) =>
@@ -47,7 +56,14 @@ const TopicPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingSubject, setSavingSubject] = useState(false);
+  const [showSubjectEditor, setShowSubjectEditor] = useState(false);
+  const [showChildSubjectCreator, setShowChildSubjectCreator] = useState(false);
+  const [showStudyTopicCreator, setShowStudyTopicCreator] = useState(false);
+  const [creatingChildSubject, setCreatingChildSubject] = useState(false);
   const [creatingStudyTopic, setCreatingStudyTopic] = useState(false);
+  const [deletingChildSubjectId, setDeletingChildSubjectId] = useState<number | null>(null);
+  const [deletingStudyTopicId, setDeletingStudyTopicId] = useState<number | null>(null);
+  const [childSubjectDraft, setChildSubjectDraft] = useState('');
   const [subjectForm, setSubjectForm] = useState({
     description: '',
     name: '',
@@ -55,7 +71,6 @@ const TopicPage: React.FC = () => {
   const [studyTopicForm, setStudyTopicForm] = useState({
     name: '',
     parentTopicId: '',
-    description: '',
   });
 
   useEffect(() => {
@@ -128,6 +143,8 @@ const TopicPage: React.FC = () => {
   }, [subject]);
 
   const isRootSubject = subject?.slug === 'ontology';
+  const canDeleteChildSubject = (entry: TopicSummary) => entry.childTopicCount === 0 && entry.topicCount === 0;
+  const canDeleteStudyTopic = (entry: StudyTopicSummary) => entry.childTopicCount === 0 && entry.itemCount === 0;
 
   const handleSaveSubject = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -156,6 +173,55 @@ const TopicPage: React.FC = () => {
     }
   };
 
+  const handleCreateChildSubject = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!subject || !childSubjectDraft.trim()) return;
+
+    setCreatingChildSubject(true);
+    setError(null);
+
+    try {
+      const createdSubject = await createTopic({
+        name: childSubjectDraft.trim(),
+        parentTopicId: subject.id,
+      });
+      const childAlreadyPresent = subjects.some((entry) => entry.id === createdSubject.id);
+
+      const nextSubject: TopicSummary = {
+        ...createdSubject,
+        childTopicCount: 0,
+        knowledgeItemCount: 0,
+        topicCount: 0,
+      };
+
+      startTransition(() => {
+        setSubjects((current) => {
+          const alreadyPresent = current.some((entry) => entry.id === nextSubject.id);
+          const updated = current.map((entry) =>
+            entry.id === subject.id && !alreadyPresent
+              ? { ...entry, childTopicCount: entry.childTopicCount + 1 }
+              : entry
+          );
+
+          return alreadyPresent ? updated : updated.concat(nextSubject);
+        });
+        setSubject((current) =>
+          current && current.id === subject.id && !childAlreadyPresent
+            ? { ...current, childTopicCount: current.childTopicCount + 1 }
+            : current
+        );
+      });
+
+      setChildSubjectDraft('');
+      setShowChildSubjectCreator(false);
+    } catch (createError) {
+      console.error(createError);
+      setError(createError instanceof Error ? createError.message : 'Failed to create child subject.');
+    } finally {
+      setCreatingChildSubject(false);
+    }
+  };
+
   const handleCreateStudyTopic = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!subject || !studyTopicForm.name.trim()) return;
@@ -168,17 +234,22 @@ const TopicPage: React.FC = () => {
         subjectId: subject.id,
         name: studyTopicForm.name.trim(),
         parentTopicId: studyTopicForm.parentTopicId ? Number(studyTopicForm.parentTopicId) : undefined,
-        description: studyTopicForm.description.trim() || undefined,
       });
+      const studyTopicAlreadyPresent = studyTopics.some((entry) => entry.id === createdStudyTopic.id);
 
       startTransition(() => {
-        setStudyTopics((current) =>
-          current.some((entry) => entry.id === createdStudyTopic.id)
-            ? current
-            : [...current, createdStudyTopic]
-        );
+        setStudyTopics((current) => {
+          const alreadyPresent = current.some((entry) => entry.id === createdStudyTopic.id);
+          const updated = current.map((entry) =>
+            entry.id === createdStudyTopic.parentTopicId && !alreadyPresent
+              ? { ...entry, childTopicCount: entry.childTopicCount + 1 }
+              : entry
+          );
+
+          return alreadyPresent ? updated : [...updated, createdStudyTopic];
+        });
         setSubject((current) =>
-          current && current.id === subject.id
+          current && current.id === subject.id && !studyTopicAlreadyPresent
             ? { ...current, topicCount: current.topicCount + 1 }
             : current
         );
@@ -188,13 +259,81 @@ const TopicPage: React.FC = () => {
         ...current,
         name: '',
         parentTopicId: '',
-        description: '',
       }));
+      setShowStudyTopicCreator(false);
     } catch (createError) {
       console.error(createError);
       setError('Failed to create topic.');
     } finally {
       setCreatingStudyTopic(false);
+    }
+  };
+
+  const handleDeleteChildSubject = async (childSubject: TopicSummary) => {
+    if (!canDeleteChildSubject(childSubject)) return;
+
+    const confirmed = window.confirm(`Remove "${childSubject.name}" from this subject?`);
+    if (!confirmed) return;
+
+    setDeletingChildSubjectId(childSubject.id);
+    setError(null);
+
+    try {
+      await deleteTopic(childSubject.id);
+
+      startTransition(() => {
+        setSubjects((current) =>
+          current
+            .filter((entry) => entry.id !== childSubject.id)
+            .map((entry) =>
+              entry.id === subject?.id
+                ? { ...entry, childTopicCount: Math.max(0, entry.childTopicCount - 1) }
+                : entry
+            )
+        );
+        setSubject((current) =>
+          current ? { ...current, childTopicCount: Math.max(0, current.childTopicCount - 1) } : current
+        );
+      });
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to remove child subject.');
+    } finally {
+      setDeletingChildSubjectId(null);
+    }
+  };
+
+  const handleDeleteStudyTopic = async (studyTopic: StudyTopicSummary) => {
+    if (!canDeleteStudyTopic(studyTopic)) return;
+
+    const confirmed = window.confirm(`Remove "${studyTopic.name}" from this subject?`);
+    if (!confirmed) return;
+
+    setDeletingStudyTopicId(studyTopic.id);
+    setError(null);
+
+    try {
+      await deleteStudyTopic(studyTopic.id);
+
+      startTransition(() => {
+        setStudyTopics((current) =>
+          current
+            .filter((entry) => entry.id !== studyTopic.id)
+            .map((entry) =>
+              entry.id === studyTopic.parentTopicId
+                ? { ...entry, childTopicCount: Math.max(0, entry.childTopicCount - 1) }
+                : entry
+            )
+        );
+        setSubject((current) =>
+          current ? { ...current, topicCount: Math.max(0, current.topicCount - 1) } : current
+        );
+      });
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to remove topic.');
+    } finally {
+      setDeletingStudyTopicId(null);
     }
   };
 
@@ -221,40 +360,13 @@ const TopicPage: React.FC = () => {
       </Link>
 
       <section className="topic-page-hero">
-        <div>
+        <div className="topic-page-hero-main">
           <span className="topic-page-eyebrow">Subject Page</span>
           <h1>{subject.name}</h1>
           <p>
             {subject.description ||
               'A subject is part of the synchronic taxonomy rooted at Ontology. It contains contextual topics, and those topics contain the concrete items.'}
           </p>
-        </div>
-        <div className="topic-page-stats">
-          <div className="topic-page-stat">
-            <strong>{subject.topicCount}</strong>
-            <span>Contained topics</span>
-          </div>
-          <div className="topic-page-stat">
-            <strong>{subject.childTopicCount}</strong>
-            <span>Child subjects</span>
-          </div>
-          <div className="topic-page-stat">
-            <strong>{subject.knowledgeItemCount}</strong>
-            <span>Items through topics</span>
-          </div>
-          <div className="topic-page-stat">
-            <strong>{formatDate(subject.updatedAt)}</strong>
-            <span>Last updated</span>
-          </div>
-        </div>
-      </section>
-
-      {error ? <div className="topic-page-error">{error}</div> : null}
-
-      <div className="topic-page-grid">
-        <aside className="topic-page-panel topic-page-sidebar">
-          <span className="topic-page-eyebrow">Lineage</span>
-          <h2>Where this subject sits</h2>
           <div className="topic-page-lineage">
             {lineage.map((entry, index) => (
               <React.Fragment key={entry.id}>
@@ -263,33 +375,38 @@ const TopicPage: React.FC = () => {
               </React.Fragment>
             ))}
           </div>
-
-          <div className="topic-page-side-section">
-            <h3>Parent subject</h3>
+          <div className="topic-page-hero-meta">
+            <span>Updated {formatDate(subject.updatedAt)}</span>
             {parentSubject ? (
-              <Link to={`/topics/${parentSubject.id}`} className="topic-page-side-card">
-                <strong>{parentSubject.name}</strong>
-                <span>{parentSubject.topicCount} contained topics</span>
-              </Link>
+              <Link to={`/topics/${parentSubject.id}`}>Parent: {parentSubject.name}</Link>
             ) : (
-              <div className="topic-page-empty">Ontology is the root subject and has no parent.</div>
+              <span>Root subject</span>
             )}
           </div>
-
-          <div className="topic-page-side-section">
-            <h3>Edit subject</h3>
-            <form className="topic-page-form" onSubmit={handleSaveSubject}>
-              <input
-                value={subjectForm.name}
-                onChange={(event) =>
-                  setSubjectForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                disabled={isRootSubject}
-                placeholder="Subject name"
-              />
+          <div className="topic-page-hero-actions">
+            <button
+              type="button"
+              className="topic-page-secondary-button"
+              onClick={() => setShowSubjectEditor((current) => !current)}
+            >
+              {showSubjectEditor ? 'Close subject editor' : 'Edit subject'}
+            </button>
+          </div>
+          {showSubjectEditor ? (
+            <form className="topic-page-form topic-page-inline-panel" onSubmit={handleSaveSubject}>
+              <div className="topic-page-form-row">
+                <input
+                  value={subjectForm.name}
+                  onChange={(event) =>
+                    setSubjectForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  disabled={isRootSubject}
+                  placeholder="Subject name"
+                />
+              </div>
               <textarea
                 value={subjectForm.description}
                 onChange={(event) =>
@@ -310,73 +427,79 @@ const TopicPage: React.FC = () => {
                 </div>
               ) : null}
             </form>
-          </div>
+          ) : null}
+        </div>
+      </section>
 
-          <div className="topic-page-side-section">
-            <h3>Create topic in this subject</h3>
-            <form className="topic-page-form" onSubmit={handleCreateStudyTopic}>
-              <input
-                value={studyTopicForm.name}
-                onChange={(event) =>
-                  setStudyTopicForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="Name the topic"
-              />
-              <select
-                value={studyTopicForm.parentTopicId}
-                onChange={(event) =>
-                  setStudyTopicForm((current) => ({
-                    ...current,
-                    parentTopicId: event.target.value,
-                  }))
-                }
-              >
-                <option value="">No parent topic</option>
-                {orderedStudyTopics.map(({ topic, depth }) => (
-                  <option key={topic.id} value={topic.id}>
-                    {`${'  '.repeat(depth)}${topic.name}`}
-                  </option>
-                ))}
-              </select>
-              <textarea
-                value={studyTopicForm.description}
-                onChange={(event) =>
-                  setStudyTopicForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Optional description"
-              />
-              <button type="submit" disabled={creatingStudyTopic}>
-                {creatingStudyTopic ? 'Creating...' : 'Create topic'}
-              </button>
-            </form>
-          </div>
-        </aside>
+      {error ? <div className="topic-page-error">{error}</div> : null}
 
-        <div className="topic-page-main">
+      <div className="topic-page-main">
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
                 <span className="topic-page-eyebrow">Branches</span>
-                <h2>Child subjects</h2>
+                <h2>
+                  Child subjects
+                  <span className="topic-page-count-badge">{childSubjects.length}</span>
+                </h2>
               </div>
+              <button
+                type="button"
+                className="topic-page-secondary-button"
+                onClick={() => setShowChildSubjectCreator((current) => !current)}
+              >
+                {showChildSubjectCreator ? 'Close' : 'Add child subject'}
+              </button>
             </div>
+
+            {showChildSubjectCreator ? (
+              <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateChildSubject}>
+                <div className="topic-page-form-row">
+                  <input
+                    value={childSubjectDraft}
+                    onChange={(event) => setChildSubjectDraft(event.target.value)}
+                    placeholder={`New child under ${subject.name}`}
+                  />
+                </div>
+                <button type="submit" disabled={creatingChildSubject}>
+                  {creatingChildSubject ? 'Creating...' : 'Create child subject'}
+                </button>
+              </form>
+            ) : null}
 
             {childSubjects.length === 0 ? (
               <div className="topic-page-empty">No child subjects yet.</div>
             ) : (
               <div className="topic-page-card-grid">
                 {childSubjects.map((childSubject) => (
-                  <Link key={childSubject.id} to={`/topics/${childSubject.id}`} className="topic-page-card">
-                    <strong>{childSubject.name}</strong>
-                    <span>{childSubject.topicCount} contained topics</span>
-                    <span>{childSubject.childTopicCount} child subjects</span>
-                  </Link>
+                  <article key={childSubject.id} className="topic-page-card">
+                    <Link to={`/topics/${childSubject.id}`} className="topic-page-card-link">
+                      <strong>{childSubject.name}</strong>
+                    </Link>
+                    <div className="topic-page-card-meta">
+                      <span>{childSubject.topicCount} topics</span>
+                      <span>{childSubject.childTopicCount} child subjects</span>
+                    </div>
+                    {childSubject.description ? <p>{childSubject.description}</p> : null}
+                    <div className="topic-page-card-actions">
+                      <Link to={`/topics/${childSubject.id}`} className="topic-page-card-button">
+                        Open subject
+                      </Link>
+                      <button
+                        type="button"
+                        className="topic-page-danger-button"
+                        onClick={() => handleDeleteChildSubject(childSubject)}
+                        disabled={!canDeleteChildSubject(childSubject) || deletingChildSubjectId === childSubject.id}
+                        title={
+                          canDeleteChildSubject(childSubject)
+                            ? 'Remove this empty leaf subject'
+                            : 'Only empty leaf subjects can be removed here'
+                        }
+                      >
+                        {deletingChildSubjectId === childSubject.id ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
@@ -386,9 +509,56 @@ const TopicPage: React.FC = () => {
             <div className="topic-page-section-head">
               <div>
                 <span className="topic-page-eyebrow">Contained Topics</span>
-                <h2>Topics inside this subject</h2>
+                <h2>
+                  Topics inside this subject
+                  <span className="topic-page-count-badge">{orderedStudyTopics.length}</span>
+                </h2>
+                <p className="topic-page-section-copy">{subject.knowledgeItemCount} items through these topics.</p>
               </div>
+              <button
+                type="button"
+                className="topic-page-secondary-button"
+                onClick={() => setShowStudyTopicCreator((current) => !current)}
+              >
+                {showStudyTopicCreator ? 'Close' : 'Add topic'}
+              </button>
             </div>
+
+            {showStudyTopicCreator ? (
+              <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateStudyTopic}>
+                <div className="topic-page-form-row topic-page-form-row-split">
+                  <input
+                    value={studyTopicForm.name}
+                    onChange={(event) =>
+                      setStudyTopicForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Name the topic"
+                  />
+                  <select
+                    value={studyTopicForm.parentTopicId}
+                    onChange={(event) =>
+                      setStudyTopicForm((current) => ({
+                        ...current,
+                        parentTopicId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">No parent topic</option>
+                    {orderedStudyTopics.map(({ topic, depth }) => (
+                      <option key={topic.id} value={topic.id}>
+                        {`${'  '.repeat(depth)}${topic.name}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" disabled={creatingStudyTopic}>
+                  {creatingStudyTopic ? 'Creating...' : 'Create topic'}
+                </button>
+              </form>
+            ) : null}
 
             {orderedStudyTopics.length === 0 ? (
               <div className="topic-page-empty">
@@ -397,19 +567,39 @@ const TopicPage: React.FC = () => {
             ) : (
               <div className="topic-page-card-grid">
                 {orderedStudyTopics.map(({ topic, depth }) => (
-                  <Link key={topic.id} to={`/study-topics/${topic.id}`} className="topic-page-card">
-                    <strong>{`${'  '.repeat(depth)}${topic.name}`}</strong>
-                    <span>{topic.itemCount} contained items</span>
-                    <span>{topic.childTopicCount} child topics</span>
-                    {topic.summary || topic.description ? (
-                      <span>{topic.summary || topic.description}</span>
-                    ) : null}
-                  </Link>
+                  <article key={topic.id} className="topic-page-card">
+                    <Link to={`/study-topics/${topic.id}`} className="topic-page-card-link">
+                      <strong>{topic.name}</strong>
+                    </Link>
+                    <div className="topic-page-card-meta">
+                      {depth > 0 ? <span>Depth {depth + 1}</span> : <span>Top-level topic</span>}
+                      <span>{topic.itemCount} items</span>
+                      <span>{topic.childTopicCount} child topics</span>
+                    </div>
+                    {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
+                    <div className="topic-page-card-actions">
+                      <Link to={`/study-topics/${topic.id}`} className="topic-page-card-button">
+                        Open topic
+                      </Link>
+                      <button
+                        type="button"
+                        className="topic-page-danger-button"
+                        onClick={() => handleDeleteStudyTopic(topic)}
+                        disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
+                        title={
+                          canDeleteStudyTopic(topic)
+                            ? 'Remove this empty leaf topic'
+                            : 'Only empty leaf topics with no items can be removed here'
+                        }
+                      >
+                        {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
+                      </button>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
           </section>
-        </div>
       </div>
     </div>
   );

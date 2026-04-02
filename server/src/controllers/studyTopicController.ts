@@ -151,3 +151,53 @@ export const createStudyTopic = asyncErrorHandler(async (req: Request, res: Resp
 
   res.status(201).json(createdTopic);
 });
+
+export const deleteStudyTopic = asyncErrorHandler(async (req: Request, res: Response) => {
+  const db = await getDb();
+  const studyTopicId = parseId(req.params.id);
+  if (!studyTopicId) {
+    return res.status(400).json({ message: 'Invalid topic id' });
+  }
+
+  const existingTopic = await getStudyTopicById(studyTopicId);
+  if (!existingTopic) {
+    return res.status(404).json({ message: 'Topic not found' });
+  }
+
+  const childTopic = await db.get('SELECT id FROM study_topics WHERE parentTopicId = ? LIMIT 1', studyTopicId);
+  if (childTopic) {
+    return res.status(409).json({ message: 'Remove child topics before deleting this topic' });
+  }
+
+  const assignedItem = await db.get(
+    'SELECT knowledgeItemId FROM knowledge_item_study_topics WHERE studyTopicId = ? LIMIT 1',
+    studyTopicId
+  );
+  if (assignedItem) {
+    return res.status(409).json({ message: 'Remove this topic’s items before deleting it' });
+  }
+
+  await db.run(
+    `DELETE FROM knowledge_relations
+     WHERE (fromEntityType = 'study_topic' AND fromEntityId = ?)
+        OR (toEntityType = 'study_topic' AND toEntityId = ?)`,
+    studyTopicId,
+    studyTopicId
+  );
+  await db.run('DELETE FROM study_topics WHERE id = ?', studyTopicId);
+
+  await recordActivityEvent({
+    type: 'topic_deleted',
+    entityType: 'study_topic',
+    entityId: studyTopicId,
+    message: `Deleted topic "${existingTopic.name}" from subject "${existingTopic.subjectName}"`,
+    metadata: {
+      subjectId: existingTopic.subjectId,
+      subjectName: existingTopic.subjectName,
+      parentTopicId: existingTopic.parentTopicId ?? null,
+      slug: existingTopic.slug,
+    },
+  });
+
+  res.status(204).send();
+});

@@ -269,6 +269,7 @@ export type ActivityEventType =
   | 'reference_entity_updated'
   | 'subject_created'
   | 'topic_created'
+  | 'topic_deleted'
   | 'note_created'
   | 'task_created'
   | 'relation_created'

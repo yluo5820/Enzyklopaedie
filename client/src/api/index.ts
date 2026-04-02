@@ -737,6 +737,16 @@ export const createStudyTopic = async (topicData: NewStudyTopic): Promise<StudyT
   return response.json();
 };
 
+export const deleteStudyTopic = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to delete topic');
+  }
+};
+
 export const fetchTopicKnowledgeItems = async (topicId: number): Promise<KnowledgeItem[]> => {
   const response = await fetch(`${API_BASE_URL}/topics/${topicId}/knowledge-items`);
   if (!response.ok) {
