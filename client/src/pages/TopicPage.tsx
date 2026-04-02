@@ -106,6 +106,17 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
+const PageHint = ({ text }: { text: string }) => (
+  <span className="topic-page-help" tabIndex={0} aria-label={text}>
+    <span aria-hidden="true" className="topic-page-help-icon">
+      i
+    </span>
+    <span role="tooltip" className="topic-page-help-tooltip">
+      {text}
+    </span>
+  </span>
+);
+
 const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
 
 const formatYear = (value?: number) => {
@@ -609,30 +620,44 @@ const TopicPage: React.FC = () => {
           ) : null}
           <div className="topic-page-overview-grid">
             <article className="topic-page-overview-card">
-              <span className="topic-page-eyebrow">Placement</span>
+              <div className="topic-page-overview-label">
+                <span className="topic-page-eyebrow">Placement</span>
+                <PageHint text="Where this topic sits inside the current subject branch." />
+              </div>
               <strong>{parentTopic ? parentTopic.name : 'Top-level topic'}</strong>
-              <p>{parentTopic ? 'This topic lives inside a larger branch.' : 'This topic begins a branch directly under the subject.'}</p>
+              <span className="topic-page-overview-meta">
+                {parentTopic ? 'Nested branch' : 'Starts under the subject'}
+              </span>
             </article>
             <article className="topic-page-overview-card">
-              <span className="topic-page-eyebrow">Study Material</span>
+              <div className="topic-page-overview-label">
+                <span className="topic-page-eyebrow">Study Material</span>
+                <PageHint text="Concrete items currently assigned to this topic." />
+              </div>
               <strong>{knowledgeItems.length} item{knowledgeItems.length === 1 ? '' : 's'}</strong>
-              <p>These are the concrete works currently placed in this topic.</p>
+              <span className="topic-page-overview-meta">Assigned here</span>
             </article>
             <article className="topic-page-overview-card">
-              <span className="topic-page-eyebrow">Subtopics</span>
+              <div className="topic-page-overview-label">
+                <span className="topic-page-eyebrow">Subtopics</span>
+                <PageHint text="Child topics already growing beneath this one." />
+              </div>
               <strong>{childTopics.length} child topic{childTopics.length === 1 ? '' : 's'}</strong>
-              <p>Browse the narrower branches already growing beneath this topic.</p>
+              <span className="topic-page-overview-meta">Branches below</span>
             </article>
             <article className="topic-page-overview-card">
-              <span className="topic-page-eyebrow">Historical Frame</span>
+              <div className="topic-page-overview-label">
+                <span className="topic-page-eyebrow">Historical Frame</span>
+                <PageHint text="People, eras, nations, civilizations, and places linked to contextualize the topic." />
+              </div>
               <strong>{relations.length} linked entit{relations.length === 1 ? 'y' : 'ies'}</strong>
-              <p>
+              <span className="topic-page-overview-meta">
                 {relations.length > 0
                   ? [...relationCountsByKind.entries()]
                       .map(([kind, count]) => `${count} ${kind}`)
                       .join(', ')
-                  : 'No people, eras, nations, civilizations, or places are linked yet.'}
-              </p>
+                  : 'Not linked yet'}
+              </span>
             </article>
           </div>
         </div>
@@ -647,11 +672,9 @@ const TopicPage: React.FC = () => {
                 <span className="topic-page-eyebrow">Study Material</span>
                 <h2>
                   Items in this topic
+                  <PageHint text="The concrete reading and viewing cluster assigned to this topic." />
                   <span className="topic-page-count-badge">{knowledgeItems.length}</span>
                 </h2>
-                <p className="topic-page-copy">
-                  This is the concrete reading and viewing list that gives the topic its substance.
-                </p>
               </div>
               <button
                 type="button"
@@ -664,16 +687,12 @@ const TopicPage: React.FC = () => {
 
             {showItemManager ? (
               <div className="topic-page-inline-panel topic-page-manager-stack">
-                <div className="topic-page-note">
-                  <strong>Curate the reading cluster here.</strong>
-                  <span>
-                    Add existing items into this topic or remove items that no longer belong in this study context.
-                  </span>
-                </div>
-
                 <section className="topic-page-manager-section">
                   <div className="topic-page-subsection-head">
-                    <h3>Assigned here</h3>
+                    <h3>
+                      Assigned here
+                      <PageHint text="Items already placed in this topic. Remove them here if the fit is wrong." />
+                    </h3>
                     <span className="topic-page-count-badge">{knowledgeItems.length}</span>
                   </div>
                   {knowledgeItems.length === 0 ? (
@@ -709,7 +728,10 @@ const TopicPage: React.FC = () => {
 
                 <section className="topic-page-manager-section">
                   <div className="topic-page-subsection-head">
-                    <h3>Add existing item</h3>
+                    <h3>
+                      Add existing item
+                      <PageHint text="Search the current item catalog and place an existing item into this topic." />
+                    </h3>
                     <span className="topic-page-count-badge">{visibleAvailableKnowledgeItems.length}</span>
                   </div>
                   <input
@@ -787,11 +809,9 @@ const TopicPage: React.FC = () => {
                 <span className="topic-page-eyebrow">Historical Frame</span>
                 <h2>
                   Context composition
+                  <PageHint text="Add people, eras, places, nations, or civilizations to make the topic historically or geographically specific." />
                   <span className="topic-page-count-badge">{relations.length}</span>
                 </h2>
-                <p className="topic-page-copy">
-                  This is where a topic becomes historically or geographically specific. Keep the branch conceptual; use entities to add era, place, polity, civilization, or person.
-                </p>
               </div>
               <button
                 type="button"
@@ -804,10 +824,6 @@ const TopicPage: React.FC = () => {
 
             {showRelationComposer ? (
               <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateRelation}>
-                <div className="topic-page-note">
-                  <strong>Current guidance</strong>
-                  <span>{relationPreset.helperText}</span>
-                </div>
                 <div className="topic-page-form-row topic-page-form-row-split">
                   <select
                     value={relationForm.relationType}
@@ -856,6 +872,10 @@ const TopicPage: React.FC = () => {
                   }
                   placeholder={relationPreset.notePlaceholder}
                 />
+                <div className="topic-page-inline-meta">
+                  <PageHint text={relationPreset.helperText} />
+                  <span>Relation guidance</span>
+                </div>
                 <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
                   {savingRelation ? 'Linking...' : 'Link entity'}
                 </button>
@@ -896,12 +916,9 @@ const TopicPage: React.FC = () => {
                 <span className="topic-page-eyebrow">Branches</span>
                 <h2>
                   Child topics
+                  <PageHint text="Browse the narrower branches that already exist under this topic. Branch creation stays on the subject page." />
                   <span className="topic-page-count-badge">{childTopics.length}</span>
                 </h2>
-                <p className="topic-page-copy">
-                  Topic branching is managed from the subject page. Use this section to navigate the
-                  subtopics that already live under the current topic.
-                </p>
               </div>
             </div>
 

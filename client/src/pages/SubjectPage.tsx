@@ -21,6 +21,17 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
+const PageHint = ({ text }: { text: string }) => (
+  <span className="topic-page-help" tabIndex={0} aria-label={text}>
+    <span aria-hidden="true" className="topic-page-help-icon">
+      i
+    </span>
+    <span role="tooltip" className="topic-page-help-tooltip">
+      {text}
+    </span>
+  </span>
+);
+
 const orderStudyTopics = (studyTopics: StudyTopicSummary[]) => {
   const children = new Map<number | null, StudyTopicSummary[]>();
 
@@ -391,11 +402,9 @@ const SubjectPage: React.FC = () => {
                 <span className="topic-page-eyebrow">Topic Landscape</span>
                 <h2>
                   Topics inside this subject
+                  <PageHint text="Subjects stay synchronic. Use topics for the contextual branches where items actually live." />
                   <span className="topic-page-count-badge">{orderedStudyTopics.length}</span>
                 </h2>
-                <p className="topic-page-section-copy">
-                  Keep the subject itself synchronic. The contextual branches below it are where specific lines of study, periods, and item clusters actually live.
-                </p>
               </div>
               <button
                 type="button"
@@ -450,12 +459,12 @@ const SubjectPage: React.FC = () => {
               <div className="topic-page-subsection-stack">
                 <section className="topic-page-subsection">
                   <div className="topic-page-subsection-head">
-                    <h3>Top-level topics</h3>
+                    <h3>
+                      Top-level topics
+                      <PageHint text="These are the first practical branches directly under this subject." />
+                    </h3>
                     <span className="topic-page-count-badge">{topLevelStudyTopics.length}</span>
                   </div>
-                  <p className="topic-page-section-copy">
-                    These are the first practical branches directly beneath this subject.
-                  </p>
                   <div className="topic-page-card-grid">
                     {topLevelStudyTopics.map(({ topic }) => (
                       <article key={topic.id} className="topic-page-card">
@@ -493,12 +502,12 @@ const SubjectPage: React.FC = () => {
                 {nestedStudyTopics.length > 0 ? (
                   <section className="topic-page-subsection">
                     <div className="topic-page-subsection-head">
-                      <h3>Nested branches</h3>
+                      <h3>
+                        Nested branches
+                        <PageHint text="Deeper topic branches are shown as paths here so the subject page stays readable." />
+                      </h3>
                       <span className="topic-page-count-badge">{nestedStudyTopics.length}</span>
                     </div>
-                    <p className="topic-page-section-copy">
-                      Deeper topic branches stay readable here as paths instead of flattening the whole subject into one long card grid.
-                    </p>
                     <div className="topic-page-item-list">
                       {nestedStudyTopics.map(({ topic, depth, path }) => (
                         <article key={topic.id} className="topic-page-item-card">

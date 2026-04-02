@@ -103,6 +103,52 @@
   line-height: 1.6;
 }
 
+.topic-page-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(145, 95, 54, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--accent-dark);
+  cursor: help;
+  outline: none;
+  flex: 0 0 auto;
+}
+
+.topic-page-help-icon {
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.topic-page-help-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  width: min(260px, 70vw);
+  padding: 9px 11px;
+  border-radius: 12px;
+  background: rgba(33, 25, 18, 0.94);
+  color: #fffaf2;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  box-shadow: 0 12px 24px rgba(20, 12, 8, 0.24);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 10;
+}
+
+.topic-page-help:hover .topic-page-help-tooltip,
+.topic-page-help:focus-visible .topic-page-help-tooltip {
+  opacity: 1;
+}
+
 .topic-page-panel {
   padding: 22px;
 }
@@ -127,9 +173,14 @@
   color: var(--accent-dark);
 }
 
-.topic-page-overview-card p {
-  margin: 0;
-  line-height: 1.55;
+.topic-page-overview-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topic-page-overview-meta {
+  font-size: 0.92rem;
   color: var(--muted);
 }
 
@@ -190,6 +241,9 @@
 }
 
 .topic-page-subsection-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
 }
@@ -241,6 +295,14 @@
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.topic-page-inline-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .topic-page-count-badge {
