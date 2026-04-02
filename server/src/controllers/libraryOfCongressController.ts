@@ -186,18 +186,6 @@ export const searchLibraryOfCongressBooks = asyncErrorHandler(async (req: Reques
     if (fallbackResult.ok) {
       payload = fallbackResult.payload;
     }
-  } else if (!query && author && (payload.results?.length ?? 0) === 0) {
-    const fallbackParams = buildBaseParams();
-    fallbackParams.set('q', author);
-    const fallbackFacets = buildLocFacets(undefined, language);
-    if (fallbackFacets.length > 0) {
-      fallbackParams.set('fa', fallbackFacets.join('|'));
-    }
-
-    const fallbackResult = await fetchLocPayload(fallbackParams);
-    if (fallbackResult.ok) {
-      payload = fallbackResult.payload;
-    }
   }
 
   const matches = (payload.results ?? [])
