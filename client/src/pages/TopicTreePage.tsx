@@ -1,7 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type { TopicSummary } from '@enzyklopaedie/shared';
 import { useNavigate } from 'react-router-dom';
-import { createTopic, deleteTopic, fetchTopics, updateTopic } from '../api';
+import { createTopic, deleteTopic, fetchTopics } from '../api';
 import './TopicTreePage.css';
 
 interface PositionedTopic {
@@ -121,24 +121,6 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
   };
 };
 
-const buildLineage = (topic: TopicSummary | null, topicMap: Map<number, TopicSummary>) => {
-  if (!topic) return [];
-
-  const lineage: TopicSummary[] = [topic];
-  let currentParentId = topic.parentTopicId;
-  let guard = 0;
-
-  while (currentParentId && guard < 24) {
-    const parent = topicMap.get(currentParentId);
-    if (!parent) break;
-    lineage.unshift(parent);
-    currentParentId = parent.parentTopicId;
-    guard += 1;
-  }
-
-  return lineage;
-};
-
 const TopicTreePage: React.FC = () => {
   const navigate = useNavigate();
   const [topics, setTopics] = useState<TopicSummary[]>([]);
@@ -146,15 +128,7 @@ const TopicTreePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null);
-  const [subjectDraft, setSubjectDraft] = useState({
-    description: '',
-    name: '',
-  });
-  const [childDraft, setChildDraft] = useState({
-    description: '',
-    name: '',
-  });
-  const [savingSubject, setSavingSubject] = useState(false);
+  const [childDraft, setChildDraft] = useState('');
   const [creatingChild, setCreatingChild] = useState(false);
   const [deletingSubject, setDeletingSubject] = useState(false);
 
@@ -178,18 +152,9 @@ const TopicTreePage: React.FC = () => {
     () => (selectedTopicId ? layout.topicMap.get(selectedTopicId) ?? null : null),
     [layout.topicMap, selectedTopicId]
   );
-  const selectedLineage = useMemo(
-    () => buildLineage(selectedTopic, layout.topicMap),
-    [layout.topicMap, selectedTopic]
-  );
   const totalTopics = useMemo(
     () => topics.reduce((sum, topic) => sum + topic.topicCount, 0),
     [topics]
-  );
-  const selectedParent = useMemo(
-    () =>
-      selectedTopic?.parentTopicId ? layout.topicMap.get(selectedTopic.parentTopicId) ?? null : null,
-    [layout.topicMap, selectedTopic]
   );
   const isRootSubject = selectedTopic?.slug === 'ontology';
 
@@ -211,53 +176,19 @@ const TopicTreePage: React.FC = () => {
   useEffect(() => {
     if (!selectedTopic) return;
 
-    setSubjectDraft({
-      description: selectedTopic.description ?? '',
-      name: selectedTopic.name,
-    });
-    setChildDraft({
-      description: '',
-      name: '',
-    });
+    setChildDraft('');
   }, [selectedTopic]);
-
-  const handleSaveSubject = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedTopic || !subjectDraft.name.trim()) return;
-
-    setSavingSubject(true);
-    setError(null);
-
-    try {
-      const updatedSubject = await updateTopic(selectedTopic.id, {
-        description: subjectDraft.description.trim() || undefined,
-        name: subjectDraft.name.trim(),
-      });
-
-      startTransition(() => {
-        setTopics((current) =>
-          current.map((topic) => (topic.id === updatedSubject.id ? updatedSubject : topic))
-        );
-      });
-    } catch (saveError) {
-      console.error(saveError);
-      setError(saveError instanceof Error ? saveError.message : 'Failed to update subject.');
-    } finally {
-      setSavingSubject(false);
-    }
-  };
 
   const handleCreateChild = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedTopic || !childDraft.name.trim()) return;
+    if (!selectedTopic || !childDraft.trim()) return;
 
     setCreatingChild(true);
     setError(null);
 
     try {
       const createdSubject = await createTopic({
-        description: childDraft.description.trim() || undefined,
-        name: childDraft.name.trim(),
+        name: childDraft.trim(),
         parentTopicId: selectedTopic.id,
       });
 
@@ -331,7 +262,7 @@ const TopicTreePage: React.FC = () => {
           <p>
             This is the encyclopedia’s synchronic subject taxonomy: a tech-tree style map rooted in
             Ontology, then branching into the disciplines and sub-disciplines you want to build out over
-            time. Click a branch to rename it, add a child subject under it, or remove an empty leaf.
+            time. Click a branch to add a child subject under it, open its page, or remove an empty leaf.
           </p>
         </div>
         <div className="topic-tree-hero-stats">
@@ -456,101 +387,17 @@ const TopicTreePage: React.FC = () => {
                   <div className="topic-tree-editor-head">
                     <span className="topic-tree-eyebrow">Selected Subject</span>
                     <h3>{selectedTopic.name}</h3>
-                    <p>
-                      {isRootSubject
-                        ? 'Ontology remains the fixed root. Use it to add the first major branches of the encyclopedia.'
-                        : 'This branch is now the active edit target. Adding a child here automatically records the parent relation.'}
-                    </p>
+                    <p>{selectedTopic.childTopicCount} child subjects, {selectedTopic.topicCount} contained topics</p>
                   </div>
-
-                  <div className="topic-tree-editor-stats">
-                    <div className="topic-tree-editor-stat">
-                      <strong>{selectedTopic.childTopicCount}</strong>
-                      <span>Child subjects</span>
-                    </div>
-                    <div className="topic-tree-editor-stat">
-                      <strong>{selectedTopic.topicCount}</strong>
-                      <span>Contained topics</span>
-                    </div>
-                    <div className="topic-tree-editor-stat">
-                      <strong>{selectedTopic.knowledgeItemCount}</strong>
-                      <span>Items through topics</span>
-                    </div>
-                  </div>
-
-                  <div className="topic-tree-editor-note">
-                    <strong>Lineage</strong>
-                    <span>{selectedLineage.map((topic) => topic.name).join(' / ')}</span>
-                  </div>
-
-                  <div className="topic-tree-editor-note">
-                    <strong>Parent</strong>
-                    <span>{selectedParent ? selectedParent.name : 'Root subject'}</span>
-                  </div>
-
-                  <form className="topic-tree-editor-form" onSubmit={handleSaveSubject}>
-                    <div className="topic-tree-editor-section">
-                      <h4>Rename or revise</h4>
-                      <label>
-                        <span>Subject name</span>
-                        <input
-                          value={subjectDraft.name}
-                          onChange={(event) =>
-                            setSubjectDraft((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                          disabled={isRootSubject}
-                          placeholder="Subject name"
-                        />
-                      </label>
-                      <label>
-                        <span>Description</span>
-                        <textarea
-                          value={subjectDraft.description}
-                          onChange={(event) =>
-                            setSubjectDraft((current) => ({
-                              ...current,
-                              description: event.target.value,
-                            }))
-                          }
-                          placeholder="Optional description"
-                        />
-                      </label>
-                      <button type="submit" disabled={savingSubject || isRootSubject}>
-                        {savingSubject ? 'Saving...' : isRootSubject ? 'Ontology is fixed' : 'Save subject'}
-                      </button>
-                    </div>
-                  </form>
 
                   <form className="topic-tree-editor-form" onSubmit={handleCreateChild}>
                     <div className="topic-tree-editor-section">
                       <h4>Add child subject</h4>
                       <label>
-                        <span>Name</span>
                         <input
-                          value={childDraft.name}
-                          onChange={(event) =>
-                            setChildDraft((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
+                          value={childDraft}
+                          onChange={(event) => setChildDraft(event.target.value)}
                           placeholder={`New branch under ${selectedTopic.name}`}
-                        />
-                      </label>
-                      <label>
-                        <span>Description</span>
-                        <textarea
-                          value={childDraft.description}
-                          onChange={(event) =>
-                            setChildDraft((current) => ({
-                              ...current,
-                              description: event.target.value,
-                            }))
-                          }
-                          placeholder="Optional description for the new branch"
                         />
                       </label>
                       <button type="submit" disabled={creatingChild}>

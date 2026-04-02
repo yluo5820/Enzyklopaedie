@@ -1,7 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
-import { createStudyTopic, fetchStudyTopics, fetchTopic, fetchTopics } from '../api';
+import { createStudyTopic, fetchStudyTopics, fetchTopic, fetchTopics, updateTopic } from '../api';
 import './TopicPage.css';
 
 const formatDate = (value: string) =>
@@ -46,7 +46,12 @@ const TopicPage: React.FC = () => {
   const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savingSubject, setSavingSubject] = useState(false);
   const [creatingStudyTopic, setCreatingStudyTopic] = useState(false);
+  const [subjectForm, setSubjectForm] = useState({
+    description: '',
+    name: '',
+  });
   const [studyTopicForm, setStudyTopicForm] = useState({
     name: '',
     parentTopicId: '',
@@ -112,6 +117,44 @@ const TopicPage: React.FC = () => {
     return path;
   }, [subject, subjectMap]);
   const orderedStudyTopics = useMemo(() => orderStudyTopics(studyTopics), [studyTopics]);
+
+  useEffect(() => {
+    if (!subject) return;
+
+    setSubjectForm({
+      description: subject.description ?? '',
+      name: subject.name,
+    });
+  }, [subject]);
+
+  const isRootSubject = subject?.slug === 'ontology';
+
+  const handleSaveSubject = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!subject || !subjectForm.name.trim()) return;
+
+    setSavingSubject(true);
+    setError(null);
+
+    try {
+      const updatedSubject = await updateTopic(subject.id, {
+        description: subjectForm.description.trim() || undefined,
+        ...(isRootSubject ? {} : { name: subjectForm.name.trim() }),
+      });
+
+      startTransition(() => {
+        setSubject(updatedSubject);
+        setSubjects((current) =>
+          current.map((entry) => (entry.id === updatedSubject.id ? updatedSubject : entry))
+        );
+      });
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save subject.');
+    } finally {
+      setSavingSubject(false);
+    }
+  };
 
   const handleCreateStudyTopic = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -234,17 +277,39 @@ const TopicPage: React.FC = () => {
           </div>
 
           <div className="topic-page-side-section">
-            <h3>Subject structure</h3>
-            <div className="topic-page-note">
-              <strong>Edit this in the subject tree.</strong>
-              <span>
-                Add child subjects, rename branches, and remove empty leaf subjects from the main
-                tree editor so the hierarchy stays visible while you work.
-              </span>
-              <Link to="/topics" className="topic-page-lineage-link">
-                Open Subject Tree Editor
-              </Link>
-            </div>
+            <h3>Edit subject</h3>
+            <form className="topic-page-form" onSubmit={handleSaveSubject}>
+              <input
+                value={subjectForm.name}
+                onChange={(event) =>
+                  setSubjectForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                disabled={isRootSubject}
+                placeholder="Subject name"
+              />
+              <textarea
+                value={subjectForm.description}
+                onChange={(event) =>
+                  setSubjectForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="Subject description"
+              />
+              <button type="submit" disabled={savingSubject}>
+                {savingSubject ? 'Saving...' : 'Save subject'}
+              </button>
+              {isRootSubject ? (
+                <div className="topic-page-note">
+                  <strong>Ontology stays the root.</strong>
+                  <span>The title is fixed, but you can still revise the description here.</span>
+                </div>
+              ) : null}
+            </form>
           </div>
 
           <div className="topic-page-side-section">
