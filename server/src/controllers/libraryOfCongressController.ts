@@ -158,8 +158,7 @@ export const searchLibraryOfCongressBooks = asyncErrorHandler(async (req: Reques
       primaryParams.set('fa', facets.join('|'));
     }
   } else if (author) {
-    primaryParams.set('q', author);
-    const facets = buildLocFacets(undefined, language);
+    const facets = buildLocFacets(author, language);
     if (facets.length > 0) {
       primaryParams.set('fa', facets.join('|'));
     }
@@ -178,6 +177,18 @@ export const searchLibraryOfCongressBooks = asyncErrorHandler(async (req: Reques
   if (query && author && (payload.results?.length ?? 0) === 0) {
     const fallbackParams = buildBaseParams();
     fallbackParams.set('q', `${query} ${author}`.trim());
+    const fallbackFacets = buildLocFacets(undefined, language);
+    if (fallbackFacets.length > 0) {
+      fallbackParams.set('fa', fallbackFacets.join('|'));
+    }
+
+    const fallbackResult = await fetchLocPayload(fallbackParams);
+    if (fallbackResult.ok) {
+      payload = fallbackResult.payload;
+    }
+  } else if (!query && author && (payload.results?.length ?? 0) === 0) {
+    const fallbackParams = buildBaseParams();
+    fallbackParams.set('q', author);
     const fallbackFacets = buildLocFacets(undefined, language);
     if (fallbackFacets.length > 0) {
       fallbackParams.set('fa', fallbackFacets.join('|'));
