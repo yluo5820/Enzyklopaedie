@@ -80,6 +80,30 @@ const formatYear = (value?: number) => {
   return 'Year 0';
 };
 
+const readNumericMetadata = (item: KnowledgeItem, key: 'pageCount' | 'durationMinutes') => {
+  const value = item.metadata?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const writtenItemKinds = new Set<KnowledgeItem['kind']>(['book', 'article', 'essay']);
+const getItemFormLabel = (item: KnowledgeItem) =>
+  writtenItemKinds.has(item.kind) ? 'Written work' : 'Lecture / media';
+
+const getItemRecordDetail = (item: KnowledgeItem) => {
+  const pageCount = readNumericMetadata(item, 'pageCount');
+  if (pageCount) return `${pageCount} pages`;
+
+  const durationMinutes = readNumericMetadata(item, 'durationMinutes');
+  if (durationMinutes) return `${durationMinutes} min`;
+
+  return null;
+};
+
 const formatReferenceTimespan = (entity: ReferenceEntity) => {
   const start = formatYear(entity.startYear);
   const end = formatYear(entity.endYear);
@@ -683,6 +707,8 @@ const KnowledgeDetailPage: React.FC = () => {
     );
   }
 
+  const itemRecordDetail = getItemRecordDetail(item);
+
   return (
     <div className="knowledge-detail-page">
       <Link to="/knowledge" className="knowledge-detail-back">
@@ -700,6 +726,7 @@ const KnowledgeDetailPage: React.FC = () => {
             {item.creator ? <span>{item.creator}</span> : null}
             {item.sourceName ? <span>{item.sourceName}</span> : null}
             {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+            {itemRecordDetail ? <span>{itemRecordDetail}</span> : null}
             <span>Updated {formatDate(item.updatedAt)}</span>
           </div>
           {item.summary ? <p>{item.summary}</p> : null}
@@ -781,6 +808,16 @@ const KnowledgeDetailPage: React.FC = () => {
                 <dt>Type</dt>
                 <dd>{item.kind}</dd>
               </div>
+              <div>
+                <dt>Form</dt>
+                <dd>{getItemFormLabel(item)}</dd>
+              </div>
+              {itemRecordDetail ? (
+                <div>
+                  <dt>Record detail</dt>
+                  <dd>{itemRecordDetail}</dd>
+                </div>
+              ) : null}
             </dl>
           </div>
         </aside>

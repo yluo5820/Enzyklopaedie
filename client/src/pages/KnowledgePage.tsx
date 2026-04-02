@@ -17,21 +17,51 @@ import {
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './KnowledgePage.css';
 
-const kindOptions: KnowledgeItemKind[] = [
-  'book',
-  'lecture',
-  'article',
-  'essay',
-  'video',
-  'podcast',
-  'course',
-  'artifact',
-];
+type ItemWorkbenchPreset = {
+  creatorLabel: string;
+  extraFieldLabel: string;
+  extraFieldName: 'pageCount' | 'durationMinutes';
+  extraFieldPlaceholder: string;
+  kindHelp: string;
+  sourceLabel: string;
+  sourcePlaceholder: string;
+  summaryPlaceholder: string;
+  yearLabel: string;
+};
+
+type ItemWorkbenchKind = 'book' | 'lecture';
+
+const kindOptions: ItemWorkbenchKind[] = ['book', 'lecture'];
+const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
+  book: {
+    creatorLabel: 'Author',
+    extraFieldLabel: 'Pages',
+    extraFieldName: 'pageCount',
+    extraFieldPlaceholder: '320',
+    kindHelp: 'Use Book for anything primarily written: books, essays, articles, papers, and similar texts.',
+    sourceLabel: 'Publisher / Journal / Collection',
+    sourcePlaceholder: 'Publisher, journal, archive...',
+    summaryPlaceholder: 'Why does this written work belong in your encyclopedia?',
+    yearLabel: 'Published Year',
+  },
+  lecture: {
+    creatorLabel: 'Speaker / Lecturer / Creator',
+    extraFieldLabel: 'Duration (minutes)',
+    extraFieldName: 'durationMinutes',
+    extraFieldPlaceholder: '90',
+    kindHelp:
+      'Use Lecture for non-written study material: lectures, videos, podcasts, courses, and similar resources.',
+    sourceLabel: 'Platform / Channel / Series',
+    sourcePlaceholder: 'Channel, platform, course series...',
+    summaryPlaceholder: 'Why does this lecture or resource belong in your encyclopedia?',
+    yearLabel: 'Release Year',
+  },
+};
 
 const statusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 
-const initialFormState = {
-  kind: 'book' as KnowledgeItemKind,
+const createInitialFormState = (kind: ItemWorkbenchKind = 'book') => ({
+  kind: kind as KnowledgeItemKind,
   title: '',
   creator: '',
   creatorEntityId: '',
@@ -39,7 +69,29 @@ const initialFormState = {
   sourceUrl: '',
   summary: '',
   publishedYear: '',
+  pageCount: '',
+  durationMinutes: '',
   status: 'inbox' as KnowledgeItemStatus,
+});
+
+const readNumericMetadata = (item: KnowledgeItem, key: 'pageCount' | 'durationMinutes') => {
+  const value = item.metadata?.[key];
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const getItemRecordDetail = (item: KnowledgeItem) => {
+  const pageCount = readNumericMetadata(item, 'pageCount');
+  if (pageCount) return `${pageCount} pages`;
+
+  const durationMinutes = readNumericMetadata(item, 'durationMinutes');
+  if (durationMinutes) return `${durationMinutes} min`;
+
+  return null;
 };
 
 const formatDate = (value: string) =>
@@ -55,7 +107,7 @@ const KnowledgePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [formState, setFormState] = useState(initialFormState);
+  const [formState, setFormState] = useState(createInitialFormState());
 
   useEffect(() => {
     const loadItems = async () => {
@@ -80,6 +132,10 @@ const KnowledgePage: React.FC = () => {
   }, []);
 
   const stats = useMemo(() => summarizeKnowledgeProgress(items), [items]);
+  const workbenchKind = formState.kind as ItemWorkbenchKind;
+  const workbenchPreset = itemWorkbenchPresets[workbenchKind];
+  const extraFieldValue =
+    workbenchPreset.extraFieldName === 'pageCount' ? formState.pageCount : formState.durationMinutes;
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -87,6 +143,12 @@ const KnowledgePage: React.FC = () => {
     const { name, value } = event.target;
     setFormState((current) => ({
       ...current,
+      ...(name === 'kind'
+        ? {
+            pageCount: '',
+            durationMinutes: '',
+          }
+        : {}),
       [name]: value,
     }));
   };
@@ -109,6 +171,15 @@ const KnowledgePage: React.FC = () => {
     setSubmitting(true);
     setError(null);
 
+    const metadata =
+      formState.kind === 'book'
+        ? formState.pageCount
+          ? { pageCount: Number(formState.pageCount) }
+          : undefined
+        : formState.durationMinutes
+          ? { durationMinutes: Number(formState.durationMinutes) }
+          : undefined;
+
     const payload: NewKnowledgeItem = {
       kind: formState.kind,
       title: formState.title.trim(),
@@ -118,10 +189,12 @@ const KnowledgePage: React.FC = () => {
       summary: formState.summary.trim() || undefined,
       publishedYear: formState.publishedYear ? Number(formState.publishedYear) : undefined,
       status: formState.status,
+      metadata,
     };
 
     try {
       const createdItem = await createKnowledgeItem(payload);
+      const savedKind = workbenchKind;
       let relationFailed = false;
 
       if (formState.creatorEntityId) {
@@ -140,7 +213,7 @@ const KnowledgePage: React.FC = () => {
       startTransition(() => {
         setItems((current) => [createdItem, ...current]);
       });
-      setFormState(initialFormState);
+      setFormState(createInitialFormState(savedKind));
       if (relationFailed) {
         setError('Item was created, but the creator entity link could not be saved.');
       }
@@ -172,8 +245,8 @@ const KnowledgePage: React.FC = () => {
             <span className="knowledge-eyebrow">Phase 1</span>
             <h1>Item Workbench</h1>
             <p>
-              Capture the concrete works that make up your encyclopedia. Books and lectures are now just
-              different kinds of items.
+              Capture the concrete works that make up your encyclopedia. The workbench now treats items
+              as either written material or lecture/media material, while keeping one unified item model.
             </p>
           </div>
 
@@ -183,10 +256,11 @@ const KnowledgePage: React.FC = () => {
               <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
                 {kindOptions.map((kind) => (
                   <option key={kind} value={kind}>
-                    {kind}
+                    {kind === 'book' ? 'Book / Written Work' : 'Lecture / Media'}
                   </option>
                 ))}
               </select>
+              <span className="knowledge-field-hint">{workbenchPreset.kindHelp}</span>
             </div>
 
             <div className="knowledge-field">
@@ -195,7 +269,7 @@ const KnowledgePage: React.FC = () => {
             </div>
 
             <div className="knowledge-field">
-              <label htmlFor="creator">Creator / Author / Speaker</label>
+              <label htmlFor="creator">{workbenchPreset.creatorLabel}</label>
               <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
             </div>
 
@@ -220,13 +294,13 @@ const KnowledgePage: React.FC = () => {
             </div>
 
             <div className="knowledge-field">
-              <label htmlFor="sourceName">Source</label>
+              <label htmlFor="sourceName">{workbenchPreset.sourceLabel}</label>
               <input
                 id="sourceName"
                 name="sourceName"
                 value={formState.sourceName}
                 onChange={handleChange}
-                placeholder="Publisher, channel, collection..."
+                placeholder={workbenchPreset.sourcePlaceholder}
               />
             </div>
 
@@ -241,15 +315,29 @@ const KnowledgePage: React.FC = () => {
               />
             </div>
 
-            <div className="knowledge-field">
-              <label htmlFor="publishedYear">Published Year</label>
-              <input
-                id="publishedYear"
-                name="publishedYear"
-                type="number"
-                value={formState.publishedYear}
-                onChange={handleChange}
-              />
+            <div className="knowledge-form-inline">
+              <div className="knowledge-field">
+                <label htmlFor="publishedYear">{workbenchPreset.yearLabel}</label>
+                <input
+                  id="publishedYear"
+                  name="publishedYear"
+                  type="number"
+                  value={formState.publishedYear}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="knowledge-field">
+                <label htmlFor={workbenchPreset.extraFieldName}>{workbenchPreset.extraFieldLabel}</label>
+                <input
+                  id={workbenchPreset.extraFieldName}
+                  name={workbenchPreset.extraFieldName}
+                  type="number"
+                  value={extraFieldValue}
+                  onChange={handleChange}
+                  placeholder={workbenchPreset.extraFieldPlaceholder}
+                />
+              </div>
             </div>
 
             <div className="knowledge-field">
@@ -270,7 +358,7 @@ const KnowledgePage: React.FC = () => {
                 name="summary"
                 value={formState.summary}
                 onChange={handleChange}
-                placeholder="Why does this belong in your encyclopedia?"
+                placeholder={workbenchPreset.summaryPlaceholder}
               />
             </div>
 
@@ -338,6 +426,7 @@ const KnowledgePage: React.FC = () => {
                           {item.creator ? <span>{item.creator}</span> : null}
                           {item.sourceName ? <span>{item.sourceName}</span> : null}
                           {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+                          {getItemRecordDetail(item) ? <span>{getItemRecordDetail(item)}</span> : null}
                           <span>Updated {formatDate(item.updatedAt)}</span>
                         </div>
                       </div>

@@ -63,6 +63,12 @@
   gap: 14px;
 }
 
+.knowledge-form-inline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .knowledge-field {
   display: grid;
   gap: 6px;
@@ -256,6 +262,7 @@
     padding: 0 16px 28px;
   }
 
+  .knowledge-form-inline,
   .knowledge-summary-grid {
     grid-template-columns: 1fr;
   }
