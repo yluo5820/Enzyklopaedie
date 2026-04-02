@@ -4,13 +4,14 @@ import type {
   KnowledgeRelationDetail,
   KnowledgeRelationType,
   ReferenceEntity,
+  ReferenceEntityKind,
   StudyTopicSummary,
   TopicSummary,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
-  createStudyTopicRelation,
   createStudyTopic,
+  createStudyTopicRelation,
   deleteStudyTopicRelation,
   fetchReferenceEntities,
   fetchStudyTopic,
@@ -22,7 +23,78 @@ import {
 } from '../api';
 import './TopicPage.css';
 
-const relationTypeOptions: KnowledgeRelationType[] = ['about', 'related_to', 'during', 'located_in', 'part_of'];
+type StudyTopicRelationPreset = {
+  allowedRelationTypes: KnowledgeRelationType[];
+  defaultRelationType: KnowledgeRelationType;
+  helperText: string;
+  notePlaceholder: string;
+  targetPrompt: string;
+};
+
+const relationKindOrder: ReferenceEntityKind[] = [
+  'person',
+  'era',
+  'nation',
+  'civilization',
+  'place',
+];
+
+const getStudyTopicRelationPreset = (
+  targetEntityKind?: ReferenceEntityKind
+): StudyTopicRelationPreset => {
+  if (targetEntityKind === 'person') {
+    return {
+      allowedRelationTypes: ['about', 'influenced_by', 'related_to'],
+      defaultRelationType: 'about',
+      helperText:
+        'Use people here when a topic centers on a thinker, school founder, or historically decisive figure.',
+      notePlaceholder: 'Optional note about this person in the topic context',
+      targetPrompt: 'Choose a person',
+    };
+  }
+
+  if (targetEntityKind === 'era') {
+    return {
+      allowedRelationTypes: ['during', 'about', 'related_to'],
+      defaultRelationType: 'during',
+      helperText:
+        'Use eras to temporalize the topic. Choose during when the topic belongs to a period, or about when the period is itself the explicit object.',
+      notePlaceholder: 'Optional note about the period context',
+      targetPrompt: 'Choose an era',
+    };
+  }
+
+  if (targetEntityKind === 'nation' || targetEntityKind === 'place') {
+    return {
+      allowedRelationTypes: ['located_in', 'about', 'related_to'],
+      defaultRelationType: 'located_in',
+      helperText:
+        'Use nations and places to localize the topic in geography or political space. Choose about only when the entity is itself the object of study.',
+      notePlaceholder: 'Optional note about this place or polity',
+      targetPrompt: targetEntityKind === 'nation' ? 'Choose a nation' : 'Choose a place',
+    };
+  }
+
+  if (targetEntityKind === 'civilization') {
+    return {
+      allowedRelationTypes: ['part_of', 'about', 'related_to'],
+      defaultRelationType: 'part_of',
+      helperText:
+        'Use civilizations as the broad spatial-temporal horizon around the topic, or as the explicit civilizational subject.',
+      notePlaceholder: 'Optional note about this civilizational frame',
+      targetPrompt: 'Choose a civilization',
+    };
+  }
+
+  return {
+    allowedRelationTypes: ['about', 'during', 'located_in', 'part_of', 'related_to'],
+    defaultRelationType: 'about',
+    helperText:
+      'Choose the reference entity first. The relation verbs will narrow once the topic’s historical or geographic frame is clear.',
+    notePlaceholder: 'Optional note about why this entity matters here',
+    targetPrompt: 'Choose a person, era, nation, civilization, or place',
+  };
+};
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -178,9 +250,44 @@ const StudyTopicPage: React.FC = () => {
     [studyTopic?.id, siblingTopics]
   );
   const relationTargets = useMemo(
-    () => [...referenceEntities].sort((left, right) => left.title.localeCompare(right.title)),
+    () =>
+      [...referenceEntities].sort((left, right) => {
+        const leftKindIndex = relationKindOrder.indexOf(left.kind);
+        const rightKindIndex = relationKindOrder.indexOf(right.kind);
+        if (leftKindIndex !== rightKindIndex) return leftKindIndex - rightKindIndex;
+
+        const titleComparison = left.title.localeCompare(right.title);
+        if (titleComparison !== 0) return titleComparison;
+
+        return left.id - right.id;
+      }),
     [referenceEntities]
   );
+  const selectedRelationTarget = useMemo(
+    () => relationTargets.find((entity) => String(entity.id) === relationForm.toEntityId) ?? null,
+    [relationForm.toEntityId, relationTargets]
+  );
+  const relationPreset = useMemo(
+    () => getStudyTopicRelationPreset(selectedRelationTarget?.kind),
+    [selectedRelationTarget?.kind]
+  );
+
+  useEffect(() => {
+    setRelationForm((current) => {
+      const nextRelationType = relationPreset.allowedRelationTypes.includes(current.relationType)
+        ? current.relationType
+        : relationPreset.defaultRelationType;
+
+      if (nextRelationType === current.relationType) {
+        return current;
+      }
+
+      return {
+        ...current,
+        relationType: nextRelationType,
+      };
+    });
+  }, [relationPreset]);
 
   const handleCreateChildTopic = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -250,7 +357,7 @@ const StudyTopicPage: React.FC = () => {
 
       setRelationForm({
         toEntityId: '',
-        relationType: 'about',
+        relationType: relationPreset.defaultRelationType,
         note: '',
       });
     } catch (relationError) {
@@ -391,6 +498,10 @@ const StudyTopicPage: React.FC = () => {
               <div>
                 <span className="topic-page-eyebrow">Branches</span>
                 <h2>Child topics</h2>
+                <p className="topic-page-copy">
+                  Use child topics to branch the concept itself more finely. Use entity links later to
+                  situate those branches in time, place, or historical agents.
+                </p>
               </div>
             </div>
 
@@ -446,11 +557,19 @@ const StudyTopicPage: React.FC = () => {
             <div className="topic-page-section-head">
               <div>
                 <span className="topic-page-eyebrow">Reference Atlas</span>
-                <h2>Reference context</h2>
+                <h2>Context composition</h2>
+                <p className="topic-page-copy">
+                  This is where a topic becomes historically or geographically specific. Keep the topic
+                  structure conceptual; use entities to add era, place, polity, civilization, or person.
+                </p>
               </div>
             </div>
 
             <form className="topic-page-form" onSubmit={handleCreateRelation}>
+              <div className="topic-page-note">
+                <strong>Current guidance</strong>
+                <span>{relationPreset.helperText}</span>
+              </div>
               <select
                 value={relationForm.relationType}
                 onChange={(event) =>
@@ -460,7 +579,7 @@ const StudyTopicPage: React.FC = () => {
                   }))
                 }
               >
-                {relationTypeOptions.map((relationType) => (
+                {relationPreset.allowedRelationTypes.map((relationType) => (
                   <option key={relationType} value={relationType}>
                     {formatRelationType(relationType)}
                   </option>
@@ -475,7 +594,7 @@ const StudyTopicPage: React.FC = () => {
                   }))
                 }
               >
-                <option value="">Choose a person, nation, civilization, era, or place</option>
+                <option value="">{relationPreset.targetPrompt}</option>
                 {relationTargets.map((entity) => {
                   const timespan = formatReferenceTimespan(entity);
 
@@ -495,7 +614,7 @@ const StudyTopicPage: React.FC = () => {
                     note: event.target.value,
                   }))
                 }
-                placeholder="Optional note about why this entity matters here"
+                placeholder={relationPreset.notePlaceholder}
               />
               <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
                 {savingRelation ? 'Linking...' : 'Link entity'}

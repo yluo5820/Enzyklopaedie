@@ -64,6 +64,30 @@
   color: var(--muted);
 }
 
+.topic-page-copy {
+  margin: 0;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.topic-page-note {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.topic-page-note strong {
+  color: var(--accent);
+}
+
+.topic-page-note span {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .topic-page-stats {
   display: grid;
   gap: 12px;
