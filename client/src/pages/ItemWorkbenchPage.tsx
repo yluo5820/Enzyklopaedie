@@ -18,8 +18,8 @@ import {
   fetchKnowledgeItems,
   fetchKnowledgeRelations,
   fetchReferenceEntities,
-  type GoogleBookMatch,
-  searchGoogleBooks,
+  type BookSearchMatch,
+  searchOpenLibraryBooks,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './ItemWorkbenchPage.css';
@@ -158,7 +158,7 @@ const getUngroupedLabel = (groupBy: ItemListGroupBy) => {
   return 'Items';
 };
 
-const buildKnowledgeItemFromGoogleBook = (book: GoogleBookMatch): NewKnowledgeItem => {
+const buildKnowledgeItemFromSearchMatch = (book: BookSearchMatch): NewKnowledgeItem => {
   const authorLabel = book.authors.join(', ').trim();
   return {
     kind: 'book',
@@ -172,8 +172,8 @@ const buildKnowledgeItemFromGoogleBook = (book: GoogleBookMatch): NewKnowledgeIt
     status: 'inbox',
     coverImageUrl: book.coverImageUrl,
     metadata: {
-      googleBooksId: book.id,
-      importedFrom: 'google_books',
+      importedFrom: 'open_library',
+      openLibraryId: book.id,
       ...(book.pageCount ? { pageCount: book.pageCount } : {}),
     },
   };
@@ -226,7 +226,7 @@ const ItemWorkbenchPage: React.FC = () => {
   const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
   const [formState, setFormState] = useState(createInitialFormState());
   const [bookSearchQuery, setBookSearchQuery] = useState('');
-  const [bookSearchResults, setBookSearchResults] = useState<GoogleBookMatch[]>([]);
+  const [bookSearchResults, setBookSearchResults] = useState<BookSearchMatch[]>([]);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -554,16 +554,16 @@ const ItemWorkbenchPage: React.FC = () => {
     setNotice(null);
 
     try {
-      const results = await searchGoogleBooks(bookSearchQuery, 10);
+      const results = await searchOpenLibraryBooks(bookSearchQuery, 10);
       setBookSearchResults(results);
       setSelectedBookIds([]);
       if (results.length === 0) {
-        setBookSearchError('No matching books came back from Google Books.');
+        setBookSearchError('No matching books came back from Open Library.');
       }
     } catch (searchError) {
       console.error(searchError);
       setBookSearchError(
-        searchError instanceof Error ? searchError.message : 'Failed to search Google Books right now.'
+        searchError instanceof Error ? searchError.message : 'Failed to search Open Library right now.'
       );
     } finally {
       setSearchingBooks(false);
@@ -581,7 +581,7 @@ const ItemWorkbenchPage: React.FC = () => {
     try {
       const savedEntries = await Promise.all(
         selectedBooks.map(async (book) => {
-          const payload = buildKnowledgeItemFromGoogleBook(book);
+          const payload = buildKnowledgeItemFromSearchMatch(book);
           return saveItemWithCreatorLink(payload, payload.creator);
         })
       );
@@ -596,7 +596,7 @@ const ItemWorkbenchPage: React.FC = () => {
       setNotice(
         relationFailures
           ? `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'}, but some creator links could not be saved.`
-          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from Google Books.`
+          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from Open Library.`
       );
     } catch (importError) {
       console.error(importError);
@@ -678,7 +678,7 @@ const ItemWorkbenchPage: React.FC = () => {
             <section className="knowledge-search-panel">
               <div className="knowledge-search-head">
                 <div>
-                  <span className="knowledge-eyebrow">Google Books</span>
+                  <span className="knowledge-eyebrow">Open Library</span>
                   <h2>Import books by search</h2>
                   <p>Find a title, select one or many matches, and bring them in without typing the full record by hand.</p>
                 </div>
@@ -691,7 +691,7 @@ const ItemWorkbenchPage: React.FC = () => {
                   placeholder="Search by title, author, ISBN, or a mixed query"
                 />
                 <button type="submit" disabled={searchingBooks || !bookSearchQuery.trim()}>
-                  {searchingBooks ? 'Searching...' : 'Search Google Books'}
+                  {searchingBooks ? 'Searching...' : 'Search Open Library'}
                 </button>
               </form>
 

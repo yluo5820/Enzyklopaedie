@@ -45,7 +45,7 @@ Optional client env vars:
 
 - `client/.env.local`
 - `VITE_MAPTILER_API_KEY=...` for the world history page
-- `VITE_GOOGLE_BOOKS_API_KEY=...` for Google Books search in the add-book flow
+- Book search in the item workbench uses Open Library and does not require a user API key
 
 `client/.env.local` is ignored by git.
 

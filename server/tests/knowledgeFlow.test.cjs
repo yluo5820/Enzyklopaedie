@@ -1059,7 +1059,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(missingResponse.status, 404);
   });
 
-  await t.test('GET /api/google-books/search proxies and normalizes Google Books results', async () => {
+  await t.test('GET /api/open-library/search proxies and normalizes Open Library results', async () => {
     const originalFetch = global.fetch;
 
     global.fetch = async (input) => {
@@ -1070,27 +1070,21 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
             ? input.toString()
             : input.url;
 
-      assert.match(url, /googleapis\.com\/books\/v1\/volumes/);
+      assert.match(url, /openlibrary\.org\/search\.json/);
       assert.match(url, /q=foundation/);
 
       return new Response(
         JSON.stringify({
-          items: [
+          docs: [
             {
-              id: 'book-1',
-              volumeInfo: {
-                title: 'Foundation',
-                subtitle: 'A Novel',
-                authors: ['Isaac Asimov'],
-                publisher: 'Spectra',
-                publishedDate: '1951-06-01',
-                pageCount: 255,
-                description: 'Classic science fiction.',
-                infoLink: 'https://books.google.com/books?id=book-1',
-                imageLinks: {
-                  thumbnail: 'https://books.google.com/thumbnail?id=book-1',
-                },
-              },
+              key: '/works/OL82563W',
+              title: 'Foundation',
+              subtitle: 'A Novel',
+              author_name: ['Isaac Asimov'],
+              publisher: ['Spectra'],
+              first_publish_year: 1951,
+              number_of_pages_median: 255,
+              cover_i: 12345,
             },
           ],
         }),
@@ -1104,20 +1098,19 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     };
 
     try {
-      const response = await requestThroughHttp('/api/google-books/search?q=foundation&maxResults=5');
+      const response = await requestThroughHttp('/api/open-library/search?q=foundation&maxResults=5');
       assert.equal(response.status, 200);
 
       const books = await response.json();
       assert.equal(books.length, 1);
       assert.deepEqual(books[0], {
-        id: 'book-1',
+        id: '/works/OL82563W',
         authors: ['Isaac Asimov'],
-        coverImageUrl: 'https://books.google.com/thumbnail?id=book-1',
-        description: 'Classic science fiction.',
+        coverImageUrl: 'https://covers.openlibrary.org/b/id/12345-M.jpg?default=false',
         pageCount: 255,
         publishedYear: 1951,
         publisher: 'Spectra',
-        sourceUrl: 'https://books.google.com/books?id=book-1',
+        sourceUrl: 'https://openlibrary.org/works/OL82563W',
         subtitle: 'A Novel',
         title: 'Foundation',
       });

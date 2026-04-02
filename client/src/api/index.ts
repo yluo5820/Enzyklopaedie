@@ -28,7 +28,7 @@ import {
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
-export type GoogleBookMatch = {
+export type BookSearchMatch = {
   id: string;
   authors: string[];
   coverImageUrl?: string;
@@ -72,10 +72,10 @@ export const createKnowledgeItem = async (itemData: NewKnowledgeItem): Promise<K
   return response.json();
 };
 
-export const searchGoogleBooks = async (
+export const searchOpenLibraryBooks = async (
   query: string,
   maxResults = 10
-): Promise<GoogleBookMatch[]> => {
+): Promise<BookSearchMatch[]> => {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
 
@@ -84,13 +84,13 @@ export const searchGoogleBooks = async (
     maxResults: String(Math.min(Math.max(maxResults, 1), 20)),
   });
 
-  const response = await fetch(`${API_BASE_URL}/google-books/search?${params.toString()}`);
+  const response = await fetch(`${API_BASE_URL}/open-library/search?${params.toString()}`);
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
-    throw new Error(errorPayload?.message || 'Failed to search Google Books');
+    throw new Error(errorPayload?.message || 'Failed to search Open Library');
   }
 
-  return response.json();
+  return response.json() as Promise<BookSearchMatch[]>;
 };
 
 export const updateKnowledgeItem = async (
