@@ -12,18 +12,18 @@ import {
   NewKnowledgeReview,
   NewKnowledgeTask,
   NewReferenceEntity,
-  NewStudyTopic,
+  NewSubject,
   NewTopic,
   ReferenceEntity,
-  StudyTopicSummary,
-  Topic,
+  Subject,
+  SubjectSummary,
   TopicSummary,
   UpdateKnowledgeItem,
   UpdateKnowledgeNote,
   UpdateKnowledgeReview,
   UpdateKnowledgeTask,
   UpdateReferenceEntity,
-  UpdateTopic,
+  UpdateSubject,
 } from '@enzyklopaedie/shared';
 
 const API_BASE_URL = 'http://localhost:3001/api';
@@ -197,8 +197,70 @@ export const deleteReferenceEntity = async (id: number): Promise<void> => {
   }
 };
 
-export const fetchTopics = async (): Promise<TopicSummary[]> => {
-  const response = await fetch(`${API_BASE_URL}/topics`);
+export const fetchSubjects = async (): Promise<SubjectSummary[]> => {
+  const response = await fetch(`${API_BASE_URL}/subjects`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch subjects');
+  }
+  return response.json();
+};
+
+export const fetchSubject = async (id: number): Promise<SubjectSummary> => {
+  const response = await fetch(`${API_BASE_URL}/subjects/${id}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch subject');
+  }
+  return response.json();
+};
+
+export const createSubject = async (subjectData: NewSubject): Promise<Subject> => {
+  const response = await fetch(`${API_BASE_URL}/subjects`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(subjectData),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to create subject');
+  }
+  return response.json();
+};
+
+export const updateSubject = async (
+  id: number,
+  subjectData: UpdateSubject
+): Promise<SubjectSummary> => {
+  const response = await fetch(`${API_BASE_URL}/subjects/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(subjectData),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to update subject');
+  }
+  return response.json();
+};
+
+export const deleteSubject = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/subjects/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to delete subject');
+  }
+};
+
+export const fetchTopics = async (subjectId?: number): Promise<TopicSummary[]> => {
+  const url = subjectId
+    ? `${API_BASE_URL}/topics?subjectId=${subjectId}`
+    : `${API_BASE_URL}/topics`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('Failed to fetch topics');
   }
@@ -213,7 +275,7 @@ export const fetchTopic = async (id: number): Promise<TopicSummary> => {
   return response.json();
 };
 
-export const createTopic = async (topicData: NewTopic): Promise<Topic> => {
+export const createTopic = async (topicData: NewTopic): Promise<TopicSummary> => {
   const response = await fetch(`${API_BASE_URL}/topics`, {
     method: 'POST',
     headers: {
@@ -222,23 +284,7 @@ export const createTopic = async (topicData: NewTopic): Promise<Topic> => {
     body: JSON.stringify(topicData),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message || 'Failed to create subject');
-  }
-  return response.json();
-};
-
-export const updateTopic = async (id: number, topicData: UpdateTopic): Promise<TopicSummary> => {
-  const response = await fetch(`${API_BASE_URL}/topics/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(topicData),
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message || 'Failed to update subject');
+    throw new Error('Failed to create topic');
   }
   return response.json();
 };
@@ -249,100 +295,54 @@ export const deleteTopic = async (id: number): Promise<void> => {
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.message || 'Failed to delete subject');
-  }
-};
-
-export const fetchStudyTopics = async (subjectId?: number): Promise<StudyTopicSummary[]> => {
-  const url = subjectId
-    ? `${API_BASE_URL}/study-topics?subjectId=${subjectId}`
-    : `${API_BASE_URL}/study-topics`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error('Failed to fetch study topics');
-  }
-  return response.json();
-};
-
-export const fetchStudyTopic = async (id: number): Promise<StudyTopicSummary> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics/${id}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch study topic');
-  }
-  return response.json();
-};
-
-export const createStudyTopic = async (topicData: NewStudyTopic): Promise<StudyTopicSummary> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(topicData),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to create study topic');
-  }
-  return response.json();
-};
-
-export const deleteStudyTopic = async (id: number): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics/${id}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
     throw new Error(payload?.message || 'Failed to delete topic');
   }
 };
 
-export const fetchStudyTopicKnowledgeItems = async (studyTopicId: number): Promise<KnowledgeItem[]> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/knowledge-items`);
+export const fetchTopicKnowledgeItems = async (topicId: number): Promise<KnowledgeItem[]> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/knowledge-items`);
   if (!response.ok) {
-    throw new Error('Failed to fetch study topic knowledge items');
+    throw new Error('Failed to fetch topic knowledge items');
   }
   return response.json();
 };
 
-export const fetchKnowledgeItemStudyTopics = async (
+export const fetchKnowledgeItemTopics = async (
   knowledgeItemId: number
-): Promise<StudyTopicSummary[]> => {
-  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics`);
+): Promise<TopicSummary[]> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics`);
   if (!response.ok) {
-    throw new Error('Failed to fetch knowledge item study topics');
+    throw new Error('Failed to fetch knowledge item topics');
   }
   return response.json();
 };
 
-export const assignStudyTopicToKnowledgeItem = async (
+export const assignTopicToKnowledgeItem = async (
   knowledgeItemId: number,
-  studyTopicId: number
-): Promise<StudyTopicSummary> => {
-  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics`, {
+  topicId: number
+): Promise<TopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ studyTopicId }),
+    body: JSON.stringify({ topicId }),
   });
   if (!response.ok) {
-    throw new Error('Failed to assign study topic to knowledge item');
+    throw new Error('Failed to assign topic to knowledge item');
   }
   return response.json();
 };
 
-export const removeStudyTopicFromKnowledgeItem = async (
+export const removeTopicFromKnowledgeItem = async (
   knowledgeItemId: number,
-  studyTopicId: number
+  topicId: number
 ): Promise<void> => {
-  const response = await fetch(
-    `${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics/${studyTopicId}`,
-    {
-      method: 'DELETE',
-    }
-  );
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics/${topicId}`, {
+    method: 'DELETE',
+  });
   if (!response.ok) {
-    throw new Error('Failed to remove study topic from knowledge item');
+    throw new Error('Failed to remove topic from knowledge item');
   }
 };
 
@@ -385,18 +385,18 @@ export const deleteKnowledgeRelation = async (
   }
 };
 
-export const fetchStudyTopicRelations = async (
-  studyTopicId: number
+export const fetchTopicRelations = async (
+  topicId: number
 ): Promise<KnowledgeRelationDetail[]> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/relations`);
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations`);
   if (!response.ok) {
-    throw new Error('Failed to fetch study topic relations');
+    throw new Error('Failed to fetch topic relations');
   }
   return response.json();
 };
 
-export const createStudyTopicRelation = async (
-  studyTopicId: number,
+export const createTopicRelation = async (
+  topicId: number,
   relationData: {
     toEntityType?: KnowledgeRelationEntityType;
     toEntityId: number;
@@ -404,7 +404,7 @@ export const createStudyTopicRelation = async (
     note?: string;
   }
 ): Promise<KnowledgeRelationDetail> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/relations`, {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -412,20 +412,20 @@ export const createStudyTopicRelation = async (
     body: JSON.stringify(relationData),
   });
   if (!response.ok) {
-    throw new Error('Failed to create study topic relation');
+    throw new Error('Failed to create topic relation');
   }
   return response.json();
 };
 
-export const deleteStudyTopicRelation = async (
-  studyTopicId: number,
+export const deleteTopicRelation = async (
+  topicId: number,
   relationId: number
 ): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/relations/${relationId}`, {
+  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations/${relationId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
-    throw new Error('Failed to delete study topic relation');
+    throw new Error('Failed to delete topic relation');
   }
 };
 

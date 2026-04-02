@@ -6,14 +6,14 @@ import type {
   KnowledgeItemStatus,
   NewKnowledgeItem,
   ReferenceEntity,
-  StudyTopicSummary,
+  TopicSummary as StudyTopicSummary,
 } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
 import {
   createKnowledgeItem,
   createKnowledgeRelation,
   deleteKnowledgeItem,
-  fetchKnowledgeItemStudyTopics,
+  fetchKnowledgeItemTopics as fetchKnowledgeItemStudyTopics,
   fetchKnowledgeItems,
   fetchKnowledgeRelations,
   fetchReferenceEntities,

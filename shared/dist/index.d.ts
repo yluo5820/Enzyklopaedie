@@ -19,22 +19,22 @@ export interface KnowledgeItem {
     createdAt: string;
     updatedAt: string;
 }
-export interface Topic {
+export interface Subject {
     id: number;
     name: string;
     slug: string;
     description?: string;
-    parentTopicId?: number;
+    parentSubjectId?: number;
     color?: string;
     createdAt: string;
     updatedAt: string;
 }
-export interface TopicSummary extends Topic {
+export interface SubjectSummary extends Subject {
     knowledgeItemCount: number;
-    childTopicCount: number;
+    childSubjectCount: number;
     topicCount: number;
 }
-export interface StudyTopic {
+export interface Topic {
     id: number;
     subjectId: number;
     name: string;
@@ -45,7 +45,7 @@ export interface StudyTopic {
     createdAt: string;
     updatedAt: string;
 }
-export interface StudyTopicSummary extends StudyTopic {
+export interface TopicSummary extends Topic {
     itemCount: number;
     childTopicCount: number;
     subjectName: string;
@@ -65,7 +65,7 @@ export interface ReferenceEntity {
     createdAt: string;
     updatedAt: string;
 }
-export type KnowledgeRelationEntityType = 'knowledge_item' | 'topic' | 'study_topic' | 'reference_entity';
+export type KnowledgeRelationEntityType = 'knowledge_item' | 'subject' | 'topic' | 'reference_entity';
 export type KnowledgeRelationType = 'about' | 'contains' | 'created_by' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
 export interface KnowledgeRelation {
     id: number;
@@ -160,14 +160,14 @@ export interface KnowledgeProgressSummary {
     byStatus: Record<KnowledgeItemStatus, number>;
 }
 export declare const summarizeKnowledgeProgress: (items: Array<Pick<KnowledgeItem, "status">>) => KnowledgeProgressSummary;
-export declare const slugifyTopicName: (value: string) => string;
+export declare const slugifyName: (value: string) => string;
 export declare const buildReferenceEntitySlug: (kind: ReferenceEntityKind, title: string) => string;
 export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewSubject = Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type UpdateSubject = Partial<Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
-export type NewStudyTopic = Omit<StudyTopic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
-export type UpdateStudyTopic = Partial<Omit<StudyTopic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 export interface ReferenceEntityDraft {
     kind: ReferenceEntityKind;
     title: string;

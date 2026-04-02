@@ -322,8 +322,8 @@ const buildRelationHref = (relation: KnowledgeRelationDetail, direction: 'incomi
   const entityId = direction === 'incoming' ? relation.fromEntityId : relation.toEntityId;
 
   if (entityType === 'knowledge_item') return `/knowledge/${entityId}`;
-  if (entityType === 'study_topic') return `/study-topics/${entityId}`;
   if (entityType === 'topic') return `/topics/${entityId}`;
+  if (entityType === 'subject') return `/subjects/${entityId}`;
   if (entityType === 'reference_entity') return `/entities/${entityId}`;
   return null;
 };
@@ -446,11 +446,11 @@ const ReferenceEntityPage: React.FC = () => {
     [itemRelations]
   );
   const topicRelations = useMemo(
-    () => incomingRelations.filter((relation) => relation.fromEntityType === 'study_topic'),
+    () => incomingRelations.filter((relation) => relation.fromEntityType === 'topic'),
     [incomingRelations]
   );
   const subjectRelations = useMemo(
-    () => incomingRelations.filter((relation) => relation.fromEntityType === 'topic'),
+    () => incomingRelations.filter((relation) => relation.fromEntityType === 'subject'),
     [incomingRelations]
   );
   const incomingEntityRelations = useMemo(

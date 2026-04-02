@@ -5,20 +5,20 @@ import type {
   KnowledgeRelationType,
   ReferenceEntity,
   ReferenceEntityKind,
-  StudyTopicSummary,
-  TopicSummary,
+  SubjectSummary as TopicSummary,
+  TopicSummary as StudyTopicSummary,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
-  createStudyTopicRelation,
-  deleteStudyTopicRelation,
+  createTopicRelation as createStudyTopicRelation,
+  deleteTopicRelation as deleteStudyTopicRelation,
   fetchReferenceEntities,
-  fetchStudyTopic,
-  fetchStudyTopicKnowledgeItems,
-  fetchStudyTopicRelations,
-  fetchStudyTopics,
-  fetchTopic,
-  fetchTopics,
+  fetchSubject as fetchTopic,
+  fetchSubjects as fetchTopics,
+  fetchTopic as fetchStudyTopic,
+  fetchTopicKnowledgeItems as fetchStudyTopicKnowledgeItems,
+  fetchTopicRelations as fetchStudyTopicRelations,
+  fetchTopics as fetchStudyTopics,
 } from '../api';
 import './TopicPage.css';
 
@@ -131,7 +131,7 @@ const TopicLineage = ({
   const path: Array<{ id: number; name: string; href: string }> = [];
 
   if (subject) {
-    path.push({ id: subject.id, name: subject.name, href: `/topics/${subject.id}` });
+    path.push({ id: subject.id, name: subject.name, href: `/subjects/${subject.id}` });
   }
 
   const ancestors: StudyTopicSummary[] = [];
@@ -147,10 +147,10 @@ const TopicLineage = ({
   }
 
   for (const ancestor of ancestors) {
-    path.push({ id: ancestor.id, name: ancestor.name, href: `/study-topics/${ancestor.id}` });
+    path.push({ id: ancestor.id, name: ancestor.name, href: `/topics/${ancestor.id}` });
   }
 
-  path.push({ id: studyTopic.id, name: studyTopic.name, href: `/study-topics/${studyTopic.id}` });
+  path.push({ id: studyTopic.id, name: studyTopic.name, href: `/topics/${studyTopic.id}` });
 
   return (
     <div className="topic-page-lineage">
@@ -357,7 +357,7 @@ const TopicPage: React.FC = () => {
 
   return (
     <div className="topic-page">
-      <Link to={`/topics/${studyTopic.subjectId}`} className="topic-page-back">
+      <Link to={`/subjects/${studyTopic.subjectId}`} className="topic-page-back">
         Back to Subject
       </Link>
 
@@ -372,9 +372,9 @@ const TopicPage: React.FC = () => {
           </p>
           <TopicLineage studyTopic={studyTopic} topicMap={topicMap} subject={subject} />
           <div className="topic-page-hero-meta">
-            <Link to={`/topics/${studyTopic.subjectId}`}>Subject: {subject?.name || studyTopic.subjectName}</Link>
+            <Link to={`/subjects/${studyTopic.subjectId}`}>Subject: {subject?.name || studyTopic.subjectName}</Link>
             {parentTopic ? (
-              <Link to={`/study-topics/${parentTopic.id}`}>Parent: {parentTopic.name}</Link>
+              <Link to={`/topics/${parentTopic.id}`}>Parent: {parentTopic.name}</Link>
             ) : (
               <span>Top-level topic in this subject</span>
             )}
@@ -408,7 +408,7 @@ const TopicPage: React.FC = () => {
             ) : (
               <div className="topic-page-card-grid">
                 {childTopics.map((childTopic) => (
-                  <Link key={childTopic.id} to={`/study-topics/${childTopic.id}`} className="topic-page-card">
+                  <Link key={childTopic.id} to={`/topics/${childTopic.id}`} className="topic-page-card">
                     <strong>{childTopic.name}</strong>
                     <span>{childTopic.itemCount} contained items</span>
                     <span>{childTopic.childTopicCount} child topics</span>

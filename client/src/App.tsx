@@ -30,8 +30,8 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Subjects',
-    to: '/topics',
-    match: (pathname) => pathname.startsWith('/topics') || pathname.startsWith('/study-topics'),
+    to: '/subjects',
+    match: (pathname) => pathname.startsWith('/subjects') || pathname.startsWith('/topics'),
   },
   {
     label: 'Entities',
@@ -77,9 +77,9 @@ const AppShell: React.FC = () => {
           <Route path="/" element={<HomePage />} />
           <Route path="/knowledge" element={<ItemWorkbenchPage />} />
           <Route path="/knowledge/:id" element={<ItemDetailPage />} />
-          <Route path="/topics" element={<SubjectTreePage />} />
-          <Route path="/topics/:id" element={<SubjectPage />} />
-          <Route path="/study-topics/:id" element={<TopicPage />} />
+          <Route path="/subjects" element={<SubjectTreePage />} />
+          <Route path="/subjects/:id" element={<SubjectPage />} />
+          <Route path="/topics/:id" element={<TopicPage />} />
           <Route path="/entities" element={<ReferenceEntitiesPage />} />
           <Route path="/entities/:id" element={<ReferenceEntityPage />} />
           <Route path="/world-history" element={<WorldHistoryPage />} />

@@ -53,7 +53,7 @@ const HomePage: React.FC = () => {
           growth of your collection.
         </p>
         <div className="home-links">
-          <Link to="/topics">Open Subject Tree</Link>
+          <Link to="/subjects">Open Subject Tree</Link>
           <Link to="/knowledge">Open Item Workbench</Link>
           <Link to="/entities">Open Reference Atlas</Link>
           <Link to="/world-history">Open World History</Link>

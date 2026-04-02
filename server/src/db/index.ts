@@ -244,6 +244,32 @@ export async function initializeDatabase() {
   );
 
   await db.run(
+    `UPDATE knowledge_relations
+     SET fromEntityType = CASE fromEntityType
+           WHEN 'study_topic' THEN 'topic'
+           WHEN 'topic' THEN 'subject'
+           ELSE fromEntityType
+         END,
+         toEntityType = CASE toEntityType
+           WHEN 'study_topic' THEN 'topic'
+           WHEN 'topic' THEN 'subject'
+           ELSE toEntityType
+         END
+     WHERE fromEntityType IN ('topic', 'study_topic')
+        OR toEntityType IN ('topic', 'study_topic')`
+  );
+
+  await db.run(
+    `UPDATE activity_events
+     SET entityType = CASE entityType
+           WHEN 'study_topic' THEN 'topic'
+           WHEN 'topic' THEN 'subject'
+           ELSE entityType
+         END
+     WHERE entityType IN ('topic', 'study_topic')`
+  );
+
+  await db.run(
     `INSERT OR IGNORE INTO reference_entities
       (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

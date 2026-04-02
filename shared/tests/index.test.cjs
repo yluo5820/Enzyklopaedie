@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeKnowledgeProgress, slugifyTopicName } = require('../dist/index.js');
+const { summarizeKnowledgeProgress, slugifyName } = require('../dist/index.js');
 
 test('summarizeKnowledgeProgress counts total, active, and completed items', () => {
   const summary = summarizeKnowledgeProgress([
@@ -23,8 +23,8 @@ test('summarizeKnowledgeProgress counts total, active, and completed items', () 
   });
 });
 
-test('slugifyTopicName normalizes topic labels into stable slugs', () => {
-  assert.equal(slugifyTopicName('  Ancient Philosophy & Ethics  '), 'ancient-philosophy-ethics');
-  assert.equal(slugifyTopicName('World History'), 'world-history');
-  assert.equal(slugifyTopicName('Multiple   Spaces'), 'multiple-spaces');
+test('slugifyName normalizes labels into stable slugs', () => {
+  assert.equal(slugifyName('  Ancient Philosophy & Ethics  '), 'ancient-philosophy-ethics');
+  assert.equal(slugifyName('World History'), 'world-history');
+  assert.equal(slugifyName('Multiple   Spaces'), 'multiple-spaces');
 });

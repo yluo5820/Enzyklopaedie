@@ -1,7 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
-import type { TopicSummary } from '@enzyklopaedie/shared';
+import type { SubjectSummary as TopicSummary } from '@enzyklopaedie/shared';
 import { useNavigate } from 'react-router-dom';
-import { createTopic, deleteTopic, fetchTopics } from '../api';
+import { createSubject as createTopic, deleteSubject as deleteTopic, fetchSubjects as fetchTopics } from '../api';
 import './SubjectTreePage.css';
 
 interface PositionedTopic {
@@ -48,7 +48,7 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
   const children = new Map<number | null, TopicSummary[]>();
 
   for (const topic of topics) {
-    const key = topic.parentTopicId ?? null;
+    const key = topic.parentSubjectId ?? null;
     const branch = children.get(key) ?? [];
     branch.push(topic);
     children.set(key, branch);
@@ -82,7 +82,10 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
       depth,
       radius: Math.min(
         74,
-        Math.max(42, 34 + topic.topicCount * 3 + topic.childTopicCount * 2 + Math.ceil(topic.name.length / 8) * 2)
+        Math.max(
+          42,
+          34 + topic.topicCount * 3 + topic.childSubjectCount * 2 + Math.ceil(topic.name.length / 8) * 2
+        )
       ),
     });
 
@@ -97,7 +100,7 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
   const height = Math.max(BASE_Y * 2 + row * NODE_Y_STEP, 540);
 
   const edges = Array.from(positioned.values()).flatMap((position) => {
-    const parentId = position.topic.parentTopicId;
+    const parentId = position.topic.parentSubjectId;
     if (!parentId) return [];
 
     const parent = positioned.get(parentId);
@@ -160,8 +163,8 @@ const SubjectTreePage: React.FC = () => {
     if (!selectedTopic) return [];
 
     return [
-      selectedTopic.childTopicCount > 0
-        ? { label: 'Child subjects', value: selectedTopic.childTopicCount }
+      selectedTopic.childSubjectCount > 0
+        ? { label: 'Child subjects', value: selectedTopic.childSubjectCount }
         : null,
       selectedTopic.topicCount > 0
         ? { label: 'Contained topics', value: selectedTopic.topicCount }
@@ -208,12 +211,12 @@ const SubjectTreePage: React.FC = () => {
     try {
       const createdSubject = await createTopic({
         name: childDraft.trim(),
-        parentTopicId: selectedTopic.id,
+        parentSubjectId: selectedTopic.id,
       });
 
       const nextSubject: TopicSummary = {
         ...createdSubject,
-        childTopicCount: 0,
+        childSubjectCount: 0,
         knowledgeItemCount: 0,
         topicCount: 0,
       };
@@ -223,7 +226,7 @@ const SubjectTreePage: React.FC = () => {
           current
             .map((topic) =>
               topic.id === selectedTopic.id
-                ? { ...topic, childTopicCount: topic.childTopicCount + 1 }
+                ? { ...topic, childSubjectCount: topic.childSubjectCount + 1 }
                 : topic
             )
             .concat(nextSubject)
@@ -257,12 +260,12 @@ const SubjectTreePage: React.FC = () => {
           current
             .filter((topic) => topic.id !== selectedTopic.id)
             .map((topic) =>
-              topic.id === selectedTopic.parentTopicId
-                ? { ...topic, childTopicCount: Math.max(0, topic.childTopicCount - 1) }
+              topic.id === selectedTopic.parentSubjectId
+                ? { ...topic, childSubjectCount: Math.max(0, topic.childSubjectCount - 1) }
                 : topic
             )
         );
-        setSelectedTopicId(selectedTopic.parentTopicId ?? null);
+        setSelectedTopicId(selectedTopic.parentSubjectId ?? null);
       });
     } catch (deleteError) {
       console.error(deleteError);
@@ -384,8 +387,8 @@ const SubjectTreePage: React.FC = () => {
                     const nodeMeta =
                       position.topic.topicCount > 0
                         ? `${position.topic.topicCount} topic${position.topic.topicCount === 1 ? '' : 's'}`
-                        : position.topic.childTopicCount > 0
-                          ? `${position.topic.childTopicCount} branch${position.topic.childTopicCount === 1 ? '' : 'es'}`
+                        : position.topic.childSubjectCount > 0
+                          ? `${position.topic.childSubjectCount} branch${position.topic.childSubjectCount === 1 ? '' : 'es'}`
                           : null;
 
                     return (
@@ -467,7 +470,7 @@ const SubjectTreePage: React.FC = () => {
                     <button
                       type="button"
                       className="topic-tree-secondary-button"
-                      onClick={() => navigate(`/topics/${selectedTopic.id}`)}
+                      onClick={() => navigate(`/subjects/${selectedTopic.id}`)}
                     >
                       Open subject page
                     </button>

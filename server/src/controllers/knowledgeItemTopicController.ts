@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { getDb } from '../db';
 import { getKnowledgeItemLookup } from '../lib/knowledgeItems';
-import { getStudyTopicById, listStudyTopicsByKnowledgeItem } from '../lib/studyTopics';
+import { getTopicById, listTopicsByKnowledgeItem } from '../lib/topics';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -31,55 +31,53 @@ const getKnowledgeItemFromParams = async (req: Request, res: Response) => {
   return item;
 };
 
-export const getStudyTopicsByKnowledgeItem = asyncErrorHandler(async (req: Request, res: Response) => {
+export const getTopicsByKnowledgeItem = asyncErrorHandler(async (req: Request, res: Response) => {
   const item = await getKnowledgeItemFromParams(req, res);
   if (!item) return;
 
-  res.json(await listStudyTopicsByKnowledgeItem(item.id));
+  res.json(await listTopicsByKnowledgeItem(item.id));
 });
 
-export const assignStudyTopicToKnowledgeItem = asyncErrorHandler(async (req: Request, res: Response) => {
+export const assignTopicToKnowledgeItem = asyncErrorHandler(async (req: Request, res: Response) => {
   const item = await getKnowledgeItemFromParams(req, res);
   if (!item) return;
 
-  const studyTopicId = parseId(req.body.studyTopicId);
-  if (!studyTopicId) {
+  const topicId = parseId(req.body.topicId);
+  if (!topicId) {
     return res.status(400).json({ message: 'A valid topic id is required' });
   }
 
-  const topic = await getStudyTopicById(studyTopicId);
+  const topic = await getTopicById(topicId);
   if (!topic) {
     return res.status(404).json({ message: 'Topic not found' });
   }
 
   const db = await getDb();
-  const sortOrder = Number.isInteger(req.body.sortOrder) ? req.body.sortOrder : 0;
   await db.run(
     `INSERT OR IGNORE INTO knowledge_item_study_topics
       (knowledgeItemId, studyTopicId, sortOrder)
-     VALUES (?, ?, ?)`,
+     VALUES (?, ?, 0)`,
     item.id,
-    studyTopicId,
-    sortOrder
+    topicId
   );
 
   res.status(201).json(topic);
 });
 
-export const removeStudyTopicFromKnowledgeItem = asyncErrorHandler(async (req: Request, res: Response) => {
+export const removeTopicFromKnowledgeItem = asyncErrorHandler(async (req: Request, res: Response) => {
   const item = await getKnowledgeItemFromParams(req, res);
   if (!item) return;
 
-  const studyTopicId = parseId(req.params.studyTopicId);
-  if (!studyTopicId) {
-    return res.status(400).json({ message: 'Invalid topic id' });
+  const topicId = parseId(req.params.topicId);
+  if (!topicId) {
+    return res.status(400).json({ message: 'A valid topic id is required' });
   }
 
   const db = await getDb();
   const result = await db.run(
     'DELETE FROM knowledge_item_study_topics WHERE knowledgeItemId = ? AND studyTopicId = ?',
     item.id,
-    studyTopicId
+    topicId
   );
 
   if (!result.changes) {

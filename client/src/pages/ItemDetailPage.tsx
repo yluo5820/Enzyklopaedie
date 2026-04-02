@@ -10,33 +10,33 @@ import type {
   KnowledgeTask,
   KnowledgeTaskStatus,
   ReferenceEntity,
-  StudyTopicSummary,
-  TopicSummary,
+  SubjectSummary as TopicSummary,
+  TopicSummary as StudyTopicSummary,
   UpdateKnowledgeItem,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
-  assignStudyTopicToKnowledgeItem,
+  assignTopicToKnowledgeItem as assignStudyTopicToKnowledgeItem,
   createKnowledgeNote,
   createKnowledgeRelation,
   createKnowledgeReview,
   createKnowledgeTask,
-  createStudyTopic,
+  createTopic as createStudyTopic,
   deleteKnowledgeNote,
   deleteKnowledgeRelation,
   deleteKnowledgeReview,
   deleteKnowledgeTask,
   fetchKnowledgeItem,
   fetchKnowledgeItems,
-  fetchKnowledgeItemStudyTopics,
+  fetchKnowledgeItemTopics as fetchKnowledgeItemStudyTopics,
   fetchKnowledgeNotes,
   fetchKnowledgeRelations,
   fetchKnowledgeReviews,
   fetchKnowledgeTasks,
   fetchReferenceEntities,
-  fetchStudyTopics,
-  fetchTopics,
-  removeStudyTopicFromKnowledgeItem,
+  fetchSubjects as fetchTopics,
+  fetchTopics as fetchStudyTopics,
+  removeTopicFromKnowledgeItem as removeStudyTopicFromKnowledgeItem,
   updateKnowledgeItem,
   updateKnowledgeTask,
 } from '../api';
@@ -252,8 +252,8 @@ const formatReferenceTimespan = (entity: ReferenceEntity) => {
 const buildRelationHref = (relation: KnowledgeRelationDetail) => {
   if (relation.toEntityType === 'knowledge_item') return `/knowledge/${relation.toEntityId}`;
   if (relation.toEntityType === 'reference_entity') return `/entities/${relation.toEntityId}`;
+  if (relation.toEntityType === 'subject') return `/subjects/${relation.toEntityId}`;
   if (relation.toEntityType === 'topic') return `/topics/${relation.toEntityId}`;
-  if (relation.toEntityType === 'study_topic') return `/study-topics/${relation.toEntityId}`;
   return null;
 };
 
@@ -261,7 +261,7 @@ const orderSubjects = (subjects: TopicSummary[]) => {
   const children = new Map<number | null, TopicSummary[]>();
 
   for (const subject of subjects) {
-    const key = subject.parentTopicId ?? null;
+    const key = subject.parentSubjectId ?? null;
     const branch = children.get(key) ?? [];
     branch.push(subject);
     children.set(key, branch);
@@ -323,14 +323,14 @@ const orderStudyTopics = (subjects: TopicSummary[], studyTopics: StudyTopicSumma
 
 const buildSubjectPath = (subject: TopicSummary, subjectMap: Map<number, TopicSummary>) => {
   const parts = [subject.name];
-  let currentParentId = subject.parentTopicId;
+  let currentParentId = subject.parentSubjectId;
   let guard = 0;
 
   while (currentParentId && guard < 12) {
     const parent = subjectMap.get(currentParentId);
     if (!parent) break;
     parts.unshift(parent.name);
-    currentParentId = parent.parentTopicId;
+    currentParentId = parent.parentSubjectId;
     guard += 1;
   }
 
@@ -1222,7 +1222,7 @@ const ItemDetailPage: React.FC = () => {
               ) : (
                 itemStudyTopics.map((topic) => (
                   <div key={topic.id} className="knowledge-detail-chip">
-                    <Link to={`/study-topics/${topic.id}`}>
+                    <Link to={`/topics/${topic.id}`}>
                       {buildStudyTopicPath(topic, studyTopicMap, subjectMap)}
                     </Link>
                     {showTopicManager ? (

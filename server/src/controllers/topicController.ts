@@ -1,8 +1,14 @@
 import { NextFunction, Request, Response } from 'express';
-import { NewTopic, Topic, UpdateTopic, slugifyTopicName } from '@enzyklopaedie/shared';
+import { NewTopic, Topic } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
 import { recordActivityEvent } from '../lib/activity';
-import { getOntologyTopic, getTopicSummaryById, listKnowledgeItemsForTopic, listTopicSummaries } from '../lib/topics';
+import {
+  generateUniqueTopicSlug,
+  getTopicById as getTopicSummaryById,
+  listKnowledgeItemsForTopic,
+  listTopics,
+} from '../lib/topics';
+import { getSubjectSummaryById } from '../lib/subjects';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -16,64 +22,26 @@ const parseId = (value: unknown) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const generateUniqueTopicSlug = async (name: string, excludeTopicId?: number) => {
-  const db = await getDb();
-  const baseSlug = slugifyTopicName(name);
-  let slug = baseSlug || 'topic';
-  let suffix = 2;
+export const getAllTopics = asyncErrorHandler(async (req: Request, res: Response) => {
+  const requestedSubjectId = req.query.subjectId;
+  const parsedSubjectId = requestedSubjectId === undefined ? null : parseId(requestedSubjectId);
 
-  while (
-    await db.get(
-      excludeTopicId
-        ? 'SELECT id FROM topics WHERE slug = ? AND id != ?'
-        : 'SELECT id FROM topics WHERE slug = ?',
-      ...(excludeTopicId ? [slug, excludeTopicId] : [slug])
-    )
-  ) {
-    slug = `${baseSlug || 'topic'}-${suffix}`;
-    suffix += 1;
+  if (requestedSubjectId !== undefined && !parsedSubjectId) {
+    return res.status(400).json({ message: 'Invalid subject id' });
   }
 
-  return slug;
-};
-
-const getDescendantIds = async (topicId: number) => {
-  const topics = await listTopicSummaries();
-  const children = new Map<number | null, number[]>();
-
-  for (const topic of topics) {
-    const key = topic.parentTopicId ?? null;
-    const branch = children.get(key) ?? [];
-    branch.push(topic.id);
-    children.set(key, branch);
-  }
-
-  const descendants = new Set<number>();
-  const stack = [...(children.get(topicId) ?? [])];
-
-  while (stack.length > 0) {
-    const currentId = stack.pop();
-    if (!currentId || descendants.has(currentId)) continue;
-    descendants.add(currentId);
-    stack.push(...(children.get(currentId) ?? []));
-  }
-
-  return descendants;
-};
-
-export const getAllTopics = asyncErrorHandler(async (_req: Request, res: Response) => {
-  res.json(await listTopicSummaries());
+  res.json(await listTopics(parsedSubjectId ?? undefined));
 });
 
-export const getTopicById = asyncErrorHandler(async (req: Request, res: Response) => {
+export const getTopicByIdRoute = asyncErrorHandler(async (req: Request, res: Response) => {
   const topicId = parseId(req.params.id);
   if (!topicId) {
-    return res.status(400).json({ message: 'Invalid subject id' });
+    return res.status(400).json({ message: 'Invalid topic id' });
   }
 
   const topic = await getTopicSummaryById(topicId);
   if (!topic) {
-    return res.status(404).json({ message: 'Subject not found' });
+    return res.status(404).json({ message: 'Topic not found' });
   }
 
   res.json(topic);
@@ -82,12 +50,12 @@ export const getTopicById = asyncErrorHandler(async (req: Request, res: Response
 export const getKnowledgeItemsByTopic = asyncErrorHandler(async (req: Request, res: Response) => {
   const topicId = parseId(req.params.id);
   if (!topicId) {
-    return res.status(400).json({ message: 'Invalid subject id' });
+    return res.status(400).json({ message: 'Invalid topic id' });
   }
 
   const topic = await getTopicSummaryById(topicId);
   if (!topic) {
-    return res.status(404).json({ message: 'Subject not found' });
+    return res.status(404).json({ message: 'Topic not found' });
   }
 
   res.json(await listKnowledgeItemsForTopic(topicId));
@@ -99,213 +67,112 @@ export const createTopic = asyncErrorHandler(async (req: Request, res: Response)
   const name = typeof newTopic.name === 'string' ? newTopic.name.trim() : '';
 
   if (!name) {
-    return res.status(400).json({ message: 'Subject name is required' });
+    return res.status(400).json({ message: 'Topic name is required' });
+  }
+
+  const subjectId = parseId(newTopic.subjectId);
+  if (!subjectId) {
+    return res.status(400).json({ message: 'A valid subject id is required' });
+  }
+
+  const subject = await getSubjectSummaryById(subjectId);
+  if (!subject) {
+    return res.status(404).json({ message: 'Subject not found' });
   }
 
   const requestedParentTopicId = newTopic.parentTopicId ? parseId(newTopic.parentTopicId) : null;
   if (newTopic.parentTopicId !== undefined && !requestedParentTopicId) {
-    return res.status(400).json({ message: 'Invalid parent subject id' });
+    return res.status(400).json({ message: 'Invalid parent topic id' });
   }
 
-  const isOntologyRoot = name.toLowerCase() === 'ontology';
-  if (isOntologyRoot && requestedParentTopicId) {
-    return res.status(400).json({ message: 'Ontology must remain the root subject' });
-  }
-
-  let parentTopicId = requestedParentTopicId;
-
-  if (!parentTopicId && !isOntologyRoot) {
-    const ontologyTopic = await getOntologyTopic();
-    parentTopicId = ontologyTopic?.id ?? null;
-  }
-
-  if (parentTopicId) {
-    const parent = await db.get('SELECT id FROM topics WHERE id = ?', parentTopicId);
+  if (requestedParentTopicId) {
+    const parent = await getTopicSummaryById(requestedParentTopicId);
     if (!parent) {
-      return res.status(404).json({ message: 'Parent subject not found' });
+      return res.status(404).json({ message: 'Parent topic not found' });
+    }
+
+    if (parent.subjectId !== subject.id) {
+      return res.status(400).json({ message: 'Parent topic must belong to the same subject' });
     }
   }
 
-  const existingTopic = await db.get<Topic>(
-    'SELECT * FROM topics WHERE lower(name) = lower(?)',
-    name
-  );
+  const existingTopic = requestedParentTopicId
+    ? await db.get<Topic>(
+        `SELECT * FROM study_topics
+         WHERE subjectId = ? AND parentTopicId = ? AND lower(name) = lower(?)`,
+        subject.id,
+        requestedParentTopicId,
+        name
+      )
+    : await db.get<Topic>(
+        `SELECT * FROM study_topics
+         WHERE subjectId = ? AND parentTopicId IS NULL AND lower(name) = lower(?)`,
+        subject.id,
+        name
+      );
+
   if (existingTopic) {
-    return res.status(200).json(existingTopic);
+    const existingSummary = await getTopicSummaryById(existingTopic.id);
+    return res.status(200).json(existingSummary);
   }
 
-  const slug = await generateUniqueTopicSlug(name);
+  const slug = await generateUniqueTopicSlug(db, name, subject.slug);
   const now = new Date().toISOString();
   const result = await db.run(
-    `INSERT INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO study_topics
+      (subjectId, name, slug, summary, description, parentTopicId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    subject.id,
     name,
     slug,
+    newTopic.summary?.trim() || null,
     newTopic.description?.trim() || null,
-    parentTopicId,
-    newTopic.color?.trim() || null,
+    requestedParentTopicId,
     now,
     now
   );
 
-  const topic: Topic = {
-    id: result.lastID as number,
-    name,
-    slug,
-    description: newTopic.description?.trim() || undefined,
-    parentTopicId: parentTopicId || undefined,
-    color: newTopic.color?.trim() || undefined,
-    createdAt: now,
-    updatedAt: now,
-  };
+  const createdTopic = await getTopicSummaryById(result.lastID as number);
 
   await recordActivityEvent({
-    type: 'subject_created',
-    entityType: 'subject',
-    entityId: topic.id,
-    message: `Created subject "${topic.name}"`,
+    type: 'topic_created',
+    entityType: 'topic',
+    entityId: result.lastID as number,
+    message: `Created topic "${name}" in subject "${subject.name}"`,
     metadata: {
-      slug: topic.slug,
-      parentTopicId: topic.parentTopicId,
+      slug,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      parentTopicId: requestedParentTopicId,
     },
   });
 
-  res.status(201).json(topic);
-});
-
-export const updateTopic = asyncErrorHandler(async (req: Request, res: Response) => {
-  const db = await getDb();
-  const topicId = parseId(req.params.id);
-  if (!topicId) {
-    return res.status(400).json({ message: 'Invalid subject id' });
-  }
-
-  const existingTopic = await db.get<Topic>('SELECT * FROM topics WHERE id = ?', topicId);
-  if (!existingTopic) {
-    return res.status(404).json({ message: 'Subject not found' });
-  }
-
-  const updates: UpdateTopic = req.body ?? {};
-  const fields: string[] = [];
-  const values: unknown[] = [];
-
-  if (updates.name !== undefined) {
-    const name = typeof updates.name === 'string' ? updates.name.trim() : '';
-    if (!name) {
-      return res.status(400).json({ message: 'Subject name is required' });
-    }
-
-    if (existingTopic.slug === 'ontology' && name.toLowerCase() !== 'ontology') {
-      return res.status(400).json({ message: 'Ontology must remain the root subject' });
-    }
-
-    const duplicate = await db.get<Topic>(
-      'SELECT * FROM topics WHERE lower(name) = lower(?) AND id != ?',
-      name,
-      topicId
-    );
-    if (duplicate) {
-      return res.status(409).json({ message: 'A subject with that name already exists' });
-    }
-
-    const slug =
-      existingTopic.slug === 'ontology' && name.toLowerCase() === 'ontology'
-        ? 'ontology'
-        : await generateUniqueTopicSlug(name, topicId);
-
-    fields.push('name = ?', 'slug = ?');
-    values.push(name, slug);
-  }
-
-  if (updates.description !== undefined) {
-    const description =
-      typeof updates.description === 'string' ? updates.description.trim() || null : null;
-    fields.push('description = ?');
-    values.push(description);
-  }
-
-  if (updates.parentTopicId !== undefined) {
-    const isOntology = existingTopic.slug === 'ontology';
-    if (isOntology) {
-      return res.status(400).json({ message: 'Ontology must remain the root subject' });
-    }
-
-    const requestedParentTopicId =
-      updates.parentTopicId === null ? null : parseId(updates.parentTopicId);
-
-    if (updates.parentTopicId !== null && !requestedParentTopicId) {
-      return res.status(400).json({ message: 'Invalid parent subject id' });
-    }
-
-    const ontologyTopic = await getOntologyTopic();
-    const parentTopicId = requestedParentTopicId ?? ontologyTopic?.id ?? null;
-
-    if (!parentTopicId) {
-      return res.status(400).json({ message: 'A valid parent subject is required' });
-    }
-
-    if (parentTopicId === topicId) {
-      return res.status(400).json({ message: 'A subject cannot become its own parent' });
-    }
-
-    const descendants = await getDescendantIds(topicId);
-    if (descendants.has(parentTopicId)) {
-      return res.status(400).json({ message: 'A subject cannot move under one of its descendants' });
-    }
-
-    const parent = await db.get<Topic>('SELECT * FROM topics WHERE id = ?', parentTopicId);
-    if (!parent) {
-      return res.status(404).json({ message: 'Parent subject not found' });
-    }
-
-    fields.push('parentTopicId = ?');
-    values.push(parentTopicId);
-  }
-
-  if (updates.color !== undefined) {
-    fields.push('color = ?');
-    values.push(typeof updates.color === 'string' ? updates.color.trim() || null : null);
-  }
-
-  if (fields.length === 0) {
-    return res.status(400).json({ message: 'No fields to update' });
-  }
-
-  const updatedAt = new Date().toISOString();
-  await db.run(
-    `UPDATE topics SET ${fields.join(', ')}, updatedAt = ? WHERE id = ?`,
-    ...values,
-    updatedAt,
-    topicId
-  );
-
-  res.json(await getTopicSummaryById(topicId));
+  res.status(201).json(createdTopic);
 });
 
 export const deleteTopic = asyncErrorHandler(async (req: Request, res: Response) => {
   const db = await getDb();
   const topicId = parseId(req.params.id);
   if (!topicId) {
-    return res.status(400).json({ message: 'Invalid subject id' });
+    return res.status(400).json({ message: 'Invalid topic id' });
   }
 
-  const existingTopic = await db.get<Topic>('SELECT * FROM topics WHERE id = ?', topicId);
+  const existingTopic = await getTopicSummaryById(topicId);
   if (!existingTopic) {
-    return res.status(404).json({ message: 'Subject not found' });
+    return res.status(404).json({ message: 'Topic not found' });
   }
 
-  if (existingTopic.slug === 'ontology') {
-    return res.status(400).json({ message: 'Ontology must remain the root subject' });
+  const childTopic = await db.get('SELECT id FROM study_topics WHERE parentTopicId = ? LIMIT 1', topicId);
+  if (childTopic) {
+    return res.status(409).json({ message: 'Remove child topics before deleting this topic' });
   }
 
-  const childSubject = await db.get('SELECT id FROM topics WHERE parentTopicId = ? LIMIT 1', topicId);
-  if (childSubject) {
-    return res.status(409).json({ message: 'Remove child subjects before deleting this branch' });
-  }
-
-  const containedTopic = await db.get('SELECT id FROM study_topics WHERE subjectId = ? LIMIT 1', topicId);
-  if (containedTopic) {
-    return res.status(409).json({ message: 'Remove or move this subject’s topics before deleting it' });
+  const assignedItem = await db.get(
+    'SELECT knowledgeItemId FROM knowledge_item_study_topics WHERE studyTopicId = ? LIMIT 1',
+    topicId
+  );
+  if (assignedItem) {
+    return res.status(409).json({ message: 'Remove this topic’s items before deleting it' });
   }
 
   await db.run(
@@ -315,7 +182,22 @@ export const deleteTopic = asyncErrorHandler(async (req: Request, res: Response)
     topicId,
     topicId
   );
-  await db.run('DELETE FROM topics WHERE id = ?', topicId);
+  await db.run('DELETE FROM study_topics WHERE id = ?', topicId);
+
+  await recordActivityEvent({
+    type: 'topic_deleted',
+    entityType: 'topic',
+    entityId: topicId,
+    message: `Deleted topic "${existingTopic.name}" from subject "${existingTopic.subjectName}"`,
+    metadata: {
+      subjectId: existingTopic.subjectId,
+      subjectName: existingTopic.subjectName,
+      parentTopicId: existingTopic.parentTopicId ?? null,
+      slug: existingTopic.slug,
+    },
+  });
 
   res.status(204).send();
 });
+
+export { getTopicByIdRoute as getTopicById };

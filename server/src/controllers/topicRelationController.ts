@@ -11,7 +11,7 @@ import {
   listKnowledgeRelationsBySource,
   validateKnowledgeRelationEdge,
 } from '../lib/knowledgeRelations';
-import { getStudyTopicById } from '../lib/studyTopics';
+import { getTopicById } from '../lib/topics';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -25,14 +25,14 @@ const parseId = (value: unknown) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const getStudyTopicFromParams = async (req: Request, res: Response) => {
-  const studyTopicId = parseId(req.params.id);
-  if (!studyTopicId) {
+const getTopicFromParams = async (req: Request, res: Response) => {
+  const topicId = parseId(req.params.id);
+  if (!topicId) {
     res.status(400).json({ message: 'Invalid topic id' });
     return null;
   }
 
-  const topic = await getStudyTopicById(studyTopicId);
+  const topic = await getTopicById(topicId);
   if (!topic) {
     res.status(404).json({ message: 'Topic not found' });
     return null;
@@ -41,15 +41,15 @@ const getStudyTopicFromParams = async (req: Request, res: Response) => {
   return topic;
 };
 
-export const getRelationsByStudyTopic = asyncErrorHandler(async (req: Request, res: Response) => {
-  const topic = await getStudyTopicFromParams(req, res);
+export const getRelationsByTopic = asyncErrorHandler(async (req: Request, res: Response) => {
+  const topic = await getTopicFromParams(req, res);
   if (!topic) return;
 
-  res.json(await listKnowledgeRelationsBySource('study_topic', topic.id));
+  res.json(await listKnowledgeRelationsBySource('topic', topic.id));
 });
 
-export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, res: Response) => {
-  const topic = await getStudyTopicFromParams(req, res);
+export const createTopicRelation = asyncErrorHandler(async (req: Request, res: Response) => {
+  const topic = await getTopicFromParams(req, res);
   if (!topic) return;
 
   const toEntityType = (req.body.toEntityType ?? 'reference_entity') as KnowledgeRelationEntityType;
@@ -62,7 +62,7 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
     return res.status(400).json({ message: 'A valid target entity id is required' });
   }
 
-  if (toEntityType === 'study_topic' && toEntityId === topic.id) {
+  if (toEntityType === 'topic' && toEntityId === topic.id) {
     return res.status(400).json({ message: 'A topic cannot be related to itself' });
   }
 
@@ -78,7 +78,7 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
   }
 
   const relationValidationMessage = validateKnowledgeRelationEdge(
-    'study_topic',
+    'topic',
     'topic',
     toEntityType,
     targetEntity.kind,
@@ -89,7 +89,7 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
   }
 
   const existingRelation = await findKnowledgeRelation(
-    'study_topic',
+    'topic',
     topic.id,
     toEntityType,
     toEntityId,
@@ -105,7 +105,7 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
     `INSERT INTO knowledge_relations
       (fromEntityType, fromEntityId, toEntityType, toEntityId, relationType, note, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    'study_topic',
+    'topic',
     topic.id,
     toEntityType,
     toEntityId,
@@ -118,7 +118,7 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
 
   await recordActivityEvent({
     type: 'relation_created',
-    entityType: 'study_topic',
+    entityType: 'topic',
     entityId: topic.id,
     message: `Linked topic "${topic.name}" to "${targetEntity.title}"`,
     metadata: {
@@ -132,8 +132,8 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
   res.status(201).json(relation);
 });
 
-export const deleteStudyTopicRelation = asyncErrorHandler(async (req: Request, res: Response) => {
-  const topic = await getStudyTopicFromParams(req, res);
+export const deleteTopicRelation = asyncErrorHandler(async (req: Request, res: Response) => {
+  const topic = await getTopicFromParams(req, res);
   if (!topic) return;
 
   const relationId = parseId(req.params.relationId);
@@ -144,7 +144,7 @@ export const deleteStudyTopicRelation = asyncErrorHandler(async (req: Request, r
   const db = await getDb();
   const result = await db.run(
     `DELETE FROM knowledge_relations
-     WHERE id = ? AND fromEntityType = 'study_topic' AND fromEntityId = ?`,
+     WHERE id = ? AND fromEntityType = 'topic' AND fromEntityId = ?`,
     relationId,
     topic.id
   );

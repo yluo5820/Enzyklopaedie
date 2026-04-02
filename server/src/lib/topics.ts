@@ -1,66 +1,96 @@
-import { KnowledgeItem, TopicSummary } from '@enzyklopaedie/shared';
-import { getDb } from '../db';
+import { slugifyName, type KnowledgeItem, type TopicSummary } from '@enzyklopaedie/shared';
+import type sqlite3 from 'sqlite3';
+import type { Database } from 'sqlite';
+
+type DbConnection = Database<sqlite3.Database, sqlite3.Statement>;
+
+const getDbConnection = async () => {
+  return import('../db').then(({ getDb }) => getDb());
+};
 
 const topicSummarySelect = `
   SELECT
-    t.*,
-    COALESCE(item_counts.knowledgeItemCount, 0) AS knowledgeItemCount,
-    COALESCE(child_counts.childTopicCount, 0) AS childTopicCount,
-    COALESCE(topic_counts.topicCount, 0) AS topicCount
-  FROM topics t
+    st.*,
+    s.name AS subjectName,
+    s.slug AS subjectSlug,
+    COALESCE(item_counts.itemCount, 0) AS itemCount,
+    COALESCE(child_counts.childTopicCount, 0) AS childTopicCount
+  FROM study_topics st
+  INNER JOIN topics s ON s.id = st.subjectId
   LEFT JOIN (
-    SELECT st.subjectId, COUNT(DISTINCT kist.knowledgeItemId) AS knowledgeItemCount
-    FROM study_topics st
-    INNER JOIN knowledge_item_study_topics kist ON kist.studyTopicId = st.id
-    GROUP BY st.subjectId
-  ) item_counts ON item_counts.subjectId = t.id
+    SELECT studyTopicId, COUNT(*) AS itemCount
+    FROM knowledge_item_study_topics
+    GROUP BY studyTopicId
+  ) item_counts ON item_counts.studyTopicId = st.id
   LEFT JOIN (
     SELECT parentTopicId, COUNT(*) AS childTopicCount
-    FROM topics
+    FROM study_topics
     WHERE parentTopicId IS NOT NULL
     GROUP BY parentTopicId
-  ) child_counts ON child_counts.parentTopicId = t.id
-  LEFT JOIN (
-    SELECT subjectId, COUNT(*) AS topicCount
-    FROM study_topics
-    GROUP BY subjectId
-  ) topic_counts ON topic_counts.subjectId = t.id
+  ) child_counts ON child_counts.parentTopicId = st.id
 `;
 
-export const listTopicSummaries = async () => {
-  const db = await getDb();
-  return db.all<TopicSummary[]>(
-    `${topicSummarySelect}
-     ORDER BY CASE WHEN t.slug = 'ontology' THEN 0 ELSE 1 END, lower(t.name) ASC, t.createdAt ASC`
-  );
+export const listTopics = async (subjectId?: number) => {
+  const db = await getDbConnection();
+  return subjectId
+    ? db.all<TopicSummary[]>(
+        `${topicSummarySelect}
+         WHERE st.subjectId = ?
+         ORDER BY COALESCE(st.parentTopicId, 0) ASC, lower(st.name) ASC, st.createdAt ASC`,
+        subjectId
+      )
+    : db.all<TopicSummary[]>(
+        `${topicSummarySelect}
+         ORDER BY lower(s.name) ASC, COALESCE(st.parentTopicId, 0) ASC, lower(st.name) ASC, st.createdAt ASC`
+      );
 };
 
-export const getTopicSummaryById = async (topicId: number) => {
-  const db = await getDb();
+export const getTopicById = async (topicId: number) => {
+  const db = await getDbConnection();
   return db.get<TopicSummary>(
     `${topicSummarySelect}
-     WHERE t.id = ?`,
+     WHERE st.id = ?`,
     topicId
-  );
-};
-
-export const getOntologyTopic = async () => {
-  const db = await getDb();
-  return db.get<TopicSummary>(
-    `${topicSummarySelect}
-     WHERE t.slug = 'ontology'`
   );
 };
 
 export const listKnowledgeItemsForTopic = async (topicId: number) => {
-  const db = await getDb();
+  const db = await getDbConnection();
   return db.all<KnowledgeItem[]>(
-    `SELECT DISTINCT ki.*
-     FROM study_topics st
-     INNER JOIN knowledge_item_study_topics kist ON kist.studyTopicId = st.id
-     INNER JOIN knowledge_items ki ON ki.id = kist.knowledgeItemId
-     WHERE st.subjectId = ?
+    `SELECT ki.*
+     FROM knowledge_item_study_topics kit
+     INNER JOIN knowledge_items ki ON ki.id = kit.knowledgeItemId
+     WHERE kit.studyTopicId = ?
      ORDER BY ki.updatedAt DESC`,
     topicId
   );
+};
+
+export const listTopicsByKnowledgeItem = async (knowledgeItemId: number) => {
+  const db = await getDbConnection();
+  return db.all<TopicSummary[]>(
+    `${topicSummarySelect}
+     INNER JOIN knowledge_item_study_topics kit ON kit.studyTopicId = st.id
+     WHERE kit.knowledgeItemId = ?
+     ORDER BY lower(s.name) ASC, COALESCE(st.parentTopicId, 0) ASC, lower(st.name) ASC, st.createdAt ASC`,
+    knowledgeItemId
+  );
+};
+
+export const generateUniqueTopicSlug = async (
+  db: DbConnection,
+  name: string,
+  subjectSlug?: string
+) => {
+  const baseName = slugifyName(name) || 'topic';
+  const baseSlug = subjectSlug ? `${subjectSlug}-${baseName}` : baseName;
+  let slug = baseSlug;
+  let suffix = 2;
+
+  while (await db.get('SELECT id FROM study_topics WHERE slug = ?', slug)) {
+    slug = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
 };

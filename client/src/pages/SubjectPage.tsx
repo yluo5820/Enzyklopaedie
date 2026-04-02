@@ -1,13 +1,16 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
-import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
+import type {
+  SubjectSummary as TopicSummary,
+  TopicSummary as StudyTopicSummary,
+} from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
-  createStudyTopic,
-  deleteStudyTopic,
-  fetchStudyTopics,
-  fetchTopic,
-  fetchTopics,
-  updateTopic,
+  createTopic as createStudyTopic,
+  deleteTopic as deleteStudyTopic,
+  fetchSubject as fetchTopic,
+  fetchSubjects as fetchTopics,
+  fetchTopics as fetchStudyTopics,
+  updateSubject as updateTopic,
 } from '../api';
 import './SubjectPage.css';
 
@@ -98,13 +101,13 @@ const SubjectPage: React.FC = () => {
 
   const subjectMap = useMemo(() => new Map(subjects.map((entry) => [entry.id, entry])), [subjects]);
   const parentSubject = useMemo(
-    () => (subject?.parentTopicId ? subjectMap.get(subject.parentTopicId) ?? null : null),
-    [subject?.parentTopicId, subjectMap]
+    () => (subject?.parentSubjectId ? subjectMap.get(subject.parentSubjectId) ?? null : null),
+    [subject?.parentSubjectId, subjectMap]
   );
   const childSubjects = useMemo(
     () =>
       subjects
-        .filter((entry) => entry.parentTopicId === subject?.id)
+        .filter((entry) => entry.parentSubjectId === subject?.id)
         .sort((left, right) => left.name.localeCompare(right.name)),
     [subject?.id, subjects]
   );
@@ -112,14 +115,14 @@ const SubjectPage: React.FC = () => {
     if (!subject) return [];
 
     const path: TopicSummary[] = [subject];
-    let currentParentId = subject.parentTopicId;
+    let currentParentId = subject.parentSubjectId;
     let guard = 0;
 
     while (currentParentId && guard < 16) {
       const parent = subjectMap.get(currentParentId);
       if (!parent) break;
       path.unshift(parent);
-      currentParentId = parent.parentTopicId;
+      currentParentId = parent.parentSubjectId;
       guard += 1;
     }
 
@@ -265,7 +268,7 @@ const SubjectPage: React.FC = () => {
 
   return (
     <div className="topic-page">
-      <Link to="/topics" className="topic-page-back">
+      <Link to="/subjects" className="topic-page-back">
         Back to Subject Tree
       </Link>
 
@@ -280,7 +283,7 @@ const SubjectPage: React.FC = () => {
           <div className="topic-page-lineage">
             {lineage.map((entry, index) => (
               <React.Fragment key={entry.id}>
-                <Link to={`/topics/${entry.id}`}>{entry.name}</Link>
+                <Link to={`/subjects/${entry.id}`}>{entry.name}</Link>
                 {index < lineage.length - 1 ? <span>/</span> : null}
               </React.Fragment>
             ))}
@@ -288,7 +291,7 @@ const SubjectPage: React.FC = () => {
           <div className="topic-page-hero-meta">
             <span>Updated {formatDate(subject.updatedAt)}</span>
             {parentSubject ? (
-              <Link to={`/topics/${parentSubject.id}`}>Parent: {parentSubject.name}</Link>
+              <Link to={`/subjects/${parentSubject.id}`}>Parent: {parentSubject.name}</Link>
             ) : (
               <span>Root subject</span>
             )}
@@ -408,7 +411,7 @@ const SubjectPage: React.FC = () => {
               <div className="topic-page-card-grid">
                 {orderedStudyTopics.map(({ topic, depth }) => (
                   <article key={topic.id} className="topic-page-card">
-                    <Link to={`/study-topics/${topic.id}`} className="topic-page-card-link">
+                    <Link to={`/topics/${topic.id}`} className="topic-page-card-link">
                       <strong>{topic.name}</strong>
                     </Link>
                     <div className="topic-page-card-meta">
@@ -418,7 +421,7 @@ const SubjectPage: React.FC = () => {
                     </div>
                     {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
                     <div className="topic-page-card-actions">
-                      <Link to={`/study-topics/${topic.id}`} className="topic-page-card-button">
+                      <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
                         Open topic
                       </Link>
                       <button

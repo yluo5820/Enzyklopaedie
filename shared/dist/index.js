@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildReferenceEntitySlug = exports.slugifyTopicName = exports.summarizeKnowledgeProgress = void 0;
+exports.buildReferenceEntitySlug = exports.slugifyName = exports.summarizeKnowledgeProgress = void 0;
 const summarizeKnowledgeProgress = (items) => {
     const byStatus = {
         inbox: 0,
@@ -20,11 +20,11 @@ const summarizeKnowledgeProgress = (items) => {
     };
 };
 exports.summarizeKnowledgeProgress = summarizeKnowledgeProgress;
-const slugifyTopicName = (value) => value
+const slugifyName = (value) => value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-exports.slugifyTopicName = slugifyTopicName;
-const buildReferenceEntitySlug = (kind, title) => `${kind}-${(0, exports.slugifyTopicName)(title)}`;
+exports.slugifyName = slugifyName;
+const buildReferenceEntitySlug = (kind, title) => `${kind}-${(0, exports.slugifyName)(title)}`;
 exports.buildReferenceEntitySlug = buildReferenceEntitySlug;

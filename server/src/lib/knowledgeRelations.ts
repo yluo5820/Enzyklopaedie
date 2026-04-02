@@ -7,8 +7,8 @@ import {
 import { getDb } from '../db';
 import { getKnowledgeItemLookup } from './knowledgeItems';
 import { getReferenceEntityLookup } from './referenceEntities';
-import { getStudyTopicById } from './studyTopics';
-import { getTopicSummaryById } from './topics';
+import { getSubjectSummaryById } from './subjects';
+import { getTopicById } from './topics';
 
 export interface RelationEntityLookup {
   id: number;
@@ -30,8 +30,8 @@ export const isKnowledgeRelationType = (value: unknown): value is KnowledgeRelat
 
 export const isKnowledgeRelationEntityType = (value: unknown): value is KnowledgeRelationEntityType =>
   value === 'knowledge_item' ||
+  value === 'subject' ||
   value === 'topic' ||
-  value === 'study_topic' ||
   value === 'reference_entity';
 
 const relationTypeSet = (...values: KnowledgeRelationType[]) => new Set(values);
@@ -44,8 +44,8 @@ const formatRelationEndpoint = (
     return entityKind === 'lecture' ? 'lecture item' : 'book item';
   }
 
-  if (entityType === 'study_topic') return 'topic';
-  if (entityType === 'topic') return 'subject';
+  if (entityType === 'topic') return 'topic';
+  if (entityType === 'subject') return 'subject';
   if (entityType === 'reference_entity') return entityKind ?? 'reference entity';
   return 'entity';
 };
@@ -84,7 +84,7 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
     return relationTypeSet();
   }
 
-  if (fromEntityType === 'study_topic') {
+  if (fromEntityType === 'topic') {
     if (toEntityType !== 'reference_entity') {
       return relationTypeSet();
     }
@@ -175,39 +175,39 @@ export const validateKnowledgeRelationEdge = (
 const relationDetailSelect = `
   SELECT
     kr.*,
-    COALESCE(source_item.title, source_topic.name, source_study_topic.name, source_reference.title) AS fromEntityTitle,
+    COALESCE(source_item.title, source_subject.name, source_topic.name, source_reference.title) AS fromEntityTitle,
     COALESCE(
       source_item.kind,
       CASE
-        WHEN kr.fromEntityType = 'topic' THEN 'subject'
-        WHEN kr.fromEntityType = 'study_topic' THEN 'topic'
+        WHEN kr.fromEntityType = 'subject' THEN 'subject'
+        WHEN kr.fromEntityType = 'topic' THEN 'topic'
       END,
       source_reference.kind
     ) AS fromEntityKind,
-    COALESCE(target_item.title, target_topic.name, target_study_topic.name, target_reference.title) AS toEntityTitle,
+    COALESCE(target_item.title, target_subject.name, target_topic.name, target_reference.title) AS toEntityTitle,
     COALESCE(
       target_item.kind,
       CASE
-        WHEN kr.toEntityType = 'topic' THEN 'subject'
-        WHEN kr.toEntityType = 'study_topic' THEN 'topic'
+        WHEN kr.toEntityType = 'subject' THEN 'subject'
+        WHEN kr.toEntityType = 'topic' THEN 'topic'
       END,
       target_reference.kind
     ) AS toEntityKind
   FROM knowledge_relations kr
   LEFT JOIN knowledge_items source_item
     ON kr.fromEntityType = 'knowledge_item' AND kr.fromEntityId = source_item.id
-  LEFT JOIN topics source_topic
+  LEFT JOIN topics source_subject
+    ON kr.fromEntityType = 'subject' AND kr.fromEntityId = source_subject.id
+  LEFT JOIN study_topics source_topic
     ON kr.fromEntityType = 'topic' AND kr.fromEntityId = source_topic.id
-  LEFT JOIN study_topics source_study_topic
-    ON kr.fromEntityType = 'study_topic' AND kr.fromEntityId = source_study_topic.id
   LEFT JOIN reference_entities source_reference
     ON kr.fromEntityType = 'reference_entity' AND kr.fromEntityId = source_reference.id
   LEFT JOIN knowledge_items target_item
     ON kr.toEntityType = 'knowledge_item' AND kr.toEntityId = target_item.id
-  LEFT JOIN topics target_topic
+  LEFT JOIN topics target_subject
+    ON kr.toEntityType = 'subject' AND kr.toEntityId = target_subject.id
+  LEFT JOIN study_topics target_topic
     ON kr.toEntityType = 'topic' AND kr.toEntityId = target_topic.id
-  LEFT JOIN study_topics target_study_topic
-    ON kr.toEntityType = 'study_topic' AND kr.toEntityId = target_study_topic.id
   LEFT JOIN reference_entities target_reference
     ON kr.toEntityType = 'reference_entity' AND kr.toEntityId = target_reference.id
 `;
@@ -228,20 +228,20 @@ export const getRelationEntityLookup = async (
       : null;
   }
 
-  if (entityType === 'topic') {
-    const topic = await getTopicSummaryById(entityId);
-    return topic
+  if (entityType === 'subject') {
+    const subject = await getSubjectSummaryById(entityId);
+    return subject
       ? {
-          id: topic.id,
+          id: subject.id,
           entityType,
-          title: topic.name,
-          kind: 'topic',
+          title: subject.name,
+          kind: 'subject',
         }
       : null;
   }
 
-  if (entityType === 'study_topic') {
-    const topic = await getStudyTopicById(entityId);
+  if (entityType === 'topic') {
+    const topic = await getTopicById(entityId);
     return topic
       ? {
           id: topic.id,
