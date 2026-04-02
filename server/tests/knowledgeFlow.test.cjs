@@ -650,6 +650,87 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(removeTopicResponse.status, 204);
   });
 
+  await t.test('subject routes support tree editing guards', async () => {
+    const topicsResponse = await request('/api/topics');
+    assert.equal(topicsResponse.status, 200);
+    const topics = await topicsResponse.json();
+    const ontologyTopic = topics.find((topic) => topic.slug === 'ontology');
+    assert.ok(ontologyTopic);
+
+    const branchResponse = await request('/api/topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Logic',
+        parentTopicId: ontologyTopic.id,
+      }),
+    });
+
+    assert.equal(branchResponse.status, 201);
+    const branch = await branchResponse.json();
+
+    const childResponse = await request('/api/topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Modal Logic',
+        parentTopicId: branch.id,
+      }),
+    });
+
+    assert.equal(childResponse.status, 201);
+    const child = await childResponse.json();
+
+    const renameResponse = await request(`/api/topics/${branch.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: 'Formal systems and inference.',
+        name: 'Formal Logic',
+      }),
+    });
+
+    assert.equal(renameResponse.status, 200);
+    const renamedBranch = await renameResponse.json();
+    assert.equal(renamedBranch.name, 'Formal Logic');
+    assert.equal(renamedBranch.slug, 'formal-logic');
+    assert.equal(renamedBranch.description, 'Formal systems and inference.');
+
+    const guardedDeleteResponse = await request(`/api/topics/${branch.id}`, {
+      method: 'DELETE',
+    });
+
+    assert.equal(guardedDeleteResponse.status, 409);
+    assert.match(
+      (await guardedDeleteResponse.json()).message,
+      /Remove child subjects before deleting this branch/
+    );
+
+    const deleteChildResponse = await request(`/api/topics/${child.id}`, {
+      method: 'DELETE',
+    });
+    assert.equal(deleteChildResponse.status, 204);
+
+    const deleteBranchResponse = await request(`/api/topics/${branch.id}`, {
+      method: 'DELETE',
+    });
+    assert.equal(deleteBranchResponse.status, 204);
+
+    const rootRenameResponse = await request(`/api/topics/${ontologyTopic.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Metaphysics',
+      }),
+    });
+
+    assert.equal(rootRenameResponse.status, 400);
+    assert.match(
+      (await rootRenameResponse.json()).message,
+      /Ontology must remain the root subject/
+    );
+  });
+
   await t.test('reference entity routes support the unified atlas workflow', async () => {
     const initialPeopleResponse = await request('/api/reference-entities?kind=person');
     assert.equal(initialPeopleResponse.status, 200);

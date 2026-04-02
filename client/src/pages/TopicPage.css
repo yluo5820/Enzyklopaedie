@@ -137,6 +137,12 @@
   text-decoration: none;
 }
 
+.topic-page-lineage-link {
+  color: var(--accent-dark);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .topic-page-lineage a {
   color: var(--accent-dark);
   font-weight: 600;

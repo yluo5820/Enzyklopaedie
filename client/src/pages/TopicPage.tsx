@@ -1,7 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
-import { createStudyTopic, createTopic, fetchStudyTopics, fetchTopic, fetchTopics } from '../api';
+import { createStudyTopic, fetchStudyTopics, fetchTopic, fetchTopics } from '../api';
 import './TopicPage.css';
 
 const formatDate = (value: string) =>
@@ -46,12 +46,7 @@ const TopicPage: React.FC = () => {
   const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [creatingChildSubject, setCreatingChildSubject] = useState(false);
   const [creatingStudyTopic, setCreatingStudyTopic] = useState(false);
-  const [childSubjectForm, setChildSubjectForm] = useState({
-    name: '',
-    description: '',
-  });
   const [studyTopicForm, setStudyTopicForm] = useState({
     name: '',
     parentTopicId: '',
@@ -117,50 +112,6 @@ const TopicPage: React.FC = () => {
     return path;
   }, [subject, subjectMap]);
   const orderedStudyTopics = useMemo(() => orderStudyTopics(studyTopics), [studyTopics]);
-
-  const handleCreateChildSubject = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!subject || !childSubjectForm.name.trim()) return;
-
-    setCreatingChildSubject(true);
-    setError(null);
-
-    try {
-      const createdSubject = await createTopic({
-        name: childSubjectForm.name.trim(),
-        parentTopicId: subject.id,
-        description: childSubjectForm.description.trim() || undefined,
-      });
-
-      const nextSubject: TopicSummary = {
-        ...createdSubject,
-        knowledgeItemCount: 0,
-        childTopicCount: 0,
-        topicCount: 0,
-      };
-
-      startTransition(() => {
-        setSubjects((current) =>
-          current.some((entry) => entry.id === nextSubject.id) ? current : [...current, nextSubject]
-        );
-        setSubject((current) =>
-          current && current.id === subject.id
-            ? { ...current, childTopicCount: current.childTopicCount + 1 }
-            : current
-        );
-      });
-
-      setChildSubjectForm({
-        name: '',
-        description: '',
-      });
-    } catch (createError) {
-      console.error(createError);
-      setError('Failed to create child subject.');
-    } finally {
-      setCreatingChildSubject(false);
-    }
-  };
 
   const handleCreateStudyTopic = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -283,32 +234,17 @@ const TopicPage: React.FC = () => {
           </div>
 
           <div className="topic-page-side-section">
-            <h3>Create child subject</h3>
-            <form className="topic-page-form" onSubmit={handleCreateChildSubject}>
-              <input
-                value={childSubjectForm.name}
-                onChange={(event) =>
-                  setChildSubjectForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="Name the next branch"
-              />
-              <textarea
-                value={childSubjectForm.description}
-                onChange={(event) =>
-                  setChildSubjectForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Optional description"
-              />
-              <button type="submit" disabled={creatingChildSubject}>
-                {creatingChildSubject ? 'Creating...' : 'Create child subject'}
-              </button>
-            </form>
+            <h3>Subject structure</h3>
+            <div className="topic-page-note">
+              <strong>Edit this in the subject tree.</strong>
+              <span>
+                Add child subjects, rename branches, and remove empty leaf subjects from the main
+                tree editor so the hierarchy stays visible while you work.
+              </span>
+              <Link to="/topics" className="topic-page-lineage-link">
+                Open Subject Tree Editor
+              </Link>
+            </div>
           </div>
 
           <div className="topic-page-side-section">

@@ -50,6 +50,7 @@ import {
   UpdateNote,
   UpdateReferenceEntity,
   UpdateSubject,
+  UpdateTopic,
 } from '@enzyklopaedie/shared';
 
 const API_BASE_URL = 'http://localhost:3001/api';
@@ -672,9 +673,35 @@ export const createTopic = async (topicData: NewTopic): Promise<Topic> => {
     body: JSON.stringify(topicData),
   });
   if (!response.ok) {
-    throw new Error('Failed to create topic');
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to create subject');
   }
   return response.json();
+};
+
+export const updateTopic = async (id: number, topicData: UpdateTopic): Promise<TopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(topicData),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to update subject');
+  }
+  return response.json();
+};
+
+export const deleteTopic = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to delete subject');
+  }
 };
 
 export const fetchStudyTopics = async (subjectId?: number): Promise<StudyTopicSummary[]> => {
