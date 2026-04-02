@@ -38,7 +38,7 @@ const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
     extraFieldLabel: 'Pages',
     extraFieldName: 'pageCount',
     extraFieldPlaceholder: '320',
-    kindHelp: 'Use Book for anything primarily written: books, essays, articles, papers, and similar texts.',
+    kindHelp: 'Use Book for anything primarily written. Articles, essays, and papers now fold into this one written form.',
     sourceLabel: 'Publisher / Journal / Collection',
     sourcePlaceholder: 'Publisher, journal, archive...',
     summaryPlaceholder: 'Why does this written work belong in your encyclopedia?',
@@ -50,7 +50,7 @@ const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
     extraFieldName: 'durationMinutes',
     extraFieldPlaceholder: '90',
     kindHelp:
-      'Use Lecture for non-written study material: lectures, videos, podcasts, courses, and similar resources.',
+      'Use Lecture for non-written study material. Videos, podcasts, courses, and similar resources now fold into this one media form.',
     sourceLabel: 'Platform / Channel / Series',
     sourcePlaceholder: 'Channel, platform, course series...',
     summaryPlaceholder: 'Why does this lecture or resource belong in your encyclopedia?',
@@ -155,12 +155,10 @@ const KnowledgePage: React.FC = () => {
 
   const handleCreatorEntityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const nextId = event.target.value;
-    const selectedPerson = people.find((person) => String(person.id) === nextId);
 
     setFormState((current) => ({
       ...current,
       creatorEntityId: nextId,
-      creator: selectedPerson ? selectedPerson.title : current.creator,
     }));
   };
 
@@ -246,7 +244,8 @@ const KnowledgePage: React.FC = () => {
             <h1>Item Workbench</h1>
             <p>
               Capture the concrete works that make up your encyclopedia. The workbench now treats items
-              as either written material or lecture/media material, while keeping one unified item model.
+              as either written material or lecture/media material. Creator relations are the canonical
+              provenance layer; free text is only there as a legacy/import fallback.
             </p>
           </div>
 
@@ -269,11 +268,6 @@ const KnowledgePage: React.FC = () => {
             </div>
 
             <div className="knowledge-field">
-              <label htmlFor="creator">{workbenchPreset.creatorLabel}</label>
-              <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
-            </div>
-
-            <div className="knowledge-field">
               <label htmlFor="creatorEntityId">Creator Entity</label>
               <select
                 id="creatorEntityId"
@@ -289,7 +283,15 @@ const KnowledgePage: React.FC = () => {
                 ))}
               </select>
               <span className="knowledge-field-hint">
-                Selecting a person here will also create a formal <code>created_by</code> link.
+                Selecting a person here creates the canonical <code>created_by</code> link.
+              </span>
+            </div>
+
+            <div className="knowledge-field">
+              <label htmlFor="creator">{workbenchPreset.creatorLabel} Text Fallback</label>
+              <input id="creator" name="creator" value={formState.creator} onChange={handleChange} />
+              <span className="knowledge-field-hint">
+                Only use this when you are importing older material or do not yet have the person entity.
               </span>
             </div>
 

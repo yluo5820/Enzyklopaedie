@@ -9,6 +9,7 @@ import {
   isKnowledgeRelationEntityType,
   isKnowledgeRelationType,
   listKnowledgeRelationsBySource,
+  validateKnowledgeRelationEdge,
 } from '../lib/knowledgeRelations';
 import { getStudyTopicById } from '../lib/studyTopics';
 
@@ -74,6 +75,17 @@ export const createStudyTopicRelation = asyncErrorHandler(async (req: Request, r
   const targetEntity = await getRelationEntityLookup(toEntityType, toEntityId);
   if (!targetEntity) {
     return res.status(404).json({ message: 'Target entity not found' });
+  }
+
+  const relationValidationMessage = validateKnowledgeRelationEdge(
+    'study_topic',
+    'topic',
+    toEntityType,
+    targetEntity.kind,
+    relationType
+  );
+  if (relationValidationMessage) {
+    return res.status(400).json({ message: relationValidationMessage });
   }
 
   const existingRelation = await findKnowledgeRelation(

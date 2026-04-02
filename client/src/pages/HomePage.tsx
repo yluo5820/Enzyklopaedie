@@ -73,7 +73,7 @@ const HomePage: React.FC = () => {
             <div className="home-pillars">
               <div className="home-pillar">
                 <strong>Items</strong>
-                <p>Books, lectures, articles, and courses live in one shared structure.</p>
+                <p>Everything studied now resolves into two concrete forms: written works and lecture/media resources.</p>
               </div>
               <div className="home-pillar">
                 <strong>Subjects</strong>

@@ -74,7 +74,8 @@ Useful same-layer entity relations include:
 
 `Item` is the ultimate individual substance of the system.
 
-- A book, lecture, article, essay, video, course, or artifact is an item.
+- Operationally, the system now has two item forms: `book` and `lecture`.
+- Older distinctions such as article, essay, video, podcast, or course should normalize into one of those two forms.
 - Items are the concrete units the user actually read, watched, heard, or studied.
 - The system mainly sorts, organizes, and displays items.
 
@@ -107,6 +108,9 @@ Example:
 - a modern American scholar can write an item about Late Antiquity
 - the author's era and nation describe the item's provenance
 - Late Antiquity describes the item's subject matter
+
+In the implementation, formal provenance should be expressed through relations such as `created_by`.
+Free-text creator fields are only a legacy/import fallback.
 
 The app should not automatically collapse those into one field.
 
@@ -165,7 +169,6 @@ The current application now matches the core four-layer model more closely:
 Current limitations:
 
 - entity pages do not yet expose the full containment model back out to topics and items
-- subject-to-entity relations still exist in the backend from an earlier transition state
 - topic-to-entity contextualization now exists for actual topics, but the entity containment model is still relation-based rather than fully typed
 
 Current strengths:

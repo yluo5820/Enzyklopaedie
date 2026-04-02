@@ -116,15 +116,7 @@ export type UpdateNote = Partial<Omit<Note, 'id'>>;
 export type NewComment = Omit<Comment, 'id'>;
 export type UpdateComment = Partial<Omit<Comment, 'id'>>;
 
-export type KnowledgeItemKind =
-  | 'book'
-  | 'lecture'
-  | 'article'
-  | 'essay'
-  | 'video'
-  | 'podcast'
-  | 'course'
-  | 'artifact';
+export type KnowledgeItemKind = 'book' | 'lecture';
 
 export type KnowledgeItemStatus = 'inbox' | 'queued' | 'active' | 'completed' | 'archived';
 
@@ -132,6 +124,7 @@ export interface KnowledgeItem {
   id: number;
   kind: KnowledgeItemKind;
   title: string;
+  // Legacy import/display fallback. Formal provenance should live in created_by relations.
   creator?: string;
   sourceName?: string;
   sourceUrl?: string;

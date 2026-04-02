@@ -2,7 +2,6 @@ import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
 import { syncLegacyReferenceEntities } from '../lib/referenceEntities';
-import { syncLegacyStudyTopics } from '../lib/studyTopics';
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data.db');
 let dbPromise: Promise<Database<sqlite3.Database, sqlite3.Statement>> | null = null;
@@ -191,15 +190,6 @@ export async function initializeDatabase() {
       FOREIGN KEY (parentTopicId) REFERENCES study_topics(id) ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS knowledge_item_topics (
-      knowledgeItemId INTEGER NOT NULL,
-      topicId INTEGER NOT NULL,
-      sortOrder INTEGER DEFAULT 0,
-      PRIMARY KEY (knowledgeItemId, topicId),
-      FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE,
-      FOREIGN KEY (topicId) REFERENCES topics(id) ON DELETE CASCADE
-    );
-
     CREATE TABLE IF NOT EXISTS knowledge_item_study_topics (
       knowledgeItemId INTEGER NOT NULL,
       studyTopicId INTEGER NOT NULL,
@@ -348,8 +338,21 @@ export async function initializeDatabase() {
     now
   );
 
+  await db.run(
+    `UPDATE knowledge_items
+     SET kind = 'book', updatedAt = ?
+     WHERE kind IN ('article', 'essay')`,
+    now
+  );
+
+  await db.run(
+    `UPDATE knowledge_items
+     SET kind = 'lecture', updatedAt = ?
+     WHERE kind IN ('video', 'podcast', 'course', 'artifact')`,
+    now
+  );
+
   await syncLegacyReferenceEntities(db);
-  await syncLegacyStudyTopics(db);
 
   console.log('Database initialized successfully with new schema.');
   return db;

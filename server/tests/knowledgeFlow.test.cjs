@@ -182,7 +182,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'article',
+        kind: 'book',
         title: 'Late Roman Statecraft',
         creator: 'Test Historian',
         status: 'active',
@@ -331,7 +331,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'essay',
+        kind: 'book',
         title: 'Imperial Administration Overview',
         creator: 'Related Author',
       }),
@@ -439,7 +439,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       body: JSON.stringify({
         toEntityId: targetItem.id,
         relationType: 'references',
-        note: 'The source item draws on this essay for context.',
+        note: 'The source item draws on this written work for context.',
       }),
     });
 
@@ -496,30 +496,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(relationsResponse.status, 200);
     const relations = await relationsResponse.json();
     assert.equal(relations.length, 2);
-    assert.ok(relations.some((entry) => entry.toEntityKind === 'essay'));
+    assert.ok(relations.some((entry) => entry.toEntityKind === 'book'));
     assert.ok(relations.some((entry) => entry.toEntityKind === 'era'));
-
-    const topicRelationResponse = await request(`/api/topics/${childSubject.id}/relations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
-        relationType: 'during',
-        note: 'This topic sits inside the period.',
-      }),
-    });
-
-    assert.equal(topicRelationResponse.status, 201);
-    const topicRelation = await topicRelationResponse.json();
-    assert.equal(topicRelation.toEntityTitle, 'Late Antiquity');
-    assert.equal(topicRelation.toEntityKind, 'era');
-
-    const topicRelationsResponse = await request(`/api/topics/${childSubject.id}/relations`);
-    assert.equal(topicRelationsResponse.status, 200);
-    const topicRelations = await topicRelationsResponse.json();
-    assert.equal(topicRelations.length, 1);
-    assert.equal(topicRelations[0].relationType, 'during');
 
     const studyTopicRelationResponse = await request(`/api/study-topics/${studyTopic.id}/relations`, {
       method: 'POST',
@@ -543,12 +521,73 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(studyTopicRelations.length, 1);
     assert.equal(studyTopicRelations[0].relationType, 'about');
 
+    const invalidKnowledgeRelationResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityType: 'reference_entity',
+        toEntityId: eraEntity.id,
+        relationType: 'created_by',
+      }),
+    });
+
+    assert.equal(invalidKnowledgeRelationResponse.status, 400);
+    assert.match(
+      (await invalidKnowledgeRelationResponse.json()).message,
+      /not allowed from book item to era/
+    );
+
+    const invalidStudyTopicRelationResponse = await request(`/api/study-topics/${studyTopic.id}/relations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityType: 'reference_entity',
+        toEntityId: eraEntity.id,
+        relationType: 'created_by',
+      }),
+    });
+
+    assert.equal(invalidStudyTopicRelationResponse.status, 400);
+    assert.match(
+      (await invalidStudyTopicRelationResponse.json()).message,
+      /not allowed from topic to era/
+    );
+
+    const personEntityResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Ammianus Marcellinus',
+      }),
+    });
+
+    assert.equal(personEntityResponse.status, 201);
+    const personEntity = await personEntityResponse.json();
+
+    const invalidReferenceRelationResponse = await request(
+      `/api/reference-entities/${personEntity.id}/outgoing-relations`,
+      {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toEntityId: eraEntity.id,
+        relationType: 'contains',
+      }),
+      }
+    );
+
+    assert.equal(invalidReferenceRelationResponse.status, 400);
+    assert.match(
+      (await invalidReferenceRelationResponse.json()).message,
+      /not allowed from person to era/
+    );
+
     const referenceEntityRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
     assert.equal(referenceEntityRelationsResponse.status, 200);
     const referenceEntityRelations = await referenceEntityRelationsResponse.json();
-    assert.equal(referenceEntityRelations.length, 3);
+    assert.equal(referenceEntityRelations.length, 2);
     assert.ok(referenceEntityRelations.some((entry) => entry.fromEntityType === 'knowledge_item'));
-    assert.ok(referenceEntityRelations.some((entry) => entry.fromEntityType === 'topic'));
     assert.ok(referenceEntityRelations.some((entry) => entry.fromEntityType === 'study_topic'));
 
     const activityResponse = await request('/api/activity-events?limit=40');
@@ -583,14 +622,6 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       activityEvents.some(
         (event) =>
           event.type === 'relation_created' &&
-          event.entityType === 'topic' &&
-          event.entityId === childSubject.id
-      )
-    );
-    assert.ok(
-      activityEvents.some(
-        (event) =>
-          event.type === 'relation_created' &&
           event.entityType === 'study_topic' &&
           event.entityId === studyTopic.id
       )
@@ -604,10 +635,6 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       `/api/knowledge-items/${sourceItem.id}/relations/${entityRelation.id}`,
       { method: 'DELETE' }
     );
-    const deleteTopicRelationResponse = await request(
-      `/api/topics/${childSubject.id}/relations/${topicRelation.id}`,
-      { method: 'DELETE' }
-    );
     const deleteStudyTopicRelationResponse = await request(
       `/api/study-topics/${studyTopic.id}/relations/${studyTopicRelation.id}`,
       { method: 'DELETE' }
@@ -619,7 +646,6 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     assert.equal(deleteRelationResponse.status, 204);
     assert.equal(deleteEntityRelationResponse.status, 204);
-    assert.equal(deleteTopicRelationResponse.status, 204);
     assert.equal(deleteStudyTopicRelationResponse.status, 204);
     assert.equal(removeTopicResponse.status, 204);
   });

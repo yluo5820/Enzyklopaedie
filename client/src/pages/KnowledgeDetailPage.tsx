@@ -70,7 +70,8 @@ const itemRecordPresets: Record<ItemRecordFormKind, ItemRecordPreset> = {
     extraFieldLabel: 'Pages',
     extraFieldName: 'pageCount',
     extraFieldPlaceholder: '320',
-    helperText: 'Edit the bibliographic record for written material here. Topics, notes, and relations stay separate below.',
+    helperText:
+      'Edit the bibliographic record for written material here. Formal provenance should live in created_by relations; the creator text field is only a legacy/import fallback.',
     sourceLabel: 'Publisher / Journal / Collection',
     sourcePlaceholder: 'Publisher, journal, archive...',
     yearLabel: 'Published Year',
@@ -80,7 +81,8 @@ const itemRecordPresets: Record<ItemRecordFormKind, ItemRecordPreset> = {
     extraFieldLabel: 'Duration (minutes)',
     extraFieldName: 'durationMinutes',
     extraFieldPlaceholder: '90',
-    helperText: 'Edit the media record here. Use this for lectures, videos, podcasts, courses, and related non-written sources.',
+    helperText:
+      'Edit the media record here. Formal provenance should live in created_by relations; the creator text field is only a legacy/import fallback.',
     sourceLabel: 'Platform / Channel / Series',
     sourcePlaceholder: 'Channel, platform, course series...',
     yearLabel: 'Release Year',
@@ -131,11 +133,10 @@ const readNumericMetadata = (item: KnowledgeItem, key: 'pageCount' | 'durationMi
   return null;
 };
 
-const writtenItemKinds = new Set<KnowledgeItem['kind']>(['book', 'article', 'essay']);
 const getItemFormKind = (item: Pick<KnowledgeItem, 'kind'>): ItemRecordFormKind =>
-  writtenItemKinds.has(item.kind) ? 'book' : 'lecture';
+  item.kind === 'book' ? 'book' : 'lecture';
 const getItemFormLabel = (item: KnowledgeItem) =>
-  writtenItemKinds.has(item.kind) ? 'Written work' : 'Lecture / media';
+  item.kind === 'book' ? 'Written work' : 'Lecture / media';
 
 const getItemRelationPreset = (
   itemFormKind: ItemRecordFormKind,
@@ -532,6 +533,23 @@ const KnowledgeDetailPage: React.FC = () => {
     () => tasks.filter((task) => task.status === 'done').length,
     [tasks]
   );
+  const creatorDisplay = useMemo(() => {
+    const creatorTitles = relations
+      .filter(
+        (relation) =>
+          relation.relationType === 'created_by' &&
+          relation.toEntityType === 'reference_entity' &&
+          relation.toEntityKind === 'person' &&
+          relation.toEntityTitle
+      )
+      .map((relation) => relation.toEntityTitle as string);
+
+    if (creatorTitles.length > 0) {
+      return creatorTitles.join(', ');
+    }
+
+    return item?.creator || null;
+  }, [item?.creator, relations]);
   const itemFormKind = item ? getItemFormKind(item) : 'book';
   const recordPreset = itemRecordPresets[itemFormKind];
   const recordExtraFieldValue =
@@ -960,7 +978,7 @@ const KnowledgeDetailPage: React.FC = () => {
           </div>
           <h1>{item.title}</h1>
           <div className="knowledge-detail-meta">
-            {item.creator ? <span>{item.creator}</span> : null}
+            {creatorDisplay ? <span>{creatorDisplay}</span> : null}
             {item.sourceName ? <span>{item.sourceName}</span> : null}
             {item.publishedYear ? <span>{item.publishedYear}</span> : null}
             {itemRecordDetail ? <span>{itemRecordDetail}</span> : null}
@@ -1082,7 +1100,7 @@ const KnowledgeDetailPage: React.FC = () => {
 
               <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
                 <label className="knowledge-detail-inline-label">
-                  {recordPreset.creatorLabel}
+                  {recordPreset.creatorLabel} Text Fallback
                   <input
                     value={recordForm.creator}
                     onChange={(event) =>

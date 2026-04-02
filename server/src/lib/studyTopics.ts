@@ -1,4 +1,4 @@
-import { slugifyTopicName, type KnowledgeItem, type StudyTopic, type StudyTopicSummary } from '@enzyklopaedie/shared';
+import { slugifyTopicName, type KnowledgeItem, type StudyTopicSummary } from '@enzyklopaedie/shared';
 import type sqlite3 from 'sqlite3';
 import type { Database } from 'sqlite';
 
@@ -93,75 +93,4 @@ export const generateUniqueStudyTopicSlug = async (
   }
 
   return slug;
-};
-
-const ensureCanonicalStudyTopicForSubject = async (
-  db: DbConnection,
-  subject: { id: number; name: string; slug: string }
-) => {
-  const existing = await db.get<StudyTopic>(
-    'SELECT * FROM study_topics WHERE subjectId = ? AND parentTopicId IS NULL ORDER BY id ASC LIMIT 1',
-    subject.id
-  );
-
-  if (existing) {
-    return existing.id;
-  }
-
-  const now = new Date().toISOString();
-  const name = `General ${subject.name}`;
-  const slug = await generateUniqueStudyTopicSlug(db, name, subject.slug);
-  const result = await db.run(
-    `INSERT INTO study_topics
-      (subjectId, name, slug, summary, description, parentTopicId, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    subject.id,
-    name,
-    slug,
-    'Auto-created default topic for migrated subject-level item assignments.',
-    null,
-    null,
-    now,
-    now
-  );
-
-  return result.lastID as number;
-};
-
-export const syncLegacyStudyTopics = async (db: DbConnection) => {
-  const legacyAssignments = await db.all<
-    Array<{
-      knowledgeItemId: number;
-      subjectId: number;
-      subjectName: string;
-      subjectSlug: string;
-      sortOrder?: number | null;
-    }>
-  >(
-    `SELECT
-        kit.knowledgeItemId,
-        kit.sortOrder,
-        s.id AS subjectId,
-        s.name AS subjectName,
-        s.slug AS subjectSlug
-      FROM knowledge_item_topics kit
-      INNER JOIN topics s ON s.id = kit.topicId`
-  );
-
-  for (const assignment of legacyAssignments) {
-    const studyTopicId = await ensureCanonicalStudyTopicForSubject(db, {
-      id: assignment.subjectId,
-      name: assignment.subjectName,
-      slug: assignment.subjectSlug,
-    });
-
-    await db.run(
-      `INSERT OR IGNORE INTO knowledge_item_study_topics
-        (knowledgeItemId, studyTopicId, sortOrder)
-       VALUES (?, ?, ?)`,
-      assignment.knowledgeItemId,
-      studyTopicId,
-      assignment.sortOrder ?? 0
-    );
-  }
 };

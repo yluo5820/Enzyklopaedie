@@ -726,37 +726,12 @@ export const fetchStudyTopicKnowledgeItems = async (studyTopicId: number): Promi
   return response.json();
 };
 
-export const fetchKnowledgeItemTopics = async (knowledgeItemId: number): Promise<Topic[]> => {
-  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch knowledge item topics');
-  }
-  return response.json();
-};
-
 export const fetchKnowledgeItemStudyTopics = async (
   knowledgeItemId: number
 ): Promise<StudyTopicSummary[]> => {
   const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics`);
   if (!response.ok) {
     throw new Error('Failed to fetch knowledge item study topics');
-  }
-  return response.json();
-};
-
-export const assignTopicToKnowledgeItem = async (
-  knowledgeItemId: number,
-  topicId: number
-): Promise<Topic> => {
-  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ topicId }),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to assign topic to knowledge item');
   }
   return response.json();
 };
@@ -776,18 +751,6 @@ export const assignStudyTopicToKnowledgeItem = async (
     throw new Error('Failed to assign study topic to knowledge item');
   }
   return response.json();
-};
-
-export const removeTopicFromKnowledgeItem = async (
-  knowledgeItemId: number,
-  topicId: number
-): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics/${topicId}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to remove topic from knowledge item');
-  }
 };
 
 export const removeStudyTopicFromKnowledgeItem = async (
@@ -841,45 +804,6 @@ export const deleteKnowledgeRelation = async (
   });
   if (!response.ok) {
     throw new Error('Failed to delete knowledge relation');
-  }
-};
-
-export const fetchTopicRelations = async (topicId: number): Promise<KnowledgeRelationDetail[]> => {
-  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch topic relations');
-  }
-  return response.json();
-};
-
-export const createTopicRelation = async (
-  topicId: number,
-  relationData: {
-    toEntityType?: KnowledgeRelationEntityType;
-    toEntityId: number;
-    relationType: NewKnowledgeRelation['relationType'];
-    note?: string;
-  }
-): Promise<KnowledgeRelationDetail> => {
-  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(relationData),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to create topic relation');
-  }
-  return response.json();
-};
-
-export const deleteTopicRelation = async (topicId: number, relationId: number): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/topics/${topicId}/relations/${relationId}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to delete topic relation');
   }
 };
 

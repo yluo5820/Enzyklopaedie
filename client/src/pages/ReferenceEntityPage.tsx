@@ -672,7 +672,7 @@ const ReferenceEntityPage: React.FC = () => {
           </div>
           <div className="reference-entity-stat">
             <strong>{topicRelations.length + subjectRelations.length}</strong>
-            <span>Topics and subjects</span>
+            <span>Topics and legacy subjects</span>
           </div>
           <div className="reference-entity-stat">
             <strong>{outgoingRelations.length + incomingEntityRelations.length}</strong>
@@ -743,7 +743,7 @@ const ReferenceEntityPage: React.FC = () => {
             </div>
 
             {topicRelations.length === 0 && subjectRelations.length === 0 ? (
-              <div className="reference-entity-empty">No topics or subjects point here yet.</div>
+              <div className="reference-entity-empty">No topics point here yet.</div>
             ) : (
               <div className="reference-entity-stack">
                 {topicRelations.map((relation) => (
@@ -772,7 +772,7 @@ const ReferenceEntityPage: React.FC = () => {
                       <div>
                         <div className="reference-entity-badges">
                           <span>{formatRelationType(relation.relationType)}</span>
-                          <span>subject</span>
+                          <span>legacy subject</span>
                         </div>
                         <Link
                           to={buildRelationHref(relation, 'incoming') as string}

@@ -8,6 +8,7 @@ import {
   getRelationEntityLookup,
   isKnowledgeRelationType,
   listKnowledgeRelationsBySource,
+  validateKnowledgeRelationEdge,
 } from '../lib/knowledgeRelations';
 import { getReferenceEntityLookup } from '../lib/referenceEntities';
 
@@ -39,14 +40,6 @@ const getReferenceEntityFromParams = async (req: Request, res: Response) => {
   return entity;
 };
 
-const isAllowedReferenceEntityRelationType = (value: unknown): value is KnowledgeRelationType =>
-  value === 'contains' ||
-  value === 'part_of' ||
-  value === 'during' ||
-  value === 'located_in' ||
-  value === 'related_to' ||
-  value === 'influenced_by';
-
 export const getOutgoingRelationsByReferenceEntity = asyncErrorHandler(async (req: Request, res: Response) => {
   const entity = await getReferenceEntityFromParams(req, res);
   if (!entity) return;
@@ -68,13 +61,24 @@ export const createReferenceEntityRelation = asyncErrorHandler(async (req: Reque
   }
 
   const relationType = req.body.relationType;
-  if (!isKnowledgeRelationType(relationType) || !isAllowedReferenceEntityRelationType(relationType)) {
+  if (!isKnowledgeRelationType(relationType)) {
     return res.status(400).json({ message: 'Invalid relation type' });
   }
 
   const targetEntity = await getRelationEntityLookup('reference_entity', toEntityId);
   if (!targetEntity) {
     return res.status(404).json({ message: 'Target entity not found' });
+  }
+
+  const relationValidationMessage = validateKnowledgeRelationEdge(
+    'reference_entity',
+    entity.kind,
+    'reference_entity',
+    targetEntity.kind,
+    relationType
+  );
+  if (relationValidationMessage) {
+    return res.status(400).json({ message: relationValidationMessage });
   }
 
   const existingRelation = await findKnowledgeRelation(

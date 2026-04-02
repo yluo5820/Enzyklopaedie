@@ -10,6 +10,7 @@ import {
   isKnowledgeRelationEntityType,
   isKnowledgeRelationType,
   listKnowledgeRelationsBySource,
+  validateKnowledgeRelationEdge,
 } from '../lib/knowledgeRelations';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
@@ -74,6 +75,17 @@ export const createKnowledgeRelation = asyncErrorHandler(async (req: Request, re
   const targetEntity = await getRelationEntityLookup(toEntityType, toEntityId);
   if (!targetEntity) {
     return res.status(404).json({ message: 'Target entity not found' });
+  }
+
+  const relationValidationMessage = validateKnowledgeRelationEdge(
+    'knowledge_item',
+    item.kind,
+    toEntityType,
+    targetEntity.kind,
+    relationType
+  );
+  if (relationValidationMessage) {
+    return res.status(400).json({ message: relationValidationMessage });
   }
 
   const existingRelation = await findKnowledgeRelation(

@@ -2,6 +2,7 @@ import {
   type KnowledgeRelationDetail,
   type KnowledgeRelationEntityType,
   type KnowledgeRelationType,
+  type ReferenceEntityKind,
 } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
 import { getKnowledgeItemLookup } from './knowledgeItems';
@@ -32,6 +33,144 @@ export const isKnowledgeRelationEntityType = (value: unknown): value is Knowledg
   value === 'topic' ||
   value === 'study_topic' ||
   value === 'reference_entity';
+
+const relationTypeSet = (...values: KnowledgeRelationType[]) => new Set(values);
+
+const formatRelationEndpoint = (
+  entityType: KnowledgeRelationEntityType,
+  entityKind?: string
+) => {
+  if (entityType === 'knowledge_item') {
+    return entityKind === 'lecture' ? 'lecture item' : 'book item';
+  }
+
+  if (entityType === 'study_topic') return 'topic';
+  if (entityType === 'topic') return 'subject';
+  if (entityType === 'reference_entity') return entityKind ?? 'reference entity';
+  return 'entity';
+};
+
+export const getAllowedKnowledgeRelationTypesForEdge = (
+  fromEntityType: KnowledgeRelationEntityType,
+  fromEntityKind: string | undefined,
+  toEntityType: KnowledgeRelationEntityType,
+  toEntityKind: string | undefined
+) => {
+  if (fromEntityType === 'knowledge_item') {
+    if (toEntityType === 'knowledge_item') {
+      return relationTypeSet('references', 'related_to', 'influenced_by', 'part_of');
+    }
+
+    if (toEntityType !== 'reference_entity') {
+      return relationTypeSet();
+    }
+
+    if (toEntityKind === 'person') {
+      return relationTypeSet('created_by', 'influenced_by', 'related_to');
+    }
+
+    if (toEntityKind === 'era') {
+      return relationTypeSet('during', 'about', 'related_to');
+    }
+
+    if (toEntityKind === 'nation' || toEntityKind === 'place') {
+      return relationTypeSet('located_in', 'about', 'related_to');
+    }
+
+    if (toEntityKind === 'civilization') {
+      return relationTypeSet('about', 'related_to', 'influenced_by');
+    }
+
+    return relationTypeSet();
+  }
+
+  if (fromEntityType === 'study_topic') {
+    if (toEntityType !== 'reference_entity') {
+      return relationTypeSet();
+    }
+
+    if (toEntityKind === 'person') {
+      return relationTypeSet('about', 'influenced_by', 'related_to');
+    }
+
+    if (toEntityKind === 'era') {
+      return relationTypeSet('during', 'about', 'related_to');
+    }
+
+    if (toEntityKind === 'nation' || toEntityKind === 'place') {
+      return relationTypeSet('located_in', 'about', 'related_to');
+    }
+
+    if (toEntityKind === 'civilization') {
+      return relationTypeSet('part_of', 'about', 'related_to');
+    }
+
+    return relationTypeSet();
+  }
+
+  if (fromEntityType === 'reference_entity') {
+    if (toEntityType !== 'reference_entity') {
+      return relationTypeSet();
+    }
+
+    switch (fromEntityKind as ReferenceEntityKind | undefined) {
+      case 'person':
+        if (toEntityKind === 'person') return relationTypeSet('influenced_by', 'related_to');
+        if (toEntityKind === 'nation' || toEntityKind === 'place') return relationTypeSet('located_in');
+        if (toEntityKind === 'era') return relationTypeSet('during');
+        if (toEntityKind === 'civilization') return relationTypeSet('part_of');
+        return relationTypeSet();
+      case 'nation':
+        if (toEntityKind === 'nation') return relationTypeSet('contains', 'influenced_by', 'related_to');
+        if (toEntityKind === 'civilization') return relationTypeSet('part_of', 'influenced_by', 'related_to');
+        if (toEntityKind === 'era') return relationTypeSet('during');
+        if (toEntityKind === 'place') return relationTypeSet('located_in');
+        return relationTypeSet();
+      case 'civilization':
+        if (toEntityKind === 'nation' || toEntityKind === 'era') return relationTypeSet('contains');
+        if (toEntityKind === 'civilization') return relationTypeSet('part_of');
+        if (toEntityKind === 'place') return relationTypeSet('located_in');
+        return relationTypeSet();
+      case 'era':
+        if (toEntityKind === 'era') {
+          return relationTypeSet('contains', 'part_of', 'related_to', 'influenced_by');
+        }
+        return relationTypeSet();
+      case 'place':
+        if (toEntityKind === 'place') return relationTypeSet('contains', 'part_of');
+        if (toEntityKind === 'nation' || toEntityKind === 'civilization') return relationTypeSet('contains');
+        return relationTypeSet();
+      default:
+        return relationTypeSet();
+    }
+  }
+
+  return relationTypeSet();
+};
+
+export const validateKnowledgeRelationEdge = (
+  fromEntityType: KnowledgeRelationEntityType,
+  fromEntityKind: string | undefined,
+  toEntityType: KnowledgeRelationEntityType,
+  toEntityKind: string | undefined,
+  relationType: KnowledgeRelationType
+) => {
+  const allowedRelationTypes = getAllowedKnowledgeRelationTypesForEdge(
+    fromEntityType,
+    fromEntityKind,
+    toEntityType,
+    toEntityKind
+  );
+
+  if (allowedRelationTypes.has(relationType)) {
+    return null;
+  }
+
+  return `Relation "${relationType}" is not allowed from ${formatRelationEndpoint(
+    fromEntityType,
+    fromEntityKind
+  )} to ${formatRelationEndpoint(toEntityType, toEntityKind)}`;
+};
 
 const relationDetailSelect = `
   SELECT
