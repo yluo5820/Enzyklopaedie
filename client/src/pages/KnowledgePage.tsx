@@ -107,6 +107,7 @@ const KnowledgePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [viewMode, setViewMode] = useState<'create' | 'list'>('create');
   const [formState, setFormState] = useState(createInitialFormState());
 
   useEffect(() => {
@@ -237,17 +238,24 @@ const KnowledgePage: React.FC = () => {
 
   return (
     <div className="knowledge-page">
-      <div className="knowledge-layout">
-        <aside className="knowledge-panel knowledge-form-panel">
-          <div className="knowledge-header">
-            <span className="knowledge-eyebrow">Phase 1</span>
-            <h1>Item Workbench</h1>
-            <p>
-              Capture the concrete works that make up your encyclopedia. The workbench now treats items
-              as either written material or lecture/media material. Creator relations are the canonical
-              provenance layer; free text is only there as a legacy/import fallback.
-            </p>
+      {viewMode === 'create' ? (
+        <section className="knowledge-panel knowledge-single-panel knowledge-create-panel">
+          <div className="knowledge-header knowledge-header-row">
+            <div>
+              <span className="knowledge-eyebrow">Items</span>
+              <h1>Add Item</h1>
+              <p>Capture one book or lecture at a time, without the list competing for attention.</p>
+            </div>
+            <button
+              type="button"
+              className="knowledge-secondary-button"
+              onClick={() => setViewMode('list')}
+            >
+              Show Item List ({items.length})
+            </button>
           </div>
+
+          {error ? <div className="knowledge-error">{error}</div> : null}
 
           <form className="knowledge-form" onSubmit={handleSubmit}>
             <div className="knowledge-field">
@@ -368,87 +376,83 @@ const KnowledgePage: React.FC = () => {
               {submitting ? 'Saving...' : 'Add Item'}
             </button>
           </form>
-        </aside>
-
-        <section className="knowledge-content">
-          <section className="knowledge-panel knowledge-summary">
-            <div className="knowledge-header">
-              <span className="knowledge-eyebrow">Foundation</span>
-              <h1>Unified Item Model</h1>
-              <p>
-                This is the concrete inventory layer of the encyclopedia. The surrounding layers now
-                organize these items through subjects, topics, entities, notes, tasks, places, and
-                exhibitions.
-              </p>
+        </section>
+      ) : (
+        <section className="knowledge-panel knowledge-single-panel knowledge-list-panel">
+          <div className="knowledge-header knowledge-header-row">
+            <div>
+              <span className="knowledge-eyebrow">Items</span>
+              <h1>Item List</h1>
+              <p>Open an entry, review the catalog, or return to capture mode.</p>
             </div>
-            <div className="knowledge-summary-grid">
-              <div className="knowledge-stat">
-                <strong>{stats.total}</strong>
-                <span>Total items</span>
-              </div>
-              <div className="knowledge-stat">
-                <strong>{stats.active}</strong>
-                <span>Currently active</span>
-              </div>
-              <div className="knowledge-stat">
-                <strong>{stats.completed}</strong>
-                <span>Completed entries</span>
-              </div>
+            <button
+              type="button"
+              className="knowledge-secondary-button"
+              onClick={() => setViewMode('create')}
+            >
+              Back to Add Item
+            </button>
+          </div>
+
+          {error ? <div className="knowledge-error">{error}</div> : null}
+
+          <div className="knowledge-summary-grid">
+            <div className="knowledge-stat">
+              <strong>{stats.total}</strong>
+              <span>Total items</span>
             </div>
-          </section>
-
-          <section className="knowledge-panel knowledge-list-panel">
-            <div className="knowledge-list-header">
-              <div>
-                <span className="knowledge-eyebrow">Inventory</span>
-                <h2>Items</h2>
-              </div>
+            <div className="knowledge-stat">
+              <strong>{stats.active}</strong>
+              <span>Active</span>
             </div>
+            <div className="knowledge-stat">
+              <strong>{stats.completed}</strong>
+              <span>Completed</span>
+            </div>
+          </div>
 
-            {error && <div className="knowledge-error">{error}</div>}
-            {loading ? <div className="knowledge-empty">Loading items...</div> : null}
-            {!loading && items.length === 0 ? (
-              <div className="knowledge-empty">
-                No items yet. Add the first entry in the workbench to begin the rebuild.
-              </div>
-            ) : null}
+          {loading ? <div className="knowledge-empty">Loading items...</div> : null}
+          {!loading && items.length === 0 ? (
+            <div className="knowledge-empty">
+              No items yet. Switch back and add the first entry.
+            </div>
+          ) : null}
 
-            {!loading && items.length > 0 ? (
-              <div className="knowledge-items">
-                {items.map((item) => (
-                  <article key={item.id} className="knowledge-item">
-                    <div className="knowledge-item-top">
-                      <div>
-                        <div className="knowledge-meta">
-                          <span className="knowledge-badge">{item.kind}</span>
-                          <span className="knowledge-badge knowledge-status">{item.status}</span>
-                        </div>
-                        <h3>{item.title}</h3>
-                        <div className="knowledge-meta">
-                          {item.creator ? <span>{item.creator}</span> : null}
-                          {item.sourceName ? <span>{item.sourceName}</span> : null}
-                          {item.publishedYear ? <span>{item.publishedYear}</span> : null}
-                          {getItemRecordDetail(item) ? <span>{getItemRecordDetail(item)}</span> : null}
-                          <span>Updated {formatDate(item.updatedAt)}</span>
-                        </div>
+          {!loading && items.length > 0 ? (
+            <div className="knowledge-items">
+              {items.map((item) => (
+                <article key={item.id} className="knowledge-item">
+                  <div className="knowledge-item-top">
+                    <div>
+                      <div className="knowledge-meta">
+                        <span className="knowledge-badge">{item.kind}</span>
+                        <span className="knowledge-badge knowledge-status">{item.status}</span>
                       </div>
-                      <div className="knowledge-item-actions">
-                        <Link to={`/knowledge/${item.id}`} className="knowledge-item-link">
-                          Open
-                        </Link>
-                        <button type="button" onClick={() => handleDelete(item.id)}>
-                          Remove
-                        </button>
+                      <h3>{item.title}</h3>
+                      <div className="knowledge-meta">
+                        {item.creator ? <span>{item.creator}</span> : null}
+                        {item.sourceName ? <span>{item.sourceName}</span> : null}
+                        {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+                        {getItemRecordDetail(item) ? <span>{getItemRecordDetail(item)}</span> : null}
+                        <span>Updated {formatDate(item.updatedAt)}</span>
                       </div>
                     </div>
-                    {item.summary ? <p>{item.summary}</p> : null}
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </section>
+                    <div className="knowledge-item-actions">
+                      <Link to={`/knowledge/${item.id}`} className="knowledge-item-link">
+                        Open
+                      </Link>
+                      <button type="button" onClick={() => handleDelete(item.id)}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  {item.summary ? <p>{item.summary}</p> : null}
+                </article>
+              ))}
+            </div>
+          ) : null}
         </section>
-      </div>
+      )}
     </div>
   );
 };
