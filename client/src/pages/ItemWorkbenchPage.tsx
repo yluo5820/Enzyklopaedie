@@ -10,6 +10,7 @@ import type {
 } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
 import {
+  type BookSearchFilters,
   createKnowledgeItem,
   createKnowledgeRelation,
   createReferenceEntity,
@@ -44,9 +45,28 @@ type ItemListContext = {
   entityLabels?: string[];
   topics?: TopicSummary[];
 };
+type SearchLanguageOption = {
+  code: string;
+  label: string;
+};
 
 const kindOptions: ItemWorkbenchKind[] = ['book', 'lecture'];
 const statusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
+const searchLanguageOptions: SearchLanguageOption[] = [
+  { code: 'any', label: 'Any language' },
+  { code: 'eng', label: 'English' },
+  { code: 'ger', label: 'German' },
+  { code: 'fre', label: 'French' },
+  { code: 'spa', label: 'Spanish' },
+  { code: 'ita', label: 'Italian' },
+  { code: 'lat', label: 'Latin' },
+  { code: 'grc', label: 'Ancient Greek' },
+  { code: 'chi', label: 'Chinese' },
+  { code: 'jpn', label: 'Japanese' },
+  { code: 'rus', label: 'Russian' },
+  { code: 'ara', label: 'Arabic' },
+];
+const languageLabelByCode = new Map(searchLanguageOptions.map((option) => [option.code, option.label]));
 
 const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
   book: {
@@ -158,6 +178,8 @@ const getUngroupedLabel = (groupBy: ItemListGroupBy) => {
   return 'Items';
 };
 
+const formatLanguageLabel = (code: string) => languageLabelByCode.get(code) ?? code.toUpperCase();
+
 const buildKnowledgeItemFromSearchMatch = (book: BookSearchMatch): NewKnowledgeItem => {
   const authorLabel = book.authors.join(', ').trim();
   return {
@@ -226,6 +248,8 @@ const ItemWorkbenchPage: React.FC = () => {
   const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
   const [formState, setFormState] = useState(createInitialFormState());
   const [bookSearchQuery, setBookSearchQuery] = useState('');
+  const [bookSearchAuthor, setBookSearchAuthor] = useState('');
+  const [bookSearchLanguage, setBookSearchLanguage] = useState('any');
   const [bookSearchResults, setBookSearchResults] = useState<BookSearchMatch[]>([]);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
 
@@ -547,14 +571,20 @@ const ItemWorkbenchPage: React.FC = () => {
 
   const handleSearchBooks = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!bookSearchQuery.trim()) return;
+    const searchFilters: BookSearchFilters = {
+      query: bookSearchQuery,
+      author: bookSearchAuthor,
+      language: bookSearchLanguage,
+    };
+
+    if (!searchFilters.query?.trim() && !searchFilters.author?.trim()) return;
 
     setSearchingBooks(true);
     setBookSearchError(null);
     setNotice(null);
 
     try {
-      const results = await searchOpenLibraryBooks(bookSearchQuery, 10);
+      const results = await searchOpenLibraryBooks(searchFilters, 10);
       setBookSearchResults(results);
       setSelectedBookIds([]);
       if (results.length === 0) {
@@ -680,7 +710,7 @@ const ItemWorkbenchPage: React.FC = () => {
                 <div>
                   <span className="knowledge-eyebrow">Open Library</span>
                   <h2>Import books by search</h2>
-                  <p>Find a title, select one or many matches, and bring them in without typing the full record by hand.</p>
+                  <p>Start with a title or keyword, then tighten the list with an author or language filter when the catalog feels noisy.</p>
                 </div>
               </div>
 
@@ -688,12 +718,37 @@ const ItemWorkbenchPage: React.FC = () => {
                 <input
                   value={bookSearchQuery}
                   onChange={(event) => setBookSearchQuery(event.target.value)}
-                  placeholder="Search by title, author, ISBN, or a mixed query"
+                  placeholder="Title or keywords"
                 />
-                <button type="submit" disabled={searchingBooks || !bookSearchQuery.trim()}>
+                <input
+                  value={bookSearchAuthor}
+                  onChange={(event) => setBookSearchAuthor(event.target.value)}
+                  placeholder="Author filter"
+                />
+                <select
+                  value={bookSearchLanguage}
+                  onChange={(event) => setBookSearchLanguage(event.target.value)}
+                  aria-label="Language filter"
+                >
+                  {searchLanguageOptions.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  disabled={
+                    searchingBooks || (!bookSearchQuery.trim() && !bookSearchAuthor.trim())
+                  }
+                >
                   {searchingBooks ? 'Searching...' : 'Search Open Library'}
                 </button>
               </form>
+
+              <div className="knowledge-search-filter-note">
+                Author and language filters are applied on top of the main query, so you can tell whether a weak result set is a catalog problem or just a loose search.
+              </div>
 
               {bookSearchError ? <div className="knowledge-error">{bookSearchError}</div> : null}
 
@@ -754,6 +809,14 @@ const ItemWorkbenchPage: React.FC = () => {
                             {book.publisher ? <span>{book.publisher}</span> : null}
                             {book.publishedYear ? <span>{book.publishedYear}</span> : null}
                             {book.pageCount ? <span>{book.pageCount} pages</span> : null}
+                            {book.languageCodes?.length ? (
+                              <span>
+                                {book.languageCodes
+                                  .slice(0, 3)
+                                  .map((code) => formatLanguageLabel(code))
+                                  .join(', ')}
+                              </span>
+                            ) : null}
                           </div>
                           {book.description ? (
                             <p>{book.description.slice(0, 220)}{book.description.length > 220 ? '…' : ''}</p>

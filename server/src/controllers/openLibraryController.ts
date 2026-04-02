@@ -9,6 +9,7 @@ type OpenLibrarySearchPayload = {
     edition_key?: string[];
     first_publish_year?: number;
     key?: string;
+    language?: string[];
     number_of_pages_median?: number;
     publisher?: string[];
     subtitle?: string;
@@ -36,14 +37,39 @@ const buildCoverUrl = (coverId?: number) =>
 const buildSourceUrl = (workKey?: string) =>
   workKey ? `https://openlibrary.org${workKey}` : undefined;
 
+const sanitizeLanguageCode = (value?: string) => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^[a-z]{3}$/.test(normalized) ? normalized : undefined;
+};
+
+const quoteTerm = (value: string) => JSON.stringify(value.trim());
+
+const normalizeLanguageCodes = (values?: string[]) =>
+  (values ?? [])
+    .map((value) => value.split('/').filter(Boolean).pop() ?? value)
+    .map((value) => value.trim().toLowerCase())
+    .filter((value, index, all) => /^[a-z]{3}$/.test(value) && all.indexOf(value) === index);
+
 export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res: Response) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-  if (!query) {
-    return res.status(400).json({ message: 'A search query is required.' });
+  const author = typeof req.query.author === 'string' ? req.query.author.trim() : '';
+  const language = sanitizeLanguageCode(
+    typeof req.query.language === 'string' ? req.query.language : undefined
+  );
+
+  if (!query && !author) {
+    return res.status(400).json({ message: 'A title/keyword query or author is required.' });
   }
 
+  const queryParts = [
+    query || null,
+    author ? `author:${quoteTerm(author)}` : null,
+    language ? `language:${language}` : null,
+  ].filter(Boolean);
+
   const params = new URLSearchParams({
-    q: query,
+    q: queryParts.join(' AND '),
     limit: String(parseMaxResults(req.query.maxResults)),
     fields: [
       'key',
@@ -51,6 +77,7 @@ export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res
       'subtitle',
       'author_name',
       'first_publish_year',
+      'language',
       'publisher',
       'cover_i',
       'edition_key',
@@ -85,6 +112,7 @@ export const searchOpenLibraryBooks = asyncErrorHandler(async (req: Request, res
         id: doc.key ?? doc.edition_key?.[0] ?? crypto.randomUUID(),
         authors: doc.author_name ?? [],
         coverImageUrl: buildCoverUrl(doc.cover_i),
+        languageCodes: normalizeLanguageCodes(doc.language),
         pageCount: doc.number_of_pages_median,
         publishedYear: doc.first_publish_year,
         publisher: doc.publisher?.[0],

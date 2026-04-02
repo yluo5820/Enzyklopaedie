@@ -33,12 +33,19 @@ export type BookSearchMatch = {
   authors: string[];
   coverImageUrl?: string;
   description?: string;
+  languageCodes?: string[];
   pageCount?: number;
   publishedYear?: number;
   publisher?: string;
   sourceUrl?: string;
   subtitle?: string;
   title: string;
+};
+
+export type BookSearchFilters = {
+  author?: string;
+  language?: string;
+  query?: string;
 };
 
 // Knowledge item API functions
@@ -73,16 +80,27 @@ export const createKnowledgeItem = async (itemData: NewKnowledgeItem): Promise<K
 };
 
 export const searchOpenLibraryBooks = async (
-  query: string,
+  filters: BookSearchFilters,
   maxResults = 10
 ): Promise<BookSearchMatch[]> => {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) return [];
+  const trimmedQuery = filters.query?.trim() ?? '';
+  const trimmedAuthor = filters.author?.trim() ?? '';
+  const trimmedLanguage = filters.language?.trim() ?? '';
+  if (!trimmedQuery && !trimmedAuthor) return [];
 
   const params = new URLSearchParams({
-    q: trimmedQuery,
     maxResults: String(Math.min(Math.max(maxResults, 1), 20)),
   });
+
+  if (trimmedQuery) {
+    params.set('q', trimmedQuery);
+  }
+  if (trimmedAuthor) {
+    params.set('author', trimmedAuthor);
+  }
+  if (trimmedLanguage && trimmedLanguage !== 'any') {
+    params.set('language', trimmedLanguage);
+  }
 
   const response = await fetch(`${API_BASE_URL}/open-library/search?${params.toString()}`);
   if (!response.ok) {

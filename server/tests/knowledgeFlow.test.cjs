@@ -1070,8 +1070,12 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
             ? input.toString()
             : input.url;
 
-      assert.match(url, /openlibrary\.org\/search\.json/);
-      assert.match(url, /q=foundation/);
+      const parsedUrl = new URL(url);
+      assert.match(parsedUrl.toString(), /openlibrary\.org\/search\.json/);
+      assert.equal(parsedUrl.searchParams.get('limit'), '5');
+      assert.match(parsedUrl.searchParams.get('q') ?? '', /foundation/);
+      assert.match(parsedUrl.searchParams.get('q') ?? '', /author%3A|author:/);
+      assert.match(parsedUrl.searchParams.get('q') ?? '', /language:eng/);
 
       return new Response(
         JSON.stringify({
@@ -1083,6 +1087,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
               author_name: ['Isaac Asimov'],
               publisher: ['Spectra'],
               first_publish_year: 1951,
+              language: ['eng'],
               number_of_pages_median: 255,
               cover_i: 12345,
             },
@@ -1098,7 +1103,9 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     };
 
     try {
-      const response = await requestThroughHttp('/api/open-library/search?q=foundation&maxResults=5');
+      const response = await requestThroughHttp(
+        '/api/open-library/search?q=foundation&author=asimov&language=eng&maxResults=5'
+      );
       assert.equal(response.status, 200);
 
       const books = await response.json();
@@ -1107,6 +1114,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         id: '/works/OL82563W',
         authors: ['Isaac Asimov'],
         coverImageUrl: 'https://covers.openlibrary.org/b/id/12345-M.jpg?default=false',
+        languageCodes: ['eng'],
         pageCount: 255,
         publishedYear: 1951,
         publisher: 'Spectra',
