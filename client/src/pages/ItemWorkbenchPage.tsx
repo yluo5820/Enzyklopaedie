@@ -2,21 +2,24 @@ import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   KnowledgeItem,
   KnowledgeItemKind,
-  KnowledgeRelationDetail,
   KnowledgeItemStatus,
+  KnowledgeRelationDetail,
   NewKnowledgeItem,
   ReferenceEntity,
-  TopicSummary as StudyTopicSummary,
+  TopicSummary,
 } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
 import {
   createKnowledgeItem,
   createKnowledgeRelation,
+  createReferenceEntity,
   deleteKnowledgeItem,
-  fetchKnowledgeItemTopics as fetchKnowledgeItemStudyTopics,
+  fetchKnowledgeItemTopics,
   fetchKnowledgeItems,
   fetchKnowledgeRelations,
   fetchReferenceEntities,
+  type GoogleBookMatch,
+  searchGoogleBooks,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './ItemWorkbenchPage.css';
@@ -36,19 +39,22 @@ type ItemWorkbenchPreset = {
 type ItemWorkbenchKind = 'book' | 'lecture';
 type StatusFilter = 'all' | KnowledgeItemStatus;
 type ItemListGroupBy = 'none' | 'topic' | 'subject' | 'entity';
+type CaptureMode = 'manual' | 'search';
 type ItemListContext = {
   entityLabels?: string[];
-  studyTopics?: StudyTopicSummary[];
+  topics?: TopicSummary[];
 };
 
 const kindOptions: ItemWorkbenchKind[] = ['book', 'lecture'];
+const statusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
+
 const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
   book: {
     creatorLabel: 'Author',
     extraFieldLabel: 'Pages',
     extraFieldName: 'pageCount',
     extraFieldPlaceholder: '320',
-    kindHelp: 'Use Book for anything primarily written. Articles, essays, and papers now fold into this one written form.',
+    kindHelp: 'Use Book for anything primarily written. Articles, essays, and papers fold into this form.',
     sourceLabel: 'Publisher / Journal / Collection',
     sourcePlaceholder: 'Publisher, journal, archive...',
     summaryPlaceholder: 'Why does this written work belong in your encyclopedia?',
@@ -60,15 +66,13 @@ const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
     extraFieldName: 'durationMinutes',
     extraFieldPlaceholder: '90',
     kindHelp:
-      'Use Lecture for non-written study material. Videos, podcasts, courses, and similar resources now fold into this one media form.',
+      'Use Lecture for non-written study material. Videos, podcasts, courses, and similar resources fold into this form.',
     sourceLabel: 'Platform / Channel / Series',
     sourcePlaceholder: 'Channel, platform, course series...',
     summaryPlaceholder: 'Why does this lecture or resource belong in your encyclopedia?',
     yearLabel: 'Release Year',
   },
 };
-
-const statusOptions: KnowledgeItemStatus[] = ['inbox', 'queued', 'active', 'completed', 'archived'];
 
 const createInitialFormState = (kind: ItemWorkbenchKind = 'book') => ({
   kind: kind as KnowledgeItemKind,
@@ -82,6 +86,9 @@ const createInitialFormState = (kind: ItemWorkbenchKind = 'book') => ({
   durationMinutes: '',
   status: 'inbox' as KnowledgeItemStatus,
 });
+
+const sortPeople = (values: ReferenceEntity[]) =>
+  [...values].sort((left, right) => left.title.localeCompare(right.title));
 
 const readNumericMetadata = (item: KnowledgeItem, key: 'pageCount' | 'durationMinutes') => {
   const value = item.metadata?.[key];
@@ -130,16 +137,13 @@ const getEntityLabelsForItem = (relations: KnowledgeRelationDetail[]) =>
       .map((relation) => relation.toEntityTitle?.trim() ?? '')
   );
 
-const getItemGroupLabels = (
-  groupBy: ItemListGroupBy,
-  context: ItemListContext | undefined
-) => {
+const getItemGroupLabels = (groupBy: ItemListGroupBy, context: ItemListContext | undefined) => {
   if (!context) return [];
   if (groupBy === 'topic') {
-    return dedupeAndSort((context.studyTopics ?? []).map((studyTopic) => studyTopic.name));
+    return dedupeAndSort((context.topics ?? []).map((topic) => topic.name));
   }
   if (groupBy === 'subject') {
-    return dedupeAndSort((context.studyTopics ?? []).map((studyTopic) => studyTopic.subjectName));
+    return dedupeAndSort((context.topics ?? []).map((topic) => topic.subjectName));
   }
   if (groupBy === 'entity') {
     return context.entityLabels ?? [];
@@ -152,6 +156,27 @@ const getUngroupedLabel = (groupBy: ItemListGroupBy) => {
   if (groupBy === 'subject') return 'Without subject';
   if (groupBy === 'entity') return 'Without entity';
   return 'Items';
+};
+
+const buildKnowledgeItemFromGoogleBook = (book: GoogleBookMatch): NewKnowledgeItem => {
+  const authorLabel = book.authors.join(', ').trim();
+  return {
+    kind: 'book',
+    title: book.title.trim(),
+    creator: authorLabel || undefined,
+    sourceName: book.publisher?.trim() || undefined,
+    sourceUrl: book.sourceUrl,
+    summary: book.subtitle?.trim() || undefined,
+    description: book.description?.trim() || undefined,
+    publishedYear: book.publishedYear,
+    status: 'inbox',
+    coverImageUrl: book.coverImageUrl,
+    metadata: {
+      googleBooksId: book.id,
+      importedFrom: 'google_books',
+      ...(book.pageCount ? { pageCount: book.pageCount } : {}),
+    },
+  };
 };
 
 type FieldLabelProps = {
@@ -185,14 +210,24 @@ const ItemWorkbenchPage: React.FC = () => {
   const [people, setPeople] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [listContextError, setListContextError] = useState<string | null>(null);
   const [listContextLoading, setListContextLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [creatingCreatorEntity, setCreatingCreatorEntity] = useState(false);
+  const [searchingBooks, setSearchingBooks] = useState(false);
+  const [importingBooks, setImportingBooks] = useState(false);
+  const [bookSearchError, setBookSearchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'create' | 'list'>('create');
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('manual');
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [groupBy, setGroupBy] = useState<ItemListGroupBy>('none');
   const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
   const [formState, setFormState] = useState(createInitialFormState());
+  const [bookSearchQuery, setBookSearchQuery] = useState('');
+  const [bookSearchResults, setBookSearchResults] = useState<GoogleBookMatch[]>([]);
+  const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
 
   useEffect(() => {
     const loadItems = async () => {
@@ -202,9 +237,7 @@ const ItemWorkbenchPage: React.FC = () => {
           fetchReferenceEntities('person'),
         ]);
         setItems(fetchedItems);
-        setPeople(
-          [...fetchedPeople].sort((left, right) => left.title.localeCompare(right.title))
-        );
+        setPeople(sortPeople(fetchedPeople));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load items.');
@@ -215,6 +248,21 @@ const ItemWorkbenchPage: React.FC = () => {
 
     loadItems();
   }, []);
+
+  useEffect(() => {
+    if (formState.kind === 'lecture' && captureMode === 'search') {
+      setCaptureMode('manual');
+    }
+  }, [captureMode, formState.kind]);
+
+  const normalizedCreator = formState.creator.trim();
+  const matchedPerson = useMemo(
+    () =>
+      normalizedCreator
+        ? people.find((person) => person.title.trim().toLowerCase() === normalizedCreator.toLowerCase()) ?? null
+        : null,
+    [normalizedCreator, people]
+  );
 
   const stats = useMemo(() => summarizeKnowledgeProgress(items), [items]);
   const orderedItems = useMemo(
@@ -286,21 +334,27 @@ const ItemWorkbenchPage: React.FC = () => {
 
     return organizedGroups;
   }, [filteredItems, groupBy, itemContexts, statusFilter]);
+
   const workbenchKind = formState.kind as ItemWorkbenchKind;
   const workbenchPreset = itemWorkbenchPresets[workbenchKind];
   const extraFieldValue =
     workbenchPreset.extraFieldName === 'pageCount' ? formState.pageCount : formState.durationMinutes;
+
+  const selectedBooks = useMemo(
+    () => bookSearchResults.filter((book) => selectedBookIds.includes(book.id)),
+    [bookSearchResults, selectedBookIds]
+  );
 
   useEffect(() => {
     if (viewMode !== 'list' || items.length === 0 || groupBy === 'none') {
       return;
     }
 
-    const needsStudyTopics = groupBy === 'topic' || groupBy === 'subject';
+    const needsTopics = groupBy === 'topic' || groupBy === 'subject';
     const missingItems = items.filter((item) => {
       const context = itemContexts[item.id];
       if (!context) return true;
-      if (needsStudyTopics) return !context.studyTopics;
+      if (needsTopics) return !context.topics;
       return !context.entityLabels;
     });
 
@@ -313,11 +367,11 @@ const ItemWorkbenchPage: React.FC = () => {
       setListContextError(null);
 
       try {
-        if (needsStudyTopics) {
+        if (needsTopics) {
           const entries = await Promise.all(
             missingItems.map(async (item) => ({
               itemId: item.id,
-              studyTopics: await fetchKnowledgeItemStudyTopics(item.id),
+              topics: await fetchKnowledgeItemTopics(item.id),
             }))
           );
 
@@ -327,7 +381,7 @@ const ItemWorkbenchPage: React.FC = () => {
             for (const entry of entries) {
               next[entry.itemId] = {
                 ...next[entry.itemId],
-                studyTopics: entry.studyTopics,
+                topics: entry.topics,
               };
             }
             return next;
@@ -364,7 +418,7 @@ const ItemWorkbenchPage: React.FC = () => {
       }
     };
 
-    loadListContext();
+    void loadListContext();
 
     return () => {
       cancelled = true;
@@ -387,12 +441,70 @@ const ItemWorkbenchPage: React.FC = () => {
     }));
   };
 
+  const saveItemWithCreatorLink = async (payload: NewKnowledgeItem, creatorLabel?: string) => {
+    const createdItem = await createKnowledgeItem(payload);
+    const normalized = creatorLabel?.trim() ?? '';
+    const matchedCreator =
+      normalized
+        ? people.find((person) => person.title.trim().toLowerCase() === normalized.toLowerCase()) ?? null
+        : null;
+    let relationFailed = false;
+
+    if (matchedCreator) {
+      try {
+        await createKnowledgeRelation(createdItem.id, {
+          toEntityType: 'reference_entity',
+          toEntityId: matchedCreator.id,
+          relationType: 'created_by',
+        });
+      } catch (relationError) {
+        console.error(relationError);
+        relationFailed = true;
+      }
+    }
+
+    return { createdItem, relationFailed };
+  };
+
+  const handleCreateCreatorEntity = async () => {
+    if (!normalizedCreator || matchedPerson) return;
+
+    setCreatingCreatorEntity(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const createdPerson = await createReferenceEntity({
+        kind: 'person',
+        title: normalizedCreator,
+        summary: 'Created from the item capture flow.',
+      });
+
+      startTransition(() => {
+        setPeople((current) => {
+          const next = current.some((person) => person.id === createdPerson.id)
+            ? current.map((person) => (person.id === createdPerson.id ? createdPerson : person))
+            : [...current, createdPerson];
+          return sortPeople(next);
+        });
+      });
+
+      setNotice(`Created person "${createdPerson.title}". This item will now link to that entity.`);
+    } catch (createError) {
+      console.error(createError);
+      setError('Failed to create the person entity from this creator name.');
+    } finally {
+      setCreatingCreatorEntity(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!formState.title.trim()) return;
 
     setSubmitting(true);
     setError(null);
+    setNotice(null);
 
     const metadata =
       formState.kind === 'book'
@@ -402,13 +514,6 @@ const ItemWorkbenchPage: React.FC = () => {
         : formState.durationMinutes
           ? { durationMinutes: Number(formState.durationMinutes) }
           : undefined;
-
-    const normalizedCreator = formState.creator.trim();
-    const matchedPerson = normalizedCreator
-      ? people.find(
-          (person) => person.title.trim().toLowerCase() === normalizedCreator.toLowerCase()
-        ) ?? null
-      : null;
 
     const payload: NewKnowledgeItem = {
       kind: formState.kind,
@@ -423,35 +528,79 @@ const ItemWorkbenchPage: React.FC = () => {
     };
 
     try {
-      const createdItem = await createKnowledgeItem(payload);
       const savedKind = workbenchKind;
-      let relationFailed = false;
-
-      if (matchedPerson) {
-        try {
-          await createKnowledgeRelation(createdItem.id, {
-            toEntityType: 'reference_entity',
-            toEntityId: matchedPerson.id,
-            relationType: 'created_by',
-          });
-        } catch (relationError) {
-          console.error(relationError);
-          relationFailed = true;
-        }
-      }
+      const { createdItem, relationFailed } = await saveItemWithCreatorLink(payload, normalizedCreator);
 
       startTransition(() => {
         setItems((current) => [createdItem, ...current]);
       });
       setFormState(createInitialFormState(savedKind));
-      if (relationFailed) {
-        setError('Item was created, but the creator entity link could not be saved.');
-      }
+      setShowAdvancedDetails(false);
+      setNotice(relationFailed ? 'Item was created, but the creator entity link could not be saved.' : 'Item added.');
     } catch (submitError) {
       console.error(submitError);
       setError('Failed to create item.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSearchBooks = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!bookSearchQuery.trim()) return;
+
+    setSearchingBooks(true);
+    setBookSearchError(null);
+    setNotice(null);
+
+    try {
+      const results = await searchGoogleBooks(bookSearchQuery, 10);
+      setBookSearchResults(results);
+      setSelectedBookIds([]);
+      if (results.length === 0) {
+        setBookSearchError('No matching books came back from Google Books.');
+      }
+    } catch (searchError) {
+      console.error(searchError);
+      setBookSearchError('Failed to search Google Books right now.');
+    } finally {
+      setSearchingBooks(false);
+    }
+  };
+
+  const handleImportSelectedBooks = async () => {
+    if (selectedBooks.length === 0) return;
+
+    setImportingBooks(true);
+    setError(null);
+    setBookSearchError(null);
+    setNotice(null);
+
+    try {
+      const savedEntries = await Promise.all(
+        selectedBooks.map(async (book) => {
+          const payload = buildKnowledgeItemFromGoogleBook(book);
+          return saveItemWithCreatorLink(payload, payload.creator);
+        })
+      );
+
+      const createdItems = savedEntries.map((entry) => entry.createdItem);
+      const relationFailures = savedEntries.some((entry) => entry.relationFailed);
+
+      startTransition(() => {
+        setItems((current) => [...createdItems.reverse(), ...current]);
+      });
+      setSelectedBookIds([]);
+      setNotice(
+        relationFailures
+          ? `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'}, but some creator links could not be saved.`
+          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from Google Books.`
+      );
+    } catch (importError) {
+      console.error(importError);
+      setBookSearchError('Failed to import the selected books.');
+    } finally {
+      setImportingBooks(false);
     }
   };
 
@@ -467,6 +616,12 @@ const ItemWorkbenchPage: React.FC = () => {
     }
   };
 
+  const toggleBookSelection = (bookId: string) => {
+    setSelectedBookIds((current) =>
+      current.includes(bookId) ? current.filter((id) => id !== bookId) : [...current, bookId]
+    );
+  };
+
   return (
     <div className="knowledge-page">
       {viewMode === 'create' ? (
@@ -475,7 +630,7 @@ const ItemWorkbenchPage: React.FC = () => {
             <div>
               <span className="knowledge-eyebrow">Items</span>
               <h1>Add Item</h1>
-              <p>Capture one book or lecture at a time, without the list competing for attention.</p>
+              <p>Make capture the easy daily action. Keep the main form small, and only open more when you need it.</p>
             </div>
             <button
               type="button"
@@ -487,137 +642,292 @@ const ItemWorkbenchPage: React.FC = () => {
           </div>
 
           {error ? <div className="knowledge-error">{error}</div> : null}
+          {notice ? <div className="knowledge-notice">{notice}</div> : null}
 
-          <form className="knowledge-form knowledge-form-grid" onSubmit={handleSubmit}>
-            <div className="knowledge-field knowledge-field-span-3 is-primary">
-              <FieldLabel htmlFor="kind" hint={workbenchPreset.kindHelp} label="Kind" />
-              <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
-                {kindOptions.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {kind === 'book' ? 'Book / Written Work' : 'Lecture / Media'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-6 is-primary">
-              <FieldLabel htmlFor="title" label="Title" required />
-              <input
-                id="title"
-                name="title"
-                value={formState.title}
-                onChange={handleChange}
-                placeholder="Enter the work you want to add"
-                required
-              />
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-3 is-primary">
-              <FieldLabel htmlFor="status" label="Status" />
-              <select id="status" name="status" value={formState.status} onChange={handleChange}>
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-6 is-primary">
-              <FieldLabel
-                htmlFor="creator"
-                hint="Search an existing person here. If no match fits, keep typing and the text will be saved as-is."
-                label={workbenchPreset.creatorLabel}
-              />
-              <input
-                id="creator"
-                name="creator"
-                list="knowledge-creator-options"
-                value={formState.creator}
-                onChange={handleChange}
-                placeholder={`Search or type a ${workbenchPreset.creatorLabel.toLowerCase()}`}
-              />
-              <datalist id="knowledge-creator-options">
-                {people.map((person) => (
-                  <option key={person.id} value={person.title} />
-                ))}
-              </datalist>
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-6">
-              <FieldLabel htmlFor="sourceName" label={workbenchPreset.sourceLabel} />
-              <input
-                id="sourceName"
-                name="sourceName"
-                value={formState.sourceName}
-                onChange={handleChange}
-                placeholder={workbenchPreset.sourcePlaceholder}
-              />
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-6">
-              <FieldLabel htmlFor="sourceUrl" label="Source URL" />
-              <input
-                id="sourceUrl"
-                name="sourceUrl"
-                type="url"
-                value={formState.sourceUrl}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-3">
-              <FieldLabel htmlFor="publishedYear" label={workbenchPreset.yearLabel} />
-              <input
-                id="publishedYear"
-                name="publishedYear"
-                type="number"
-                value={formState.publishedYear}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-3">
-              <FieldLabel htmlFor={workbenchPreset.extraFieldName} label={workbenchPreset.extraFieldLabel} />
-              <input
-                id={workbenchPreset.extraFieldName}
-                name={workbenchPreset.extraFieldName}
-                type="number"
-                value={extraFieldValue}
-                onChange={handleChange}
-                placeholder={workbenchPreset.extraFieldPlaceholder}
-              />
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-8">
-              <FieldLabel htmlFor="summary" label="Summary" />
-              <textarea
-                id="summary"
-                name="summary"
-                value={formState.summary}
-                onChange={handleChange}
-                placeholder={workbenchPreset.summaryPlaceholder}
-              />
-            </div>
-
-            <div className="knowledge-field knowledge-field-span-4">
-              <FieldLabel
-                htmlFor="upload-placeholder"
-                hint="Reserved for future upload-to-autofill. This will later accept a cover or title-page image."
-                label="Upload"
-              />
-              <div id="upload-placeholder" className="knowledge-upload-placeholder">
-                <strong>Upload slot</strong>
-                <span>Placeholder only. No upload flow is connected yet.</span>
-              </div>
-            </div>
-
-            <div className="knowledge-form-actions">
-              <button type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : 'Add Item'}
+          <div className="knowledge-capture-toolbar">
+            <div className="knowledge-capture-pillars">
+              <button
+                type="button"
+                className={`knowledge-capture-pill${captureMode === 'manual' ? ' is-active' : ''}`}
+                onClick={() => setCaptureMode('manual')}
+              >
+                Manual entry
               </button>
+              {workbenchKind === 'book' ? (
+                <button
+                  type="button"
+                  className={`knowledge-capture-pill${captureMode === 'search' ? ' is-active' : ''}`}
+                  onClick={() => setCaptureMode('search')}
+                >
+                  Search books
+                </button>
+              ) : null}
             </div>
-          </form>
+            <button
+              type="button"
+              className={`knowledge-secondary-button${showAdvancedDetails ? ' is-active' : ''}`}
+              onClick={() => setShowAdvancedDetails((current) => !current)}
+            >
+              {showAdvancedDetails ? 'Hide advanced details' : 'Show advanced details'}
+            </button>
+          </div>
+
+          {captureMode === 'search' && workbenchKind === 'book' ? (
+            <section className="knowledge-search-panel">
+              <div className="knowledge-search-head">
+                <div>
+                  <span className="knowledge-eyebrow">Google Books</span>
+                  <h2>Import books by search</h2>
+                  <p>Find a title, select one or many matches, and bring them in without typing the full record by hand.</p>
+                </div>
+              </div>
+
+              <form className="knowledge-search-form" onSubmit={handleSearchBooks}>
+                <input
+                  value={bookSearchQuery}
+                  onChange={(event) => setBookSearchQuery(event.target.value)}
+                  placeholder="Search by title, author, ISBN, or a mixed query"
+                />
+                <button type="submit" disabled={searchingBooks || !bookSearchQuery.trim()}>
+                  {searchingBooks ? 'Searching...' : 'Search Google Books'}
+                </button>
+              </form>
+
+              {bookSearchError ? <div className="knowledge-error">{bookSearchError}</div> : null}
+
+              {bookSearchResults.length > 0 ? (
+                <>
+                  <div className="knowledge-search-actions">
+                    <span>{bookSearchResults.length} matches</span>
+                    <div className="knowledge-search-action-group">
+                      <button
+                        type="button"
+                        className="knowledge-secondary-button"
+                        onClick={() => setSelectedBookIds(bookSearchResults.map((book) => book.id))}
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        className="knowledge-secondary-button"
+                        onClick={() => setSelectedBookIds([])}
+                        disabled={selectedBookIds.length === 0}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleImportSelectedBooks}
+                        disabled={importingBooks || selectedBooks.length === 0}
+                      >
+                        {importingBooks
+                          ? 'Importing...'
+                          : `Import selected (${selectedBooks.length})`}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="knowledge-search-results">
+                    {bookSearchResults.map((book) => (
+                      <label key={book.id} className="knowledge-search-card">
+                        <div className="knowledge-search-card-check">
+                          <input
+                            type="checkbox"
+                            checked={selectedBookIds.includes(book.id)}
+                            onChange={() => toggleBookSelection(book.id)}
+                          />
+                        </div>
+                        <div className="knowledge-search-card-body">
+                          <div className="knowledge-search-card-top">
+                            <div>
+                              <strong>{book.title}</strong>
+                              {book.subtitle ? <span>{book.subtitle}</span> : null}
+                            </div>
+                            {book.coverImageUrl ? (
+                              <img src={book.coverImageUrl} alt="" className="knowledge-search-cover" />
+                            ) : null}
+                          </div>
+                          <div className="knowledge-meta">
+                            {book.authors.length > 0 ? <span>{book.authors.join(', ')}</span> : null}
+                            {book.publisher ? <span>{book.publisher}</span> : null}
+                            {book.publishedYear ? <span>{book.publishedYear}</span> : null}
+                            {book.pageCount ? <span>{book.pageCount} pages</span> : null}
+                          </div>
+                          {book.description ? (
+                            <p>{book.description.slice(0, 220)}{book.description.length > 220 ? '…' : ''}</p>
+                          ) : null}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </section>
+          ) : (
+            <form className="knowledge-form knowledge-form-grid" onSubmit={handleSubmit}>
+              <div className="knowledge-field knowledge-field-span-3 is-primary">
+                <FieldLabel htmlFor="kind" hint={workbenchPreset.kindHelp} label="Kind" />
+                <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
+                  {kindOptions.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {kind === 'book' ? 'Book / Written Work' : 'Lecture / Media'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="knowledge-field knowledge-field-span-6 is-primary">
+                <FieldLabel htmlFor="title" label="Title" required />
+                <input
+                  id="title"
+                  name="title"
+                  value={formState.title}
+                  onChange={handleChange}
+                  placeholder="Enter the work you want to add"
+                  required
+                />
+              </div>
+
+              <div className="knowledge-field knowledge-field-span-3 is-primary">
+                <FieldLabel htmlFor="status" label="Status" />
+                <select id="status" name="status" value={formState.status} onChange={handleChange}>
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="knowledge-field knowledge-field-span-12 is-primary">
+                <FieldLabel
+                  htmlFor="creator"
+                  hint="Search an existing person. If no match exists yet, create it here or keep the text as a temporary fallback."
+                  label={workbenchPreset.creatorLabel}
+                />
+                <div className="knowledge-creator-row">
+                  <input
+                    id="creator"
+                    name="creator"
+                    list="knowledge-creator-options"
+                    value={formState.creator}
+                    onChange={handleChange}
+                    placeholder={`Search or type a ${workbenchPreset.creatorLabel.toLowerCase()}`}
+                  />
+                  {!matchedPerson && normalizedCreator ? (
+                    <button
+                      type="button"
+                      className="knowledge-secondary-button"
+                      onClick={handleCreateCreatorEntity}
+                      disabled={creatingCreatorEntity}
+                    >
+                      {creatingCreatorEntity ? 'Creating person...' : 'Create person'}
+                    </button>
+                  ) : null}
+                </div>
+                <datalist id="knowledge-creator-options">
+                  {people.map((person) => (
+                    <option key={person.id} value={person.title} />
+                  ))}
+                </datalist>
+                {matchedPerson ? (
+                  <div className="knowledge-inline-note">
+                    This will link the item to the existing person entity <strong>{matchedPerson.title}</strong>.
+                  </div>
+                ) : normalizedCreator ? (
+                  <div className="knowledge-inline-note">
+                    This name will be saved as plain text unless you create a matching person entity first.
+                  </div>
+                ) : (
+                  <div className="knowledge-inline-note">
+                    Leave this blank if you do not want to record the creator yet.
+                  </div>
+                )}
+              </div>
+
+              {showAdvancedDetails ? (
+                <>
+                  <div className="knowledge-field knowledge-field-span-6">
+                    <FieldLabel htmlFor="sourceName" label={workbenchPreset.sourceLabel} />
+                    <input
+                      id="sourceName"
+                      name="sourceName"
+                      value={formState.sourceName}
+                      onChange={handleChange}
+                      placeholder={workbenchPreset.sourcePlaceholder}
+                    />
+                  </div>
+
+                  <div className="knowledge-field knowledge-field-span-6">
+                    <FieldLabel htmlFor="sourceUrl" label="Source URL" />
+                    <input
+                      id="sourceUrl"
+                      name="sourceUrl"
+                      type="url"
+                      value={formState.sourceUrl}
+                      onChange={handleChange}
+                    />
+                  </div>
+
+                  <div className="knowledge-field knowledge-field-span-3">
+                    <FieldLabel htmlFor="publishedYear" label={workbenchPreset.yearLabel} />
+                    <input
+                      id="publishedYear"
+                      name="publishedYear"
+                      type="number"
+                      value={formState.publishedYear}
+                      onChange={handleChange}
+                    />
+                  </div>
+
+                  <div className="knowledge-field knowledge-field-span-3">
+                    <FieldLabel htmlFor={workbenchPreset.extraFieldName} label={workbenchPreset.extraFieldLabel} />
+                    <input
+                      id={workbenchPreset.extraFieldName}
+                      name={workbenchPreset.extraFieldName}
+                      type="number"
+                      value={extraFieldValue}
+                      onChange={handleChange}
+                      placeholder={workbenchPreset.extraFieldPlaceholder}
+                    />
+                  </div>
+
+                  <div className="knowledge-field knowledge-field-span-6">
+                    <FieldLabel htmlFor="summary" label="Summary" />
+                    <textarea
+                      id="summary"
+                      name="summary"
+                      value={formState.summary}
+                      onChange={handleChange}
+                      placeholder={workbenchPreset.summaryPlaceholder}
+                    />
+                  </div>
+
+                  <div className="knowledge-field knowledge-field-span-12">
+                    <FieldLabel
+                      htmlFor="upload-placeholder"
+                      hint="Reserved for future upload-to-autofill. This will later accept a cover or title-page image."
+                      label="Upload"
+                    />
+                    <div id="upload-placeholder" className="knowledge-upload-placeholder">
+                      <strong>Upload slot</strong>
+                      <span>Placeholder only. This will later become image-to-autofill for book or lecture records.</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="knowledge-collapsed-note knowledge-field-span-12">
+                  Optional source data, year, pages or duration, summary, and upload hooks are hidden until you open advanced details.
+                </div>
+              )}
+
+              <div className="knowledge-form-actions">
+                <button type="submit" disabled={submitting}>
+                  {submitting ? 'Saving...' : 'Add Item'}
+                </button>
+              </div>
+            </form>
+          )}
         </section>
       ) : (
         <section className="knowledge-panel knowledge-single-panel knowledge-list-panel">
@@ -637,6 +947,7 @@ const ItemWorkbenchPage: React.FC = () => {
           </div>
 
           {error ? <div className="knowledge-error">{error}</div> : null}
+          {notice ? <div className="knowledge-notice">{notice}</div> : null}
 
           <div className="knowledge-summary-grid">
             <div className="knowledge-stat">
@@ -691,12 +1002,12 @@ const ItemWorkbenchPage: React.FC = () => {
 
           {loading ? <div className="knowledge-empty">Loading items...</div> : null}
           {!loading && items.length === 0 ? (
-            <div className="knowledge-empty">
-              No items yet. Switch back and add the first entry.
-            </div>
+            <div className="knowledge-empty">No items yet. Switch back and add the first entry.</div>
           ) : null}
           {!loading && items.length > 0 && filteredItems.length === 0 ? (
-            <div className="knowledge-empty">No items are currently in {formatStatusLabel(statusFilter).toLowerCase()}.</div>
+            <div className="knowledge-empty">
+              No items are currently in {formatStatusLabel(statusFilter).toLowerCase()}.
+            </div>
           ) : null}
 
           {!loading && filteredItems.length > 0 && (groupBy === 'none' || !listContextLoading) ? (
