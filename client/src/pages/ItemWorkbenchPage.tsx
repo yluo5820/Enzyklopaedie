@@ -43,6 +43,7 @@ type ItemWorkbenchKind = 'book' | 'lecture';
 type StatusFilter = 'all' | KnowledgeItemStatus;
 type ItemListGroupBy = 'none' | 'topic' | 'subject' | 'entity';
 type CaptureMode = 'manual' | 'search';
+type SearchResultSort = 'relevance' | 'newest' | 'oldest' | 'title';
 type ItemListContext = {
   entityLabels?: string[];
   topics?: TopicSummary[];
@@ -76,17 +77,23 @@ const searchLanguageOptions: SearchLanguageOption[] = [
 const languageLabelByCode = new Map(searchLanguageOptions.map((option) => [option.code, option.label]));
 const searchProviderOptions: SearchProviderOption[] = [
   {
+    description: 'Fast, clean records. Best as the default first pass.',
+    label: 'Library of Congress',
+    value: 'library_of_congress',
+  },
+  {
     description: 'Broader general catalog with better everyday discovery.',
     label: 'Open Library',
     value: 'open_library',
   },
-  {
-    description: 'Library of Congress records, useful as a second catalog check.',
-    label: 'Library of Congress',
-    value: 'library_of_congress',
-  },
 ];
 const providerLabelByValue = new Map(searchProviderOptions.map((option) => [option.value, option.label]));
+const searchSortOptions: Array<{ label: string; value: SearchResultSort }> = [
+  { label: 'Best match', value: 'relevance' },
+  { label: 'Newest first', value: 'newest' },
+  { label: 'Oldest first', value: 'oldest' },
+  { label: 'Title A-Z', value: 'title' },
+];
 
 const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
   book: {
@@ -202,6 +209,51 @@ const formatLanguageLabel = (code: string) => languageLabelByCode.get(code) ?? c
 const formatProviderLabel = (provider: BookSearchProvider) =>
   providerLabelByValue.get(provider) ?? provider;
 
+const normalizeSearchText = (value?: string) =>
+  (value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+const scoreBookSearchMatch = (book: BookSearchMatch, filters: BookSearchFilters) => {
+  const normalizedQuery = normalizeSearchText(filters.query);
+  const normalizedAuthor = normalizeSearchText(filters.author);
+  const title = normalizeSearchText(book.title);
+  const subtitle = normalizeSearchText(book.subtitle);
+  const authors = normalizeSearchText(book.authors.join(' '));
+
+  let score = 0;
+
+  if (normalizedQuery) {
+    if (title === normalizedQuery) {
+      score += 160;
+    } else if (title.startsWith(normalizedQuery)) {
+      score += 110;
+    } else if (`${title} ${subtitle}`.includes(normalizedQuery)) {
+      score += 70;
+    }
+
+    const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+    const matchedTitleTokens = queryTokens.filter((token) => title.includes(token)).length;
+    score += matchedTitleTokens * 12;
+  }
+
+  if (normalizedAuthor) {
+    if (authors === normalizedAuthor) {
+      score += 90;
+    } else if (authors.includes(normalizedAuthor)) {
+      score += 55;
+    }
+
+    const authorTokens = normalizedAuthor.split(' ').filter(Boolean);
+    const matchedAuthorTokens = authorTokens.filter((token) => authors.includes(token)).length;
+    score += matchedAuthorTokens * 10;
+  }
+
+  if (book.authors.length > 0) score += 6;
+  if (book.coverImageUrl) score += 4;
+  if (book.publishedYear) score += 2;
+
+  return score;
+};
+
 const buildKnowledgeItemFromSearchMatch = (book: BookSearchMatch): NewKnowledgeItem => {
   const authorLabel = book.authors.join(', ').trim();
   return {
@@ -271,7 +323,7 @@ const ItemWorkbenchPage: React.FC = () => {
   const [groupBy, setGroupBy] = useState<ItemListGroupBy>('none');
   const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
   const [formState, setFormState] = useState(createInitialFormState());
-  const [bookSearchProvider, setBookSearchProvider] = useState<BookSearchProvider>('open_library');
+  const [bookSearchProvider, setBookSearchProvider] = useState<BookSearchProvider>('library_of_congress');
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAuthor, setBookSearchAuthor] = useState('');
   const [bookSearchLanguage, setBookSearchLanguage] = useState('any');
@@ -279,6 +331,9 @@ const ItemWorkbenchPage: React.FC = () => {
   const [bookSearchPage, setBookSearchPage] = useState(1);
   const [bookSearchHasMore, setBookSearchHasMore] = useState(false);
   const [bookSearchTotal, setBookSearchTotal] = useState<number | null>(null);
+  const [bookSearchSort, setBookSearchSort] = useState<SearchResultSort>('relevance');
+  const [hideResultsWithoutAuthors, setHideResultsWithoutAuthors] = useState(false);
+  const [hideResultsWithoutCovers, setHideResultsWithoutCovers] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -405,6 +460,41 @@ const ItemWorkbenchPage: React.FC = () => {
     }),
     [bookSearchAuthor, bookSearchLanguage, bookSearchQuery]
   );
+
+  const visibleBookSearchResults = useMemo(() => {
+    const filtered = bookSearchResults.filter((book) => {
+      if (hideResultsWithoutAuthors && book.authors.length === 0) return false;
+      if (hideResultsWithoutCovers && !book.coverImageUrl) return false;
+      return true;
+    });
+
+    return [...filtered].sort((left, right) => {
+      if (bookSearchSort === 'title') {
+        return left.title.localeCompare(right.title);
+      }
+
+      if (bookSearchSort === 'newest') {
+        return (right.publishedYear ?? -Infinity) - (left.publishedYear ?? -Infinity);
+      }
+
+      if (bookSearchSort === 'oldest') {
+        return (left.publishedYear ?? Infinity) - (right.publishedYear ?? Infinity);
+      }
+
+      const scoreDifference =
+        scoreBookSearchMatch(right, currentSearchFilters) -
+        scoreBookSearchMatch(left, currentSearchFilters);
+      if (scoreDifference !== 0) return scoreDifference;
+
+      return left.title.localeCompare(right.title);
+    });
+  }, [
+    bookSearchResults,
+    bookSearchSort,
+    currentSearchFilters,
+    hideResultsWithoutAuthors,
+    hideResultsWithoutCovers,
+  ]);
 
   useEffect(() => {
     if (viewMode !== 'list' || items.length === 0 || groupBy === 'none') {
@@ -836,7 +926,7 @@ const ItemWorkbenchPage: React.FC = () => {
                     searchingBooks || (!bookSearchQuery.trim() && !bookSearchAuthor.trim())
                   }
                 >
-                  {searchingBooks ? 'Searching...' : 'Search Open Library'}
+                  {searchingBooks ? 'Searching...' : `Search ${formatProviderLabel(bookSearchProvider)}`}
                 </button>
               </form>
 
@@ -848,9 +938,41 @@ const ItemWorkbenchPage: React.FC = () => {
 
               {bookSearchResults.length > 0 ? (
                 <>
+                  <div className="knowledge-search-refine-bar">
+                    <label className="knowledge-search-refine-control">
+                      <span>Order</span>
+                      <select
+                        value={bookSearchSort}
+                        onChange={(event) => setBookSearchSort(event.target.value as SearchResultSort)}
+                      >
+                        {searchSortOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="knowledge-search-toggle">
+                      <input
+                        type="checkbox"
+                        checked={hideResultsWithoutAuthors}
+                        onChange={(event) => setHideResultsWithoutAuthors(event.target.checked)}
+                      />
+                      <span>Only show records with authors</span>
+                    </label>
+                    <label className="knowledge-search-toggle">
+                      <input
+                        type="checkbox"
+                        checked={hideResultsWithoutCovers}
+                        onChange={(event) => setHideResultsWithoutCovers(event.target.checked)}
+                      />
+                      <span>Only show records with covers</span>
+                    </label>
+                  </div>
+
                   <div className="knowledge-search-actions">
                     <span>
-                      Loaded {bookSearchResults.length}
+                      Showing {visibleBookSearchResults.length} of {bookSearchResults.length} loaded
                       {bookSearchTotal ? ` of about ${bookSearchTotal}` : ''} matches from{' '}
                       {formatProviderLabel(bookSearchProvider)}
                     </span>
@@ -858,7 +980,7 @@ const ItemWorkbenchPage: React.FC = () => {
                       <button
                         type="button"
                         className="knowledge-secondary-button"
-                        onClick={() => setSelectedBookIds(bookSearchResults.map((book) => book.id))}
+                        onClick={() => setSelectedBookIds(visibleBookSearchResults.map((book) => book.id))}
                       >
                         Select all
                       </button>
@@ -891,7 +1013,7 @@ const ItemWorkbenchPage: React.FC = () => {
                   </div>
 
                   <div className="knowledge-search-results">
-                    {bookSearchResults.map((book) => (
+                    {visibleBookSearchResults.map((book) => (
                       <label key={book.id} className="knowledge-search-card">
                         <div className="knowledge-search-card-check">
                           <input
@@ -931,6 +1053,12 @@ const ItemWorkbenchPage: React.FC = () => {
                       </label>
                     ))}
                   </div>
+
+                  {visibleBookSearchResults.length === 0 ? (
+                    <div className="knowledge-empty">
+                      The current cleanup filters hide every loaded result. Loosen the filters or fetch more.
+                    </div>
+                  ) : null}
                 </>
               ) : null}
             </section>
