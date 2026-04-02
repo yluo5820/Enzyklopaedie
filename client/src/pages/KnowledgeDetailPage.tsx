@@ -386,6 +386,12 @@ const KnowledgeDetailPage: React.FC = () => {
   const [savingNote, setSavingNote] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [savingReview, setSavingReview] = useState(false);
+  const [showRecordEditor, setShowRecordEditor] = useState(false);
+  const [showTopicManager, setShowTopicManager] = useState(false);
+  const [showRelationComposer, setShowRelationComposer] = useState(false);
+  const [showNoteComposer, setShowNoteComposer] = useState(false);
+  const [showTaskComposer, setShowTaskComposer] = useState(false);
+  const [showReviewComposer, setShowReviewComposer] = useState(false);
   const [selectedStudyTopicId, setSelectedStudyTopicId] = useState('');
   const [newStudyTopicForm, setNewStudyTopicForm] = useState({
     subjectId: '',
@@ -647,6 +653,7 @@ const KnowledgeDetailPage: React.FC = () => {
       const updatedItem = await updateKnowledgeItem(item.id, payload);
       setItem(updatedItem);
       setRecordForm(toRecordFormState(updatedItem));
+      setShowRecordEditor(false);
     } catch (recordError) {
       console.error(recordError);
       setError('Failed to update the item record.');
@@ -670,6 +677,7 @@ const KnowledgeDetailPage: React.FC = () => {
         );
       });
       setSelectedStudyTopicId('');
+      setShowTopicManager(false);
     } catch (topicError) {
       console.error(topicError);
       setError('Failed to attach topic.');
@@ -714,6 +722,7 @@ const KnowledgeDetailPage: React.FC = () => {
         parentTopicId: '',
         description: '',
       }));
+      setShowTopicManager(false);
     } catch (topicError) {
       console.error(topicError);
       setError('Failed to create and attach topic.');
@@ -769,6 +778,7 @@ const KnowledgeDetailPage: React.FC = () => {
         relationType: relationPreset.defaultRelationType,
         note: '',
       });
+      setShowRelationComposer(false);
     } catch (relationError) {
       console.error(relationError);
       setError('Failed to create relation.');
@@ -806,6 +816,7 @@ const KnowledgeDetailPage: React.FC = () => {
         setNotes((current) => [createdNote, ...current]);
       });
       setNoteContent('');
+      setShowNoteComposer(false);
     } catch (noteError) {
       console.error(noteError);
       setError('Failed to save note.');
@@ -850,6 +861,7 @@ const KnowledgeDetailPage: React.FC = () => {
         details: '',
         dueAt: '',
       });
+      setShowTaskComposer(false);
     } catch (taskError) {
       console.error(taskError);
       setError('Failed to create task.');
@@ -922,6 +934,7 @@ const KnowledgeDetailPage: React.FC = () => {
         summary: '',
         body: '',
       });
+      setShowReviewComposer(false);
     } catch (reviewError) {
       console.error(reviewError);
       setError('Failed to save review.');
@@ -971,246 +984,234 @@ const KnowledgeDetailPage: React.FC = () => {
       </Link>
 
       <section className="knowledge-detail-hero">
-        <div className="knowledge-detail-title">
+        <div className="knowledge-detail-hero-main">
           <div className="knowledge-detail-badges">
             <span className="knowledge-detail-badge">{item.kind}</span>
             <span className="knowledge-detail-badge knowledge-detail-status">{item.status}</span>
           </div>
-          <h1>{item.title}</h1>
-          <div className="knowledge-detail-meta">
-            {creatorDisplay ? <span>{creatorDisplay}</span> : null}
-            {item.sourceName ? <span>{item.sourceName}</span> : null}
-            {item.publishedYear ? <span>{item.publishedYear}</span> : null}
-            {itemRecordDetail ? <span>{itemRecordDetail}</span> : null}
-            <span>Updated {formatDate(item.updatedAt)}</span>
+          <div className="knowledge-detail-title">
+            <h1>{item.title}</h1>
+            <div className="knowledge-detail-meta">
+              {creatorDisplay ? <span>{creatorDisplay}</span> : null}
+              {item.sourceName ? <span>{item.sourceName}</span> : null}
+              {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+              {itemRecordDetail ? <span>{itemRecordDetail}</span> : null}
+              <span>Updated {formatDate(item.updatedAt)}</span>
+            </div>
           </div>
           {item.summary ? <p>{item.summary}</p> : null}
         </div>
 
-        <div className="knowledge-detail-stats">
-          <div className="knowledge-detail-stat">
-            <strong>{itemStudyTopics.length}</strong>
-            <span>Topics</span>
-          </div>
-          <div className="knowledge-detail-stat">
-            <strong>{relations.length}</strong>
-            <span>Relations</span>
-          </div>
-          <div className="knowledge-detail-stat">
-            <strong>{notes.length}</strong>
-            <span>Notes</span>
-          </div>
-          <div className="knowledge-detail-stat">
-            <strong>{completedTasks}/{tasks.length}</strong>
-            <span>Tasks done</span>
-          </div>
-          <div className="knowledge-detail-stat">
-            <strong>{reviews.length}</strong>
-            <span>Reviews</span>
+        <div className="knowledge-detail-hero-actions">
+          <label className="knowledge-detail-inline-label knowledge-detail-inline-label-compact">
+            Status
+            <select
+              value={item.status}
+              onChange={(event) => handleItemStatusChange(event.target.value as KnowledgeItemStatus)}
+              disabled={statusSaving}
+            >
+              {itemStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="knowledge-detail-hero-action-row">
+            {item.sourceUrl ? (
+              <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="knowledge-detail-secondary-link">
+                Open source
+              </a>
+            ) : null}
           </div>
         </div>
       </section>
 
       {error ? <div className="knowledge-detail-error">{error}</div> : null}
 
-      <div className="knowledge-detail-grid">
-        <aside className="knowledge-detail-sidebar">
-          <section className="knowledge-detail-panel">
-            <span className="knowledge-detail-eyebrow">Overview</span>
-            <h2>Working context</h2>
-
-            <div className="knowledge-detail-field">
-              <label htmlFor="item-status">Status</label>
-              <select
-                id="item-status"
-                value={item.status}
-                onChange={(event) => handleItemStatusChange(event.target.value as KnowledgeItemStatus)}
-                disabled={statusSaving}
-              >
-                {itemStatusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
+      <div className="knowledge-detail-main">
+        <section className="knowledge-detail-panel">
+          <div className="knowledge-detail-section-head">
+            <div>
+              <span className="knowledge-detail-eyebrow">Record</span>
+              <h2>Item record</h2>
             </div>
+            <button
+              type="button"
+              className="knowledge-detail-secondary-button"
+              onClick={() => setShowRecordEditor((current) => !current)}
+            >
+              {showRecordEditor ? 'Hide editor' : 'Edit record'}
+            </button>
+          </div>
 
-            {item.sourceUrl ? (
-              <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="knowledge-detail-link">
-                Open source
-              </a>
-            ) : null}
+          {item.description ? <p className="knowledge-detail-copy">{item.description}</p> : null}
 
-            <div className="knowledge-detail-overview">
-              {item.description ? (
-                <p>{item.description}</p>
-              ) : (
-                <p>
-                  This workspace now covers notes, tasks, reviews, and the real topic layer. Subjects
-                  provide the synchronic taxonomy; topics are the contextual places where items actually
-                  live.
-                </p>
-              )}
-              <dl>
-                <div>
-                  <dt>Created</dt>
-                  <dd>{formatDate(item.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt>Last updated</dt>
-                  <dd>{formatDate(item.updatedAt)}</dd>
-                </div>
-                <div>
-                  <dt>Type</dt>
-                  <dd>{item.kind}</dd>
-                </div>
-                <div>
-                  <dt>Form</dt>
-                  <dd>{getItemFormLabel(item)}</dd>
-                </div>
-                {itemRecordDetail ? (
-                  <div>
-                    <dt>Record detail</dt>
-                    <dd>{itemRecordDetail}</dd>
-                  </div>
-                ) : null}
-              </dl>
-            </div>
-          </section>
-
-          <section className="knowledge-detail-panel">
-            <span className="knowledge-detail-eyebrow">Record</span>
-            <h2>Core item record</h2>
-            <p className="knowledge-detail-copy">{recordPreset.helperText}</p>
-
-            <form className="knowledge-detail-form" onSubmit={handleRecordSubmit}>
-              <label className="knowledge-detail-inline-label">
-                Title
-                <input
-                  value={recordForm.title}
-                  onChange={(event) =>
-                    setRecordForm((current) => ({
-                      ...current,
-                      title: event.target.value,
-                    }))
-                  }
-                  required
-                />
-              </label>
-
-              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
-                <label className="knowledge-detail-inline-label">
-                  {recordPreset.creatorLabel} Text Fallback
-                  <input
-                    value={recordForm.creator}
-                    onChange={(event) =>
-                      setRecordForm((current) => ({
-                        ...current,
-                        creator: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="knowledge-detail-inline-label">
-                  {recordPreset.sourceLabel}
-                  <input
-                    value={recordForm.sourceName}
-                    onChange={(event) =>
-                      setRecordForm((current) => ({
-                        ...current,
-                        sourceName: event.target.value,
-                      }))
-                    }
-                    placeholder={recordPreset.sourcePlaceholder}
-                  />
-                </label>
+          <div className="knowledge-detail-overview">
+            <dl className="knowledge-detail-fact-grid">
+              <div>
+                <dt>Created</dt>
+                <dd>{formatDate(item.createdAt)}</dd>
               </div>
+              <div>
+                <dt>Last updated</dt>
+                <dd>{formatDate(item.updatedAt)}</dd>
+              </div>
+              <div>
+                <dt>Type</dt>
+                <dd>{item.kind}</dd>
+              </div>
+              <div>
+                <dt>Form</dt>
+                <dd>{getItemFormLabel(item)}</dd>
+              </div>
+              {itemRecordDetail ? (
+                <div>
+                  <dt>Record detail</dt>
+                  <dd>{itemRecordDetail}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
 
-              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+          {showRecordEditor ? (
+            <div className="knowledge-detail-inline-panel">
+              <p className="knowledge-detail-copy">{recordPreset.helperText}</p>
+
+              <form className="knowledge-detail-form" onSubmit={handleRecordSubmit}>
                 <label className="knowledge-detail-inline-label">
-                  Source URL
+                  Title
                   <input
-                    type="url"
-                    value={recordForm.sourceUrl}
+                    value={recordForm.title}
                     onChange={(event) =>
                       setRecordForm((current) => ({
                         ...current,
-                        sourceUrl: event.target.value,
+                        title: event.target.value,
                       }))
                     }
+                    required
                   />
                 </label>
 
+                <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                  <label className="knowledge-detail-inline-label">
+                    {recordPreset.creatorLabel} Text Fallback
+                    <input
+                      value={recordForm.creator}
+                      onChange={(event) =>
+                        setRecordForm((current) => ({
+                          ...current,
+                          creator: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="knowledge-detail-inline-label">
+                    {recordPreset.sourceLabel}
+                    <input
+                      value={recordForm.sourceName}
+                      onChange={(event) =>
+                        setRecordForm((current) => ({
+                          ...current,
+                          sourceName: event.target.value,
+                        }))
+                      }
+                      placeholder={recordPreset.sourcePlaceholder}
+                    />
+                  </label>
+                </div>
+
+                <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                  <label className="knowledge-detail-inline-label">
+                    Source URL
+                    <input
+                      type="url"
+                      value={recordForm.sourceUrl}
+                      onChange={(event) =>
+                        setRecordForm((current) => ({
+                          ...current,
+                          sourceUrl: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="knowledge-detail-inline-label">
+                    {recordPreset.yearLabel}
+                    <input
+                      type="number"
+                      value={recordForm.publishedYear}
+                      onChange={(event) =>
+                        setRecordForm((current) => ({
+                          ...current,
+                          publishedYear: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+
                 <label className="knowledge-detail-inline-label">
-                  {recordPreset.yearLabel}
+                  {recordPreset.extraFieldLabel}
                   <input
                     type="number"
-                    value={recordForm.publishedYear}
+                    value={recordExtraFieldValue}
                     onChange={(event) =>
                       setRecordForm((current) => ({
                         ...current,
-                        publishedYear: event.target.value,
+                        pageCount:
+                          recordPreset.extraFieldName === 'pageCount'
+                            ? event.target.value
+                            : current.pageCount,
+                        durationMinutes:
+                          recordPreset.extraFieldName === 'durationMinutes'
+                            ? event.target.value
+                            : current.durationMinutes,
                       }))
                     }
+                    placeholder={recordPreset.extraFieldPlaceholder}
                   />
                 </label>
-              </div>
 
-              <label className="knowledge-detail-inline-label">
-                {recordPreset.extraFieldLabel}
-                <input
-                  type="number"
-                  value={recordExtraFieldValue}
-                  onChange={(event) =>
-                    setRecordForm((current) => ({
-                      ...current,
-                      pageCount:
-                        recordPreset.extraFieldName === 'pageCount'
-                          ? event.target.value
-                          : current.pageCount,
-                      durationMinutes:
-                        recordPreset.extraFieldName === 'durationMinutes'
-                          ? event.target.value
-                          : current.durationMinutes,
-                    }))
-                  }
-                  placeholder={recordPreset.extraFieldPlaceholder}
-                />
-              </label>
+                <label className="knowledge-detail-inline-label">
+                  Summary
+                  <textarea
+                    value={recordForm.summary}
+                    onChange={(event) =>
+                      setRecordForm((current) => ({
+                        ...current,
+                        summary: event.target.value,
+                      }))
+                    }
+                    placeholder="A short record-level description"
+                  />
+                </label>
 
-              <label className="knowledge-detail-inline-label">
-                Summary
-                <textarea
-                  value={recordForm.summary}
-                  onChange={(event) =>
-                    setRecordForm((current) => ({
-                      ...current,
-                      summary: event.target.value,
-                    }))
-                  }
-                  placeholder="A short record-level description"
-                />
-              </label>
+                <button type="submit" disabled={savingRecord}>
+                  {savingRecord ? 'Saving record...' : 'Save record'}
+                </button>
+              </form>
+            </div>
+          ) : null}
+        </section>
 
-              <button type="submit" disabled={savingRecord}>
-                {savingRecord ? 'Saving record...' : 'Save record'}
-              </button>
-            </form>
-          </section>
-        </aside>
-
-        <div className="knowledge-detail-main">
           <section className="knowledge-detail-panel">
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Topic Spine</span>
-                <h2>Topic placement</h2>
-                <p className="knowledge-detail-copy">
-                  Topic placement is the primary home of an item. Put the item into at least one topic
-                  before using entity or item relations for extra context.
-                </p>
+                <h2>
+                  Topic placement
+                  <span className="knowledge-detail-count-badge">{itemStudyTopics.length}</span>
+                </h2>
               </div>
+              <button
+                type="button"
+                className="knowledge-detail-secondary-button"
+                onClick={() => setShowTopicManager((current) => !current)}
+              >
+                {showTopicManager ? 'Hide topic tools' : 'Manage topics'}
+              </button>
             </div>
 
             <div className="knowledge-detail-chips">
@@ -1224,204 +1225,218 @@ const KnowledgeDetailPage: React.FC = () => {
                     <Link to={`/study-topics/${topic.id}`}>
                       {buildStudyTopicPath(topic, studyTopicMap, subjectMap)}
                     </Link>
-                    <button type="button" onClick={() => handleRemoveTopic(topic.id)}>
-                      Remove
-                    </button>
+                    {showTopicManager ? (
+                      <button type="button" onClick={() => handleRemoveTopic(topic.id)}>
+                        Remove
+                      </button>
+                    ) : null}
                   </div>
                 ))
               )}
             </div>
 
-            <form className="knowledge-detail-form knowledge-detail-form-row" onSubmit={handleAttachTopic}>
-              <select
-                value={selectedStudyTopicId}
-                onChange={(event) => setSelectedStudyTopicId(event.target.value)}
-                disabled={savingTopicAssignment || assignableStudyTopics.length === 0}
-              >
-                <option value="">Attach an existing topic</option>
-                {assignableStudyTopics.map(({ topic }) => (
-                  <option key={topic.id} value={topic.id}>
-                    {buildStudyTopicPath(topic, studyTopicMap, subjectMap)}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" disabled={savingTopicAssignment || !selectedStudyTopicId}>
-                {savingTopicAssignment ? 'Attaching...' : 'Attach topic'}
-              </button>
-            </form>
-
-            <form className="knowledge-detail-form" onSubmit={handleCreateTopic}>
-              <input
-                value={newStudyTopicForm.name}
-                onChange={(event) =>
-                  setNewStudyTopicForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="Create a new topic in the right subject branch"
-              />
-              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-relations">
-                <label>
-                  Subject
+            {showTopicManager ? (
+              <div className="knowledge-detail-inline-panel">
+                <form className="knowledge-detail-form knowledge-detail-form-row" onSubmit={handleAttachTopic}>
                   <select
-                    value={newStudyTopicForm.subjectId}
-                    onChange={(event) =>
-                      setNewStudyTopicForm((current) => ({
-                        ...current,
-                        subjectId: event.target.value,
-                        parentTopicId: '',
-                      }))
-                    }
+                    value={selectedStudyTopicId}
+                    onChange={(event) => setSelectedStudyTopicId(event.target.value)}
+                    disabled={savingTopicAssignment || assignableStudyTopics.length === 0}
                   >
-                    <option value="">Choose a subject</option>
-                    {orderedSubjects.map(({ subject, depth }) => (
-                      <option key={subject.id} value={subject.id}>
-                        {`${'  '.repeat(depth)}${subject.name}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Parent topic
-                  <select
-                    value={newStudyTopicForm.parentTopicId}
-                    onChange={(event) =>
-                      setNewStudyTopicForm((current) => ({
-                        ...current,
-                        parentTopicId: event.target.value,
-                      }))
-                    }
-                    disabled={!selectedCreateSubject}
-                  >
-                    <option value="">No parent topic</option>
-                    {parentTopicOptions.map(({ topic, depth }) => (
+                    <option value="">Attach an existing topic</option>
+                    {assignableStudyTopics.map(({ topic }) => (
                       <option key={topic.id} value={topic.id}>
-                        {`${'  '.repeat(depth)}${topic.name}`}
+                        {buildStudyTopicPath(topic, studyTopicMap, subjectMap)}
                       </option>
                     ))}
                   </select>
-                </label>
-                <label>
-                  Description
+                  <button type="submit" disabled={savingTopicAssignment || !selectedStudyTopicId}>
+                    {savingTopicAssignment ? 'Attaching...' : 'Attach topic'}
+                  </button>
+                </form>
+
+                <form className="knowledge-detail-form" onSubmit={handleCreateTopic}>
                   <input
-                    value={newStudyTopicForm.description}
+                    value={newStudyTopicForm.name}
                     onChange={(event) =>
                       setNewStudyTopicForm((current) => ({
                         ...current,
-                        description: event.target.value,
+                        name: event.target.value,
                       }))
                     }
-                    placeholder="Optional topic note"
+                    placeholder="Create a new topic in the right subject branch"
                   />
-                </label>
+                  <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-relations">
+                    <label>
+                      Subject
+                      <select
+                        value={newStudyTopicForm.subjectId}
+                        onChange={(event) =>
+                          setNewStudyTopicForm((current) => ({
+                            ...current,
+                            subjectId: event.target.value,
+                            parentTopicId: '',
+                          }))
+                        }
+                      >
+                        <option value="">Choose a subject</option>
+                        {orderedSubjects.map(({ subject, depth }) => (
+                          <option key={subject.id} value={subject.id}>
+                            {`${'  '.repeat(depth)}${subject.name}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Parent topic
+                      <select
+                        value={newStudyTopicForm.parentTopicId}
+                        onChange={(event) =>
+                          setNewStudyTopicForm((current) => ({
+                            ...current,
+                            parentTopicId: event.target.value,
+                          }))
+                        }
+                        disabled={!selectedCreateSubject}
+                      >
+                        <option value="">No parent topic</option>
+                        {parentTopicOptions.map(({ topic, depth }) => (
+                          <option key={topic.id} value={topic.id}>
+                            {`${'  '.repeat(depth)}${topic.name}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Description
+                      <input
+                        value={newStudyTopicForm.description}
+                        onChange={(event) =>
+                          setNewStudyTopicForm((current) => ({
+                            ...current,
+                            description: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional topic note"
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" disabled={creatingTopic || !newStudyTopicForm.subjectId}>
+                    {creatingTopic ? 'Creating topic...' : 'Create and attach topic'}
+                  </button>
+                </form>
               </div>
-              <button type="submit" disabled={creatingTopic || !newStudyTopicForm.subjectId}>
-                {creatingTopic ? 'Creating topic...' : 'Create and attach topic'}
-              </button>
-            </form>
+            ) : null}
           </section>
 
           <section className="knowledge-detail-panel">
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Relations</span>
-                <h2>Context links</h2>
-                <p className="knowledge-detail-copy">
-                  Use relations for provenance, historical setting, and cross-item references after the
-                  topic home is in place.
-                </p>
+                <h2>
+                  Context links
+                  <span className="knowledge-detail-count-badge">{relations.length}</span>
+                </h2>
               </div>
+              <button
+                type="button"
+                className="knowledge-detail-secondary-button"
+                onClick={() => setShowRelationComposer((current) => !current)}
+              >
+                {showRelationComposer ? 'Hide relation form' : 'Add relation'}
+              </button>
             </div>
 
-            <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
-              <div className="knowledge-detail-note">
-                <strong>Current guidance</strong>
-                <span>{relationPreset.helperText}</span>
-              </div>
-              <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
-                <label>
-                  Target type
-                  <select
-                    value={relationForm.toEntityType}
-                    onChange={(event) =>
-                      setRelationForm((current) => ({
-                        ...current,
-                        toEntityType: event.target.value as KnowledgeRelationEntityType,
-                        toEntityId: '',
-                        relationType: relationPreset.defaultRelationType,
-                      }))
-                    }
-                  >
-                    <option value="reference_entity">Reference entity</option>
-                    <option value="knowledge_item">Item</option>
-                  </select>
-                </label>
-                <label>
-                  Relation
-                  <select
-                    value={relationForm.relationType}
-                    onChange={(event) =>
-                      setRelationForm((current) => ({
-                        ...current,
-                        relationType: event.target.value as KnowledgeRelationType,
-                      }))
-                    }
-                  >
-                    {relationPreset.allowedRelationTypes.map((relationType) => (
-                      <option key={relationType} value={relationType}>
-                        {formatRelationType(relationType)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  {relationForm.toEntityType === 'reference_entity' ? 'Target entity' : 'Target item'}
-                  <select
-                    value={relationForm.toEntityId}
-                    onChange={(event) =>
-                      setRelationForm((current) => ({
-                        ...current,
-                        toEntityId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">
-                      {relationPreset.targetPrompt}
-                    </option>
-                    {relationForm.toEntityType === 'reference_entity'
-                      ? relationReferenceTargets.map((candidate) => {
-                          const timespan = formatReferenceTimespan(candidate);
-
-                          return (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.title}
-                              {timespan ? ` (${candidate.kind}, ${timespan})` : ` (${candidate.kind})`}
-                            </option>
-                          );
-                        })
-                      : relationTargets.map((candidate) => (
-                          <option key={candidate.id} value={candidate.id}>
-                            {candidate.title}
+            {showRelationComposer ? (
+              <div className="knowledge-detail-inline-panel">
+                <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
+                  <div className="knowledge-detail-note">
+                    <strong>Current guidance</strong>
+                    <span>{relationPreset.helperText}</span>
+                  </div>
+                  <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-wide">
+                    <label>
+                      Target type
+                      <select
+                        value={relationForm.toEntityType}
+                        onChange={(event) =>
+                          setRelationForm((current) => ({
+                            ...current,
+                            toEntityType: event.target.value as KnowledgeRelationEntityType,
+                            toEntityId: '',
+                            relationType: relationPreset.defaultRelationType,
+                          }))
+                        }
+                      >
+                        <option value="reference_entity">Reference entity</option>
+                        <option value="knowledge_item">Item</option>
+                      </select>
+                    </label>
+                    <label>
+                      Relation
+                      <select
+                        value={relationForm.relationType}
+                        onChange={(event) =>
+                          setRelationForm((current) => ({
+                            ...current,
+                            relationType: event.target.value as KnowledgeRelationType,
+                          }))
+                        }
+                      >
+                        {relationPreset.allowedRelationTypes.map((relationType) => (
+                          <option key={relationType} value={relationType}>
+                            {formatRelationType(relationType)}
                           </option>
                         ))}
-                  </select>
-                </label>
+                      </select>
+                    </label>
+                    <label>
+                      {relationForm.toEntityType === 'reference_entity' ? 'Target entity' : 'Target item'}
+                      <select
+                        value={relationForm.toEntityId}
+                        onChange={(event) =>
+                          setRelationForm((current) => ({
+                            ...current,
+                            toEntityId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">{relationPreset.targetPrompt}</option>
+                        {relationForm.toEntityType === 'reference_entity'
+                          ? relationReferenceTargets.map((candidate) => {
+                              const timespan = formatReferenceTimespan(candidate);
+
+                              return (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.title}
+                                  {timespan ? ` (${candidate.kind}, ${timespan})` : ` (${candidate.kind})`}
+                                </option>
+                              );
+                            })
+                          : relationTargets.map((candidate) => (
+                              <option key={candidate.id} value={candidate.id}>
+                                {candidate.title}
+                              </option>
+                            ))}
+                      </select>
+                    </label>
+                  </div>
+                  <input
+                    value={relationForm.note}
+                    onChange={(event) =>
+                      setRelationForm((current) => ({
+                        ...current,
+                        note: event.target.value,
+                      }))
+                    }
+                    placeholder={relationPreset.notePlaceholder}
+                  />
+                  <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
+                    {savingRelation ? 'Linking...' : 'Add relation'}
+                  </button>
+                </form>
               </div>
-              <input
-                value={relationForm.note}
-                onChange={(event) =>
-                  setRelationForm((current) => ({
-                    ...current,
-                    note: event.target.value,
-                  }))
-                }
-                placeholder={relationPreset.notePlaceholder}
-              />
-              <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
-                {savingRelation ? 'Linking...' : 'Add relation'}
-              </button>
-            </form>
+            ) : null}
 
             {relations.length === 0 ? (
               <div className="knowledge-detail-empty">No connections yet.</div>
@@ -1460,20 +1475,34 @@ const KnowledgeDetailPage: React.FC = () => {
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Notes</span>
-                <h2>Working notes</h2>
+                <h2>
+                  Working notes
+                  <span className="knowledge-detail-count-badge">{notes.length}</span>
+                </h2>
               </div>
+              <button
+                type="button"
+                className="knowledge-detail-secondary-button"
+                onClick={() => setShowNoteComposer((current) => !current)}
+              >
+                {showNoteComposer ? 'Hide note form' : 'Add note'}
+              </button>
             </div>
 
-            <form className="knowledge-detail-form" onSubmit={handleNoteSubmit}>
-              <textarea
-                value={noteContent}
-                onChange={(event) => setNoteContent(event.target.value)}
-                placeholder="Capture an observation, excerpt, or connection."
-              />
-              <button type="submit" disabled={savingNote}>
-                {savingNote ? 'Saving note...' : 'Add note'}
-              </button>
-            </form>
+            {showNoteComposer ? (
+              <div className="knowledge-detail-inline-panel">
+                <form className="knowledge-detail-form" onSubmit={handleNoteSubmit}>
+                  <textarea
+                    value={noteContent}
+                    onChange={(event) => setNoteContent(event.target.value)}
+                    placeholder="Capture an observation, excerpt, or connection."
+                  />
+                  <button type="submit" disabled={savingNote}>
+                    {savingNote ? 'Saving note...' : 'Add note'}
+                  </button>
+                </form>
+              </div>
+            ) : null}
 
             {notes.length === 0 ? (
               <div className="knowledge-detail-empty">No notes yet.</div>
@@ -1498,50 +1527,66 @@ const KnowledgeDetailPage: React.FC = () => {
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Tasks</span>
-                <h2>Follow-up work</h2>
+                <h2>
+                  Follow-up work
+                  <span className="knowledge-detail-count-badge">
+                    {completedTasks}/{tasks.length} done
+                  </span>
+                </h2>
               </div>
+              <button
+                type="button"
+                className="knowledge-detail-secondary-button"
+                onClick={() => setShowTaskComposer((current) => !current)}
+              >
+                {showTaskComposer ? 'Hide task form' : 'Add task'}
+              </button>
             </div>
 
-            <form className="knowledge-detail-form" onSubmit={handleTaskSubmit}>
-              <input
-                value={taskForm.title}
-                onChange={(event) =>
-                  setTaskForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="Write a short task title"
-              />
-              <textarea
-                value={taskForm.details}
-                onChange={(event) =>
-                  setTaskForm((current) => ({
-                    ...current,
-                    details: event.target.value,
-                  }))
-                }
-                placeholder="Optional detail or next action"
-              />
-              <div className="knowledge-detail-inline-fields">
-                <label>
-                  Due date
+            {showTaskComposer ? (
+              <div className="knowledge-detail-inline-panel">
+                <form className="knowledge-detail-form" onSubmit={handleTaskSubmit}>
                   <input
-                    type="date"
-                    value={taskForm.dueAt}
+                    value={taskForm.title}
                     onChange={(event) =>
                       setTaskForm((current) => ({
                         ...current,
-                        dueAt: event.target.value,
+                        title: event.target.value,
                       }))
                     }
+                    placeholder="Write a short task title"
                   />
-                </label>
+                  <textarea
+                    value={taskForm.details}
+                    onChange={(event) =>
+                      setTaskForm((current) => ({
+                        ...current,
+                        details: event.target.value,
+                      }))
+                    }
+                    placeholder="Optional detail or next action"
+                  />
+                  <div className="knowledge-detail-inline-fields">
+                    <label>
+                      Due date
+                      <input
+                        type="date"
+                        value={taskForm.dueAt}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({
+                            ...current,
+                            dueAt: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" disabled={savingTask}>
+                    {savingTask ? 'Saving task...' : 'Add task'}
+                  </button>
+                </form>
               </div>
-              <button type="submit" disabled={savingTask}>
-                {savingTask ? 'Saving task...' : 'Add task'}
-              </button>
-            </form>
+            ) : null}
 
             {tasks.length === 0 ? (
               <div className="knowledge-detail-empty">No follow-up work yet.</div>
@@ -1585,51 +1630,65 @@ const KnowledgeDetailPage: React.FC = () => {
             <div className="knowledge-detail-section-head">
               <div>
                 <span className="knowledge-detail-eyebrow">Reviews</span>
-                <h2>Reflections and verdicts</h2>
+                <h2>
+                  Reflections and verdicts
+                  <span className="knowledge-detail-count-badge">{reviews.length}</span>
+                </h2>
               </div>
+              <button
+                type="button"
+                className="knowledge-detail-secondary-button"
+                onClick={() => setShowReviewComposer((current) => !current)}
+              >
+                {showReviewComposer ? 'Hide review form' : 'Add review'}
+              </button>
             </div>
 
-            <form className="knowledge-detail-form" onSubmit={handleReviewSubmit}>
-              <label className="knowledge-detail-inline-label">
-                Score
-                <input
-                  type="number"
-                  min="1"
-                  max="5"
-                  value={reviewForm.score}
-                  onChange={(event) =>
-                    setReviewForm((current) => ({
-                      ...current,
-                      score: event.target.value,
-                    }))
-                  }
-                  placeholder="1-5"
-                />
-              </label>
-              <input
-                value={reviewForm.summary}
-                onChange={(event) =>
-                  setReviewForm((current) => ({
-                    ...current,
-                    summary: event.target.value,
-                  }))
-                }
-                placeholder="Short verdict"
-              />
-              <textarea
-                value={reviewForm.body}
-                onChange={(event) =>
-                  setReviewForm((current) => ({
-                    ...current,
-                    body: event.target.value,
-                  }))
-                }
-                placeholder="What was valuable, weak, surprising, or worth revisiting?"
-              />
-              <button type="submit" disabled={savingReview}>
-                {savingReview ? 'Saving review...' : 'Add review'}
-              </button>
-            </form>
+            {showReviewComposer ? (
+              <div className="knowledge-detail-inline-panel">
+                <form className="knowledge-detail-form" onSubmit={handleReviewSubmit}>
+                  <label className="knowledge-detail-inline-label">
+                    Score
+                    <input
+                      type="number"
+                      min="1"
+                      max="5"
+                      value={reviewForm.score}
+                      onChange={(event) =>
+                        setReviewForm((current) => ({
+                          ...current,
+                          score: event.target.value,
+                        }))
+                      }
+                      placeholder="1-5"
+                    />
+                  </label>
+                  <input
+                    value={reviewForm.summary}
+                    onChange={(event) =>
+                      setReviewForm((current) => ({
+                        ...current,
+                        summary: event.target.value,
+                      }))
+                    }
+                    placeholder="Short verdict"
+                  />
+                  <textarea
+                    value={reviewForm.body}
+                    onChange={(event) =>
+                      setReviewForm((current) => ({
+                        ...current,
+                        body: event.target.value,
+                      }))
+                    }
+                    placeholder="What was valuable, weak, surprising, or worth revisiting?"
+                  />
+                  <button type="submit" disabled={savingReview}>
+                    {savingReview ? 'Saving review...' : 'Add review'}
+                  </button>
+                </form>
+              </div>
+            ) : null}
 
             {reviews.length === 0 ? (
               <div className="knowledge-detail-empty">No reviews yet.</div>
@@ -1657,7 +1716,6 @@ const KnowledgeDetailPage: React.FC = () => {
               </div>
             )}
           </section>
-        </div>
       </div>
     </div>
   );
