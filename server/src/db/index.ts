@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
 import { syncLegacyReferenceEntities } from '../lib/referenceEntities';
+import { syncLegacyStudyTopics } from '../lib/studyTopics';
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data.db');
 let dbPromise: Promise<Database<sqlite3.Database, sqlite3.Statement>> | null = null;
@@ -176,6 +177,20 @@ export async function initializeDatabase() {
       updatedAt TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS study_topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subjectId INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      summary TEXT,
+      description TEXT,
+      parentTopicId INTEGER,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (subjectId) REFERENCES topics(id) ON DELETE CASCADE,
+      FOREIGN KEY (parentTopicId) REFERENCES study_topics(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS knowledge_item_topics (
       knowledgeItemId INTEGER NOT NULL,
       topicId INTEGER NOT NULL,
@@ -183,6 +198,15 @@ export async function initializeDatabase() {
       PRIMARY KEY (knowledgeItemId, topicId),
       FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE,
       FOREIGN KEY (topicId) REFERENCES topics(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_item_study_topics (
+      knowledgeItemId INTEGER NOT NULL,
+      studyTopicId INTEGER NOT NULL,
+      sortOrder INTEGER DEFAULT 0,
+      PRIMARY KEY (knowledgeItemId, studyTopicId),
+      FOREIGN KEY (knowledgeItemId) REFERENCES knowledge_items(id) ON DELETE CASCADE,
+      FOREIGN KEY (studyTopicId) REFERENCES study_topics(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS knowledge_notes (
@@ -280,6 +304,10 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
     CREATE INDEX IF NOT EXISTS idx_reference_entities_kind ON reference_entities(kind);
     CREATE INDEX IF NOT EXISTS idx_reference_entities_title ON reference_entities(lower(title));
+    CREATE INDEX IF NOT EXISTS idx_study_topics_subject ON study_topics(subjectId, lower(name));
+    CREATE INDEX IF NOT EXISTS idx_study_topics_parent ON study_topics(parentTopicId, lower(name));
+    CREATE INDEX IF NOT EXISTS idx_knowledge_item_study_topics_item
+      ON knowledge_item_study_topics(knowledgeItemId, sortOrder, studyTopicId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_notes_item ON knowledge_notes(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_relations_from
       ON knowledge_relations(fromEntityType, fromEntityId, createdAt DESC);
@@ -321,6 +349,7 @@ export async function initializeDatabase() {
   );
 
   await syncLegacyReferenceEntities(db);
+  await syncLegacyStudyTopics(db);
 
   console.log('Database initialized successfully with new schema.');
   return db;

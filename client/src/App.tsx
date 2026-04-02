@@ -8,6 +8,7 @@ import ReferenceEntitiesPage from './pages/ReferenceEntitiesPage';
 import ReferenceEntityPage from './pages/ReferenceEntityPage';
 import TopicTreePage from './pages/TopicTreePage';
 import TopicPage from './pages/TopicPage';
+import StudyTopicPage from './pages/StudyTopicPage';
 
 const App: React.FC = () => {
   return (
@@ -66,6 +67,7 @@ const App: React.FC = () => {
             <Route path="/knowledge/:id" element={<KnowledgeDetailPage />} />
             <Route path="/topics" element={<TopicTreePage />} />
             <Route path="/topics/:id" element={<TopicPage />} />
+            <Route path="/study-topics/:id" element={<StudyTopicPage />} />
             <Route path="/entities" element={<ReferenceEntitiesPage />} />
             <Route path="/entities/:id" element={<ReferenceEntityPage />} />
             <Route path="/world-history" element={<WorldHistoryPage />} />

@@ -37,12 +37,12 @@ export const getAllTopics = asyncErrorHandler(async (_req: Request, res: Respons
 export const getTopicById = asyncErrorHandler(async (req: Request, res: Response) => {
   const topicId = parseId(req.params.id);
   if (!topicId) {
-    return res.status(400).json({ message: 'Invalid topic id' });
+    return res.status(400).json({ message: 'Invalid subject id' });
   }
 
   const topic = await getTopicSummaryById(topicId);
   if (!topic) {
-    return res.status(404).json({ message: 'Topic not found' });
+    return res.status(404).json({ message: 'Subject not found' });
   }
 
   res.json(topic);
@@ -51,12 +51,12 @@ export const getTopicById = asyncErrorHandler(async (req: Request, res: Response
 export const getKnowledgeItemsByTopic = asyncErrorHandler(async (req: Request, res: Response) => {
   const topicId = parseId(req.params.id);
   if (!topicId) {
-    return res.status(400).json({ message: 'Invalid topic id' });
+    return res.status(400).json({ message: 'Invalid subject id' });
   }
 
   const topic = await getTopicSummaryById(topicId);
   if (!topic) {
-    return res.status(404).json({ message: 'Topic not found' });
+    return res.status(404).json({ message: 'Subject not found' });
   }
 
   res.json(await listKnowledgeItemsForTopic(topicId));
@@ -68,17 +68,17 @@ export const createTopic = asyncErrorHandler(async (req: Request, res: Response)
   const name = typeof newTopic.name === 'string' ? newTopic.name.trim() : '';
 
   if (!name) {
-    return res.status(400).json({ message: 'Topic name is required' });
+    return res.status(400).json({ message: 'Subject name is required' });
   }
 
   const requestedParentTopicId = newTopic.parentTopicId ? parseId(newTopic.parentTopicId) : null;
   if (newTopic.parentTopicId !== undefined && !requestedParentTopicId) {
-    return res.status(400).json({ message: 'Invalid parent topic id' });
+    return res.status(400).json({ message: 'Invalid parent subject id' });
   }
 
   const isOntologyRoot = name.toLowerCase() === 'ontology';
   if (isOntologyRoot && requestedParentTopicId) {
-    return res.status(400).json({ message: 'Ontology must remain the root topic' });
+    return res.status(400).json({ message: 'Ontology must remain the root subject' });
   }
 
   let parentTopicId = requestedParentTopicId;
@@ -91,7 +91,7 @@ export const createTopic = asyncErrorHandler(async (req: Request, res: Response)
   if (parentTopicId) {
     const parent = await db.get('SELECT id FROM topics WHERE id = ?', parentTopicId);
     if (!parent) {
-      return res.status(404).json({ message: 'Parent topic not found' });
+      return res.status(404).json({ message: 'Parent subject not found' });
     }
   }
 
@@ -129,10 +129,10 @@ export const createTopic = asyncErrorHandler(async (req: Request, res: Response)
   };
 
   await recordActivityEvent({
-    type: 'topic_created',
-    entityType: 'topic',
+    type: 'subject_created',
+    entityType: 'subject',
     entityId: topic.id,
-    message: `Created topic "${topic.name}"`,
+    message: `Created subject "${topic.name}"`,
     metadata: {
       slug: topic.slug,
       parentTopicId: topic.parentTopicId,

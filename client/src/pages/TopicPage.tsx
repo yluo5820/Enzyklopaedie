@@ -1,25 +1,8 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
-import type {
-  KnowledgeItem,
-  KnowledgeRelationDetail,
-  KnowledgeRelationType,
-  ReferenceEntity,
-  TopicSummary,
-} from '@enzyklopaedie/shared';
+import type { StudyTopicSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
-import {
-  createTopic,
-  createTopicRelation,
-  deleteTopicRelation,
-  fetchReferenceEntities,
-  fetchTopic,
-  fetchTopicKnowledgeItems,
-  fetchTopicRelations,
-  fetchTopics,
-} from '../api';
+import { createStudyTopic, createTopic, fetchStudyTopics, fetchTopic, fetchTopics } from '../api';
 import './TopicPage.css';
-
-const relationTypeOptions: KnowledgeRelationType[] = ['about', 'related_to', 'during', 'located_in', 'part_of'];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -28,68 +11,71 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
-const formatRelationType = (value: KnowledgeRelationType) => value.replace(/_/g, ' ');
+const orderStudyTopics = (studyTopics: StudyTopicSummary[]) => {
+  const children = new Map<number | null, StudyTopicSummary[]>();
 
-const formatYear = (value?: number) => {
-  if (value === undefined) return null;
-  if (value < 0) return `${Math.abs(value)} BCE`;
-  if (value > 0) return `${value} CE`;
-  return 'Year 0';
-};
+  for (const topic of studyTopics) {
+    const key = topic.parentTopicId ?? null;
+    const branch = children.get(key) ?? [];
+    branch.push(topic);
+    children.set(key, branch);
+  }
 
-const formatReferenceTimespan = (entity: ReferenceEntity) => {
-  const start = formatYear(entity.startYear);
-  const end = formatYear(entity.endYear);
+  for (const branch of children.values()) {
+    branch.sort((left, right) => left.name.localeCompare(right.name));
+  }
 
-  if (start && end) return `${start} - ${end}`;
-  return start || end || null;
+  const ordered: Array<{ topic: StudyTopicSummary; depth: number }> = [];
+  const visit = (parentTopicId: number | null, depth: number) => {
+    for (const topic of children.get(parentTopicId) ?? []) {
+      ordered.push({ topic, depth });
+      visit(topic.id, depth + 1);
+    }
+  };
+
+  visit(null, 0);
+  return ordered;
 };
 
 const TopicPage: React.FC = () => {
   const { id } = useParams();
-  const topicId = Number(id);
+  const subjectId = Number(id);
 
-  const [topic, setTopic] = useState<TopicSummary | null>(null);
-  const [topics, setTopics] = useState<TopicSummary[]>([]);
-  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
-  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
-  const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
+  const [subject, setSubject] = useState<TopicSummary | null>(null);
+  const [subjects, setSubjects] = useState<TopicSummary[]>([]);
+  const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [creatingChildTopic, setCreatingChildTopic] = useState(false);
-  const [savingRelation, setSavingRelation] = useState(false);
-  const [childTopicForm, setChildTopicForm] = useState({
+  const [creatingChildSubject, setCreatingChildSubject] = useState(false);
+  const [creatingStudyTopic, setCreatingStudyTopic] = useState(false);
+  const [childSubjectForm, setChildSubjectForm] = useState({
     name: '',
     description: '',
   });
-  const [relationForm, setRelationForm] = useState({
-    toEntityId: '',
-    relationType: 'about' as KnowledgeRelationType,
-    note: '',
+  const [studyTopicForm, setStudyTopicForm] = useState({
+    name: '',
+    parentTopicId: '',
+    description: '',
   });
 
   useEffect(() => {
-    if (!Number.isInteger(topicId) || topicId <= 0) {
+    if (!Number.isInteger(subjectId) || subjectId <= 0) {
       setError('Invalid subject.');
       setLoading(false);
       return;
     }
 
-    const loadTopicPage = async () => {
+    const loadSubjectPage = async () => {
       try {
-        const [fetchedTopic, fetchedTopics, fetchedKnowledgeItems, fetchedReferenceEntities, fetchedRelations] = await Promise.all([
-          fetchTopic(topicId),
+        const [fetchedSubject, fetchedSubjects, fetchedStudyTopics] = await Promise.all([
+          fetchTopic(subjectId),
           fetchTopics(),
-          fetchTopicKnowledgeItems(topicId),
-          fetchReferenceEntities(),
-          fetchTopicRelations(topicId),
+          fetchStudyTopics(subjectId),
         ]);
 
-        setTopic(fetchedTopic);
-        setTopics(fetchedTopics);
-        setKnowledgeItems(fetchedKnowledgeItems);
-        setReferenceEntities(fetchedReferenceEntities);
-        setRelations(fetchedRelations);
+        setSubject(fetchedSubject);
+        setSubjects(fetchedSubjects);
+        setStudyTopics(fetchedStudyTopics);
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load subject page.');
@@ -98,31 +84,30 @@ const TopicPage: React.FC = () => {
       }
     };
 
-    loadTopicPage();
-  }, [topicId]);
+    loadSubjectPage();
+  }, [subjectId]);
 
-  const topicMap = useMemo(() => new Map(topics.map((entry) => [entry.id, entry])), [topics]);
-  const childTopics = useMemo(
-    () => topics.filter((entry) => entry.parentTopicId === topic?.id).sort((left, right) => left.name.localeCompare(right.name)),
-    [topic?.id, topics]
+  const subjectMap = useMemo(() => new Map(subjects.map((entry) => [entry.id, entry])), [subjects]);
+  const parentSubject = useMemo(
+    () => (subject?.parentTopicId ? subjectMap.get(subject.parentTopicId) ?? null : null),
+    [subject?.parentTopicId, subjectMap]
   );
-  const parentTopic = useMemo(
-    () => (topic?.parentTopicId ? topicMap.get(topic.parentTopicId) ?? null : null),
-    [topic?.parentTopicId, topicMap]
-  );
-  const relationTargets = useMemo(
-    () => [...referenceEntities].sort((left, right) => left.title.localeCompare(right.title)),
-    [referenceEntities]
+  const childSubjects = useMemo(
+    () =>
+      subjects
+        .filter((entry) => entry.parentTopicId === subject?.id)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [subject?.id, subjects]
   );
   const lineage = useMemo(() => {
-    if (!topic) return [];
+    if (!subject) return [];
 
-    const path: TopicSummary[] = [topic];
-    let currentParentId = topic.parentTopicId;
+    const path: TopicSummary[] = [subject];
+    let currentParentId = subject.parentTopicId;
     let guard = 0;
 
     while (currentParentId && guard < 16) {
-      const parent = topicMap.get(currentParentId);
+      const parent = subjectMap.get(currentParentId);
       if (!parent) break;
       path.unshift(parent);
       currentParentId = parent.parentTopicId;
@@ -130,40 +115,42 @@ const TopicPage: React.FC = () => {
     }
 
     return path;
-  }, [topic, topicMap]);
+  }, [subject, subjectMap]);
+  const orderedStudyTopics = useMemo(() => orderStudyTopics(studyTopics), [studyTopics]);
 
-  const handleCreateChildTopic = async (event: React.FormEvent) => {
+  const handleCreateChildSubject = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!topic || !childTopicForm.name.trim()) return;
+    if (!subject || !childSubjectForm.name.trim()) return;
 
-    setCreatingChildTopic(true);
+    setCreatingChildSubject(true);
     setError(null);
 
     try {
-      const createdTopic = await createTopic({
-        name: childTopicForm.name.trim(),
-        parentTopicId: topic.id,
-        description: childTopicForm.description.trim() || undefined,
+      const createdSubject = await createTopic({
+        name: childSubjectForm.name.trim(),
+        parentTopicId: subject.id,
+        description: childSubjectForm.description.trim() || undefined,
       });
 
-      const nextTopic: TopicSummary = {
-        ...createdTopic,
+      const nextSubject: TopicSummary = {
+        ...createdSubject,
         knowledgeItemCount: 0,
         childTopicCount: 0,
+        topicCount: 0,
       };
 
       startTransition(() => {
-        setTopics((current) =>
-          current.some((entry) => entry.id === nextTopic.id) ? current : [...current, nextTopic]
+        setSubjects((current) =>
+          current.some((entry) => entry.id === nextSubject.id) ? current : [...current, nextSubject]
         );
-        setTopic((current) =>
-          current && current.id === topic.id
+        setSubject((current) =>
+          current && current.id === subject.id
             ? { ...current, childTopicCount: current.childTopicCount + 1 }
             : current
         );
       });
 
-      setChildTopicForm({
+      setChildSubjectForm({
         name: '',
         description: '',
       });
@@ -171,62 +158,49 @@ const TopicPage: React.FC = () => {
       console.error(createError);
       setError('Failed to create child subject.');
     } finally {
-      setCreatingChildTopic(false);
+      setCreatingChildSubject(false);
     }
   };
 
-  const handleCreateRelation = async (event: React.FormEvent) => {
+  const handleCreateStudyTopic = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!topic || !relationForm.toEntityId) return;
+    if (!subject || !studyTopicForm.name.trim()) return;
 
-    setSavingRelation(true);
+    setCreatingStudyTopic(true);
     setError(null);
 
     try {
-      const relation = await createTopicRelation(topic.id, {
-        toEntityType: 'reference_entity',
-        toEntityId: Number(relationForm.toEntityId),
-        relationType: relationForm.relationType,
-        note: relationForm.note.trim() || undefined,
+      const createdStudyTopic = await createStudyTopic({
+        subjectId: subject.id,
+        name: studyTopicForm.name.trim(),
+        parentTopicId: studyTopicForm.parentTopicId ? Number(studyTopicForm.parentTopicId) : undefined,
+        description: studyTopicForm.description.trim() || undefined,
       });
 
       startTransition(() => {
-        setRelations((current) => {
-          const existingIndex = current.findIndex((entry) => entry.id === relation.id);
-          if (existingIndex >= 0) {
-            const next = [...current];
-            next[existingIndex] = relation;
-            return next;
-          }
-
-          return [relation, ...current];
-        });
+        setStudyTopics((current) =>
+          current.some((entry) => entry.id === createdStudyTopic.id)
+            ? current
+            : [...current, createdStudyTopic]
+        );
+        setSubject((current) =>
+          current && current.id === subject.id
+            ? { ...current, topicCount: current.topicCount + 1 }
+            : current
+        );
       });
 
-      setRelationForm({
-        toEntityId: '',
-        relationType: 'about',
-        note: '',
-      });
-    } catch (relationError) {
-      console.error(relationError);
-      setError('Failed to connect subject to reference entity.');
+      setStudyTopicForm((current) => ({
+        ...current,
+        name: '',
+        parentTopicId: '',
+        description: '',
+      }));
+    } catch (createError) {
+      console.error(createError);
+      setError('Failed to create topic.');
     } finally {
-      setSavingRelation(false);
-    }
-  };
-
-  const handleDeleteRelation = async (relationId: number) => {
-    if (!topic) return;
-
-    try {
-      await deleteTopicRelation(topic.id, relationId);
-      startTransition(() => {
-        setRelations((current) => current.filter((relation) => relation.id !== relationId));
-      });
-    } catch (relationError) {
-      console.error(relationError);
-      setError('Failed to delete subject relation.');
+      setCreatingStudyTopic(false);
     }
   };
 
@@ -238,7 +212,7 @@ const TopicPage: React.FC = () => {
     );
   }
 
-  if (!topic) {
+  if (!subject) {
     return (
       <div className="topic-page">
         <div className="topic-page-empty">{error || 'Subject not found.'}</div>
@@ -255,23 +229,27 @@ const TopicPage: React.FC = () => {
       <section className="topic-page-hero">
         <div>
           <span className="topic-page-eyebrow">Subject Page</span>
-          <h1>{topic.name}</h1>
+          <h1>{subject.name}</h1>
           <p>
-            {topic.description ||
-              'This subject page is the current home for one discipline or sub-discipline in the encyclopedia.'}
+            {subject.description ||
+              'A subject is part of the synchronic taxonomy rooted at Ontology. It contains contextual topics, and those topics contain the concrete items.'}
           </p>
         </div>
         <div className="topic-page-stats">
           <div className="topic-page-stat">
-            <strong>{topic.knowledgeItemCount}</strong>
-            <span>Direct items for now</span>
+            <strong>{subject.topicCount}</strong>
+            <span>Contained topics</span>
           </div>
           <div className="topic-page-stat">
-            <strong>{topic.childTopicCount}</strong>
+            <strong>{subject.childTopicCount}</strong>
             <span>Child subjects</span>
           </div>
           <div className="topic-page-stat">
-            <strong>{formatDate(topic.updatedAt)}</strong>
+            <strong>{subject.knowledgeItemCount}</strong>
+            <span>Items through topics</span>
+          </div>
+          <div className="topic-page-stat">
+            <strong>{formatDate(subject.updatedAt)}</strong>
             <span>Last updated</span>
           </div>
         </div>
@@ -294,10 +272,10 @@ const TopicPage: React.FC = () => {
 
           <div className="topic-page-side-section">
             <h3>Parent subject</h3>
-            {parentTopic ? (
-              <Link to={`/topics/${parentTopic.id}`} className="topic-page-side-card">
-                <strong>{parentTopic.name}</strong>
-                <span>{parentTopic.knowledgeItemCount} direct items for now</span>
+            {parentSubject ? (
+              <Link to={`/topics/${parentSubject.id}`} className="topic-page-side-card">
+                <strong>{parentSubject.name}</strong>
+                <span>{parentSubject.topicCount} contained topics</span>
               </Link>
             ) : (
               <div className="topic-page-empty">Ontology is the root subject and has no parent.</div>
@@ -306,11 +284,11 @@ const TopicPage: React.FC = () => {
 
           <div className="topic-page-side-section">
             <h3>Create child subject</h3>
-            <form className="topic-page-form" onSubmit={handleCreateChildTopic}>
+            <form className="topic-page-form" onSubmit={handleCreateChildSubject}>
               <input
-                value={childTopicForm.name}
+                value={childSubjectForm.name}
                 onChange={(event) =>
-                  setChildTopicForm((current) => ({
+                  setChildSubjectForm((current) => ({
                     ...current,
                     name: event.target.value,
                   }))
@@ -318,17 +296,62 @@ const TopicPage: React.FC = () => {
                 placeholder="Name the next branch"
               />
               <textarea
-                value={childTopicForm.description}
+                value={childSubjectForm.description}
                 onChange={(event) =>
-                  setChildTopicForm((current) => ({
+                  setChildSubjectForm((current) => ({
                     ...current,
                     description: event.target.value,
                   }))
                 }
                 placeholder="Optional description"
               />
-              <button type="submit" disabled={creatingChildTopic}>
-                {creatingChildTopic ? 'Creating...' : 'Create child subject'}
+              <button type="submit" disabled={creatingChildSubject}>
+                {creatingChildSubject ? 'Creating...' : 'Create child subject'}
+              </button>
+            </form>
+          </div>
+
+          <div className="topic-page-side-section">
+            <h3>Create topic in this subject</h3>
+            <form className="topic-page-form" onSubmit={handleCreateStudyTopic}>
+              <input
+                value={studyTopicForm.name}
+                onChange={(event) =>
+                  setStudyTopicForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="Name the topic"
+              />
+              <select
+                value={studyTopicForm.parentTopicId}
+                onChange={(event) =>
+                  setStudyTopicForm((current) => ({
+                    ...current,
+                    parentTopicId: event.target.value,
+                  }))
+                }
+              >
+                <option value="">No parent topic</option>
+                {orderedStudyTopics.map(({ topic, depth }) => (
+                  <option key={topic.id} value={topic.id}>
+                    {`${'  '.repeat(depth)}${topic.name}`}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={studyTopicForm.description}
+                onChange={(event) =>
+                  setStudyTopicForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="Optional description"
+              />
+              <button type="submit" disabled={creatingStudyTopic}>
+                {creatingStudyTopic ? 'Creating...' : 'Create topic'}
               </button>
             </form>
           </div>
@@ -343,15 +366,15 @@ const TopicPage: React.FC = () => {
               </div>
             </div>
 
-            {childTopics.length === 0 ? (
+            {childSubjects.length === 0 ? (
               <div className="topic-page-empty">No child subjects yet.</div>
             ) : (
               <div className="topic-page-card-grid">
-                {childTopics.map((childTopic) => (
-                  <Link key={childTopic.id} to={`/topics/${childTopic.id}`} className="topic-page-card">
-                    <strong>{childTopic.name}</strong>
-                    <span>{childTopic.knowledgeItemCount} direct items for now</span>
-                    <span>{childTopic.childTopicCount} child subjects</span>
+                {childSubjects.map((childSubject) => (
+                  <Link key={childSubject.id} to={`/topics/${childSubject.id}`} className="topic-page-card">
+                    <strong>{childSubject.name}</strong>
+                    <span>{childSubject.topicCount} contained topics</span>
+                    <span>{childSubject.childTopicCount} child subjects</span>
                   </Link>
                 ))}
               </div>
@@ -361,121 +384,25 @@ const TopicPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Reference Atlas</span>
-                <h2>Reference context</h2>
+                <span className="topic-page-eyebrow">Contained Topics</span>
+                <h2>Topics inside this subject</h2>
               </div>
             </div>
 
-            <form className="topic-page-form" onSubmit={handleCreateRelation}>
-              <select
-                value={relationForm.relationType}
-                onChange={(event) =>
-                  setRelationForm((current) => ({
-                    ...current,
-                    relationType: event.target.value as KnowledgeRelationType,
-                  }))
-                }
-              >
-                {relationTypeOptions.map((relationType) => (
-                  <option key={relationType} value={relationType}>
-                    {formatRelationType(relationType)}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={relationForm.toEntityId}
-                onChange={(event) =>
-                  setRelationForm((current) => ({
-                    ...current,
-                    toEntityId: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Choose a person, nation, civilization, era, or place</option>
-                {relationTargets.map((entity) => {
-                  const timespan = formatReferenceTimespan(entity);
-
-                  return (
-                    <option key={entity.id} value={entity.id}>
-                      {entity.title}
-                      {timespan ? ` (${entity.kind}, ${timespan})` : ` (${entity.kind})`}
-                    </option>
-                  );
-                })}
-              </select>
-              <input
-                value={relationForm.note}
-                onChange={(event) =>
-                  setRelationForm((current) => ({
-                    ...current,
-                    note: event.target.value,
-                  }))
-                }
-                placeholder="Optional note about why this entity matters here"
-              />
-              <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
-                {savingRelation ? 'Linking...' : 'Link entity'}
-              </button>
-            </form>
-
-            {relations.length === 0 ? (
-              <div className="topic-page-empty">No linked reference entities yet.</div>
-            ) : (
-              <div className="topic-page-item-list">
-                {relations.map((relation) => (
-                  <article key={relation.id} className="topic-page-item-card">
-                    <div className="topic-page-item-top">
-                      <div className="topic-page-item-badges">
-                        <span>{formatRelationType(relation.relationType)}</span>
-                        {relation.toEntityKind ? <span>{relation.toEntityKind}</span> : null}
-                      </div>
-                      <Link to={`/entities/${relation.toEntityId}`} className="topic-page-item-link">
-                        <strong>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</strong>
-                      </Link>
-                    </div>
-                    {relation.note ? <p>{relation.note}</p> : null}
-                    <div className="topic-page-item-actions">
-                      <span>Linked {formatDate(relation.createdAt)}</span>
-                      <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="topic-page-panel">
-            <div className="topic-page-section-head">
-              <div>
-                <span className="topic-page-eyebrow">Transition State</span>
-                <h2>Direct items attached to this subject</h2>
-              </div>
-            </div>
-
-            {knowledgeItems.length === 0 ? (
+            {orderedStudyTopics.length === 0 ? (
               <div className="topic-page-empty">
-                No items are attached directly to this subject yet. In the target model, a real topic
-                layer will sit between subjects and items.
+                No topics yet. Create the first contextual topic under this subject.
               </div>
             ) : (
-              <div className="topic-page-item-list">
-                {knowledgeItems.map((knowledgeItem) => (
-                  <Link key={knowledgeItem.id} to={`/knowledge/${knowledgeItem.id}`} className="topic-page-item-card">
-                    <div className="topic-page-item-top">
-                      <div className="topic-page-item-badges">
-                        <span>{knowledgeItem.kind}</span>
-                        <span>{knowledgeItem.status}</span>
-                      </div>
-                      <strong>{knowledgeItem.title}</strong>
-                    </div>
-                    <div className="topic-page-item-meta">
-                      {knowledgeItem.creator ? <span>{knowledgeItem.creator}</span> : null}
-                      {knowledgeItem.publishedYear ? <span>{knowledgeItem.publishedYear}</span> : null}
-                      <span>Updated {formatDate(knowledgeItem.updatedAt)}</span>
-                    </div>
-                    {knowledgeItem.summary ? <p>{knowledgeItem.summary}</p> : null}
+              <div className="topic-page-card-grid">
+                {orderedStudyTopics.map(({ topic, depth }) => (
+                  <Link key={topic.id} to={`/study-topics/${topic.id}`} className="topic-page-card">
+                    <strong>{`${'  '.repeat(depth)}${topic.name}`}</strong>
+                    <span>{topic.itemCount} contained items</span>
+                    <span>{topic.childTopicCount} child topics</span>
+                    {topic.summary || topic.description ? (
+                      <span>{topic.summary || topic.description}</span>
+                    ) : null}
                   </Link>
                 ))}
               </div>

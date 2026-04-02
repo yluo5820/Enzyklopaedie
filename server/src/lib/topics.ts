@@ -5,19 +5,26 @@ const topicSummarySelect = `
   SELECT
     t.*,
     COALESCE(item_counts.knowledgeItemCount, 0) AS knowledgeItemCount,
-    COALESCE(child_counts.childTopicCount, 0) AS childTopicCount
+    COALESCE(child_counts.childTopicCount, 0) AS childTopicCount,
+    COALESCE(topic_counts.topicCount, 0) AS topicCount
   FROM topics t
   LEFT JOIN (
-    SELECT topicId, COUNT(*) AS knowledgeItemCount
-    FROM knowledge_item_topics
-    GROUP BY topicId
-  ) item_counts ON item_counts.topicId = t.id
+    SELECT st.subjectId, COUNT(DISTINCT kist.knowledgeItemId) AS knowledgeItemCount
+    FROM study_topics st
+    INNER JOIN knowledge_item_study_topics kist ON kist.studyTopicId = st.id
+    GROUP BY st.subjectId
+  ) item_counts ON item_counts.subjectId = t.id
   LEFT JOIN (
     SELECT parentTopicId, COUNT(*) AS childTopicCount
     FROM topics
     WHERE parentTopicId IS NOT NULL
     GROUP BY parentTopicId
   ) child_counts ON child_counts.parentTopicId = t.id
+  LEFT JOIN (
+    SELECT subjectId, COUNT(*) AS topicCount
+    FROM study_topics
+    GROUP BY subjectId
+  ) topic_counts ON topic_counts.subjectId = t.id
 `;
 
 export const listTopicSummaries = async () => {
@@ -48,10 +55,11 @@ export const getOntologyTopic = async () => {
 export const listKnowledgeItemsForTopic = async (topicId: number) => {
   const db = await getDb();
   return db.all<KnowledgeItem[]>(
-    `SELECT ki.*
-     FROM knowledge_item_topics kit
-     INNER JOIN knowledge_items ki ON ki.id = kit.knowledgeItemId
-     WHERE kit.topicId = ?
+    `SELECT DISTINCT ki.*
+     FROM study_topics st
+     INNER JOIN knowledge_item_study_topics kist ON kist.studyTopicId = st.id
+     INNER JOIN knowledge_items ki ON ki.id = kist.knowledgeItemId
+     WHERE st.subjectId = ?
      ORDER BY ki.updatedAt DESC`,
     topicId
   );

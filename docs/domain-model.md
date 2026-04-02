@@ -146,21 +146,18 @@ Reverse links should be queried, not stored as literal nested structures.
 
 ## Current Implementation Mapping
 
-The current application is not fully on this model yet.
+The current application now matches the core four-layer model more closely:
 
-Current mapping:
+- `topics` table and `/topics` UI are the `subject` layer
+- `study_topics` table and `/study-topics/:id` UI are the real `topic` layer
+- `knowledge_items` are the `item` layer
+- `reference_entities` are the `entity` layer
 
-- current `topics` table and `/topics` UI are really the future `subjects`
-- current `knowledge_items` are the future `items`
-- current `reference_entities` are the future `entities`
-- the real `topic` layer does not exist yet
+Current limitations:
 
-Temporary compromise in the current app:
-
-- items are still attached directly to current `topics`
-- this should be read as items temporarily attached directly to future `subjects`
-
-That is acceptable as a migration state, but it is not the desired final architecture.
+- entity pages do not yet expose the full containment model back out to topics and items
+- subject-to-entity relations still exist in the backend from an earlier transition state
+- topic-to-entity contextualization still needs a cleaner dedicated pass
 
 ## Migration Direction
 
@@ -170,6 +167,10 @@ That is acceptable as a migration state, but it is not the desired final archite
 4. Move item assignment from direct subject links to topic links.
 5. Let topics carry the main historical and spatial contextualization through linked entities.
 6. Rework entity pages to expose contained items and topics based on the new structure.
+
+Status:
+- steps 1 through 4 are implemented
+- steps 5 and 6 remain open
 
 ## Naming Notes
 
@@ -184,4 +185,4 @@ Preferred implementation strategy for now:
 
 - keep existing filenames and database tables stable until the topic layer is introduced
 - change user-facing wording first
-- do the schema migration only after the design feels right in practice
+- do deeper schema cleanup only after the design feels right in practice

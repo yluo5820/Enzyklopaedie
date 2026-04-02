@@ -27,11 +27,13 @@ import {
   NewNation,
   NewNote,
   NewReferenceEntity,
+  NewStudyTopic,
   NewTopic,
   NewSubject,
   Note,
   ReferenceEntity,
   Subject,
+  StudyTopicSummary,
   Topic,
   TopicSummary,
   UpdateAuthor,
@@ -622,6 +624,39 @@ export const createTopic = async (topicData: NewTopic): Promise<Topic> => {
   return response.json();
 };
 
+export const fetchStudyTopics = async (subjectId?: number): Promise<StudyTopicSummary[]> => {
+  const url = subjectId
+    ? `${API_BASE_URL}/study-topics?subjectId=${subjectId}`
+    : `${API_BASE_URL}/study-topics`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch study topics');
+  }
+  return response.json();
+};
+
+export const fetchStudyTopic = async (id: number): Promise<StudyTopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics/${id}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch study topic');
+  }
+  return response.json();
+};
+
+export const createStudyTopic = async (topicData: NewStudyTopic): Promise<StudyTopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(topicData),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to create study topic');
+  }
+  return response.json();
+};
+
 export const fetchTopicKnowledgeItems = async (topicId: number): Promise<KnowledgeItem[]> => {
   const response = await fetch(`${API_BASE_URL}/topics/${topicId}/knowledge-items`);
   if (!response.ok) {
@@ -630,10 +665,28 @@ export const fetchTopicKnowledgeItems = async (topicId: number): Promise<Knowled
   return response.json();
 };
 
+export const fetchStudyTopicKnowledgeItems = async (studyTopicId: number): Promise<KnowledgeItem[]> => {
+  const response = await fetch(`${API_BASE_URL}/study-topics/${studyTopicId}/knowledge-items`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch study topic knowledge items');
+  }
+  return response.json();
+};
+
 export const fetchKnowledgeItemTopics = async (knowledgeItemId: number): Promise<Topic[]> => {
   const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/topics`);
   if (!response.ok) {
     throw new Error('Failed to fetch knowledge item topics');
+  }
+  return response.json();
+};
+
+export const fetchKnowledgeItemStudyTopics = async (
+  knowledgeItemId: number
+): Promise<StudyTopicSummary[]> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch knowledge item study topics');
   }
   return response.json();
 };
@@ -655,6 +708,23 @@ export const assignTopicToKnowledgeItem = async (
   return response.json();
 };
 
+export const assignStudyTopicToKnowledgeItem = async (
+  knowledgeItemId: number,
+  studyTopicId: number
+): Promise<StudyTopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ studyTopicId }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to assign study topic to knowledge item');
+  }
+  return response.json();
+};
+
 export const removeTopicFromKnowledgeItem = async (
   knowledgeItemId: number,
   topicId: number
@@ -664,6 +734,21 @@ export const removeTopicFromKnowledgeItem = async (
   });
   if (!response.ok) {
     throw new Error('Failed to remove topic from knowledge item');
+  }
+};
+
+export const removeStudyTopicFromKnowledgeItem = async (
+  knowledgeItemId: number,
+  studyTopicId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/knowledge-items/${knowledgeItemId}/study-topics/${studyTopicId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    throw new Error('Failed to remove study topic from knowledge item');
   }
 };
 

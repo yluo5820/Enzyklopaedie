@@ -128,6 +128,24 @@ export interface Topic {
 export interface TopicSummary extends Topic {
     knowledgeItemCount: number;
     childTopicCount: number;
+    topicCount: number;
+}
+export interface StudyTopic {
+    id: number;
+    subjectId: number;
+    name: string;
+    slug: string;
+    summary?: string;
+    description?: string;
+    parentTopicId?: number;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface StudyTopicSummary extends StudyTopic {
+    itemCount: number;
+    childTopicCount: number;
+    subjectName: string;
+    subjectSlug: string;
 }
 export type ReferenceEntityKind = 'person' | 'nation' | 'civilization' | 'era' | 'place';
 export interface ReferenceEntity {
@@ -191,7 +209,7 @@ export interface KnowledgeReview {
     createdAt: string;
     updatedAt: string;
 }
-export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'reference_entity_created' | 'reference_entity_updated' | 'topic_created' | 'note_created' | 'task_created' | 'relation_created' | 'review_created' | 'task_completed' | 'exhibit_published';
+export type ActivityEventType = 'knowledge_item_created' | 'knowledge_item_updated' | 'reference_entity_created' | 'reference_entity_updated' | 'subject_created' | 'topic_created' | 'note_created' | 'task_created' | 'relation_created' | 'review_created' | 'task_completed' | 'exhibit_published';
 export interface ActivityEvent {
     id: number;
     type: ActivityEventType;
@@ -244,6 +262,8 @@ export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updated
 export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
+export type NewStudyTopic = Omit<StudyTopic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type UpdateStudyTopic = Partial<Omit<StudyTopic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 export interface ReferenceEntityDraft {
     kind: ReferenceEntityKind;
     title: string;

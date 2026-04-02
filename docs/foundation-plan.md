@@ -33,6 +33,9 @@ The detailed version of this model lives in [domain-model.md](/Users/yluo/Downlo
 2. Move item classification from direct subject attachment to topic attachment.
 3. Let topics carry the main time/place/entity context.
 
+Status:
+- implemented in the current foundation slice
+
 ### Phase 4
 
 1. Add stronger containment views on entity pages.

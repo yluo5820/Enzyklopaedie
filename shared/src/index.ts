@@ -162,6 +162,26 @@ export interface Topic {
 export interface TopicSummary extends Topic {
   knowledgeItemCount: number;
   childTopicCount: number;
+  topicCount: number;
+}
+
+export interface StudyTopic {
+  id: number;
+  subjectId: number;
+  name: string;
+  slug: string;
+  summary?: string;
+  description?: string;
+  parentTopicId?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudyTopicSummary extends StudyTopic {
+  itemCount: number;
+  childTopicCount: number;
+  subjectName: string;
+  subjectSlug: string;
 }
 
 export type ReferenceEntityKind = 'person' | 'nation' | 'civilization' | 'era' | 'place';
@@ -249,6 +269,7 @@ export type ActivityEventType =
   | 'knowledge_item_updated'
   | 'reference_entity_created'
   | 'reference_entity_updated'
+  | 'subject_created'
   | 'topic_created'
   | 'note_created'
   | 'task_created'
@@ -345,6 +366,9 @@ export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt'
 
 export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
+
+export type NewStudyTopic = Omit<StudyTopic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
+export type UpdateStudyTopic = Partial<Omit<StudyTopic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 
 export interface ReferenceEntityDraft {
   kind: ReferenceEntityKind;

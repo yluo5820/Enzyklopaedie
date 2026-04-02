@@ -76,7 +76,8 @@ That test currently covers:
 ### 4. Item Detail
 
 - From `/knowledge`, open an item
-- Attach an existing subject or create a new child subject and confirm it appears in the subject list
+- Attach an existing topic or create a new topic under a chosen subject
+- Confirm the assigned topic chips link through to `/study-topics/:id`
 - Add one relation to a reference entity such as a person or era and confirm it appears as a linked card
 - Add one note and confirm it appears immediately
 - Add one task, move it to `done`, and confirm the status updates
@@ -89,9 +90,16 @@ That test currently covers:
 - Confirm `Ontology` appears as the root node in the tree
 - Click a subject node and confirm its subject page opens
 - Create a child subject from the subject page and confirm it appears in the child subject list
-- Link the subject to a reference entity and confirm it appears in the linked entities section
+- Create a topic inside that subject and confirm it appears in the contained-topic list
 
-### 6. Reference Atlas
+### 6. Topic Pages
+
+- Open a topic from a subject page
+- Confirm the topic page shows its subject lineage
+- Confirm child topics can be created from that page
+- Confirm items assigned to the topic appear in the contained item list
+
+### 7. Reference Atlas
 
 - Open `/entities`
 - Confirm the page loads and shows imported legacy entities such as `Unknown Author`
@@ -99,7 +107,7 @@ That test currently covers:
 - Open that entity and update its kind, summary, or chronology
 - Delete it again and confirm you return to the atlas list
 
-### 7. World History Prototype
+### 8. World History Prototype
 
 - Open `/world-history`
 - Confirm the map loads if `VITE_MAPTILER_API_KEY` exists in `client/.env.local`
@@ -113,5 +121,5 @@ That test currently covers:
   direction, while the older legacy pages are being phased out as their useful flows move into it.
 - The old split `Authors`, `Nations`, `Civilizations`, and `Eras` screens are now legacy scaffolding.
   The new main surface for that information is `/entities`.
-- The current `/topics` surface should be read as the `subject` layer. A real `topic` layer still needs
-  to be introduced between subjects and items.
+- The `/topics` surface is the `subject` layer.
+- The `/study-topics/:id` surface is the actual topic layer where items now live.

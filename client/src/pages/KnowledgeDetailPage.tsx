@@ -10,30 +10,32 @@ import type {
   KnowledgeTask,
   KnowledgeTaskStatus,
   ReferenceEntity,
-  Topic,
+  StudyTopicSummary,
+  TopicSummary,
 } from '@enzyklopaedie/shared';
 import { Link, useParams } from 'react-router-dom';
 import {
-  assignTopicToKnowledgeItem,
+  assignStudyTopicToKnowledgeItem,
   createKnowledgeNote,
   createKnowledgeRelation,
   createKnowledgeReview,
   createKnowledgeTask,
-  createTopic,
+  createStudyTopic,
   deleteKnowledgeNote,
   deleteKnowledgeRelation,
   deleteKnowledgeReview,
   deleteKnowledgeTask,
   fetchKnowledgeItem,
   fetchKnowledgeItems,
-  fetchKnowledgeItemTopics,
+  fetchKnowledgeItemStudyTopics,
   fetchKnowledgeNotes,
   fetchKnowledgeRelations,
   fetchKnowledgeReviews,
   fetchKnowledgeTasks,
   fetchReferenceEntities,
+  fetchStudyTopics,
   fetchTopics,
-  removeTopicFromKnowledgeItem,
+  removeStudyTopicFromKnowledgeItem,
   updateKnowledgeItem,
   updateKnowledgeTask,
 } from '../api';
@@ -93,13 +95,13 @@ const buildRelationHref = (relation: KnowledgeRelationDetail) => {
   return null;
 };
 
-const orderTopics = (topics: Topic[]) => {
-  const children = new Map<number | null, Topic[]>();
+const orderSubjects = (subjects: TopicSummary[]) => {
+  const children = new Map<number | null, TopicSummary[]>();
 
-  for (const topic of topics) {
-    const key = topic.parentTopicId ?? null;
+  for (const subject of subjects) {
+    const key = subject.parentTopicId ?? null;
     const branch = children.get(key) ?? [];
-    branch.push(topic);
+    branch.push(subject);
     children.set(key, branch);
   }
 
@@ -107,11 +109,11 @@ const orderTopics = (topics: Topic[]) => {
     branch.sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  const ordered: Array<{ topic: Topic; depth: number }> = [];
-  const visit = (parentTopicId: number | null, depth: number) => {
-    for (const topic of children.get(parentTopicId) ?? []) {
-      ordered.push({ topic, depth });
-      visit(topic.id, depth + 1);
+  const ordered: Array<{ subject: TopicSummary; depth: number }> = [];
+  const visit = (parentSubjectId: number | null, depth: number) => {
+    for (const subject of children.get(parentSubjectId) ?? []) {
+      ordered.push({ subject, depth });
+      visit(subject.id, depth + 1);
     }
   };
 
@@ -119,7 +121,65 @@ const orderTopics = (topics: Topic[]) => {
   return ordered;
 };
 
-const buildTopicPath = (topic: Topic, topicMap: Map<number, Topic>) => {
+const orderStudyTopics = (subjects: TopicSummary[], studyTopics: StudyTopicSummary[]) => {
+  const orderedSubjects = orderSubjects(subjects);
+  const groupedTopics = new Map<number, StudyTopicSummary[]>();
+
+  for (const studyTopic of studyTopics) {
+    const branch = groupedTopics.get(studyTopic.subjectId) ?? [];
+    branch.push(studyTopic);
+    groupedTopics.set(studyTopic.subjectId, branch);
+  }
+
+  return orderedSubjects.flatMap(({ subject }) => {
+    const subjectTopics = groupedTopics.get(subject.id) ?? [];
+    const children = new Map<number | null, StudyTopicSummary[]>();
+
+    for (const studyTopic of subjectTopics) {
+      const key = studyTopic.parentTopicId ?? null;
+      const branch = children.get(key) ?? [];
+      branch.push(studyTopic);
+      children.set(key, branch);
+    }
+
+    for (const branch of children.values()) {
+      branch.sort((left, right) => left.name.localeCompare(right.name));
+    }
+
+    const ordered: Array<{ topic: StudyTopicSummary; depth: number; subject: TopicSummary }> = [];
+    const visit = (parentTopicId: number | null, depth: number) => {
+      for (const topic of children.get(parentTopicId) ?? []) {
+        ordered.push({ topic, depth, subject });
+        visit(topic.id, depth + 1);
+      }
+    };
+
+    visit(null, 0);
+    return ordered;
+  });
+};
+
+const buildSubjectPath = (subject: TopicSummary, subjectMap: Map<number, TopicSummary>) => {
+  const parts = [subject.name];
+  let currentParentId = subject.parentTopicId;
+  let guard = 0;
+
+  while (currentParentId && guard < 12) {
+    const parent = subjectMap.get(currentParentId);
+    if (!parent) break;
+    parts.unshift(parent.name);
+    currentParentId = parent.parentTopicId;
+    guard += 1;
+  }
+
+  return parts.join(' / ');
+};
+
+const buildStudyTopicPath = (
+  topic: StudyTopicSummary,
+  topicMap: Map<number, StudyTopicSummary>,
+  subjectMap: Map<number, TopicSummary>
+) => {
   const parts = [topic.name];
   let currentParentId = topic.parentTopicId;
   let guard = 0;
@@ -132,6 +192,11 @@ const buildTopicPath = (topic: Topic, topicMap: Map<number, Topic>) => {
     guard += 1;
   }
 
+  const subject = subjectMap.get(topic.subjectId);
+  if (subject) {
+    parts.unshift(buildSubjectPath(subject, subjectMap));
+  }
+
   return parts.join(' / ');
 };
 
@@ -142,8 +207,9 @@ const KnowledgeDetailPage: React.FC = () => {
   const [item, setItem] = useState<KnowledgeItem | null>(null);
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
   const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
-  const [allTopics, setAllTopics] = useState<Topic[]>([]);
-  const [itemTopics, setItemTopics] = useState<Topic[]>([]);
+  const [subjects, setSubjects] = useState<TopicSummary[]>([]);
+  const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
+  const [itemStudyTopics, setItemStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [notes, setNotes] = useState<KnowledgeNote[]>([]);
   const [tasks, setTasks] = useState<KnowledgeTask[]>([]);
@@ -157,8 +223,9 @@ const KnowledgeDetailPage: React.FC = () => {
   const [savingNote, setSavingNote] = useState(false);
   const [savingTask, setSavingTask] = useState(false);
   const [savingReview, setSavingReview] = useState(false);
-  const [selectedTopicId, setSelectedTopicId] = useState('');
-  const [newTopicForm, setNewTopicForm] = useState({
+  const [selectedStudyTopicId, setSelectedStudyTopicId] = useState('');
+  const [newStudyTopicForm, setNewStudyTopicForm] = useState({
+    subjectId: '',
     name: '',
     parentTopicId: '',
     description: '',
@@ -194,8 +261,9 @@ const KnowledgeDetailPage: React.FC = () => {
           fetchedItem,
           fetchedItems,
           fetchedReferenceEntities,
-          fetchedTopics,
-          fetchedItemTopics,
+          fetchedSubjects,
+          fetchedStudyTopics,
+          fetchedItemStudyTopics,
           fetchedRelations,
           fetchedNotes,
           fetchedTasks,
@@ -205,7 +273,8 @@ const KnowledgeDetailPage: React.FC = () => {
           fetchKnowledgeItems(),
           fetchReferenceEntities(),
           fetchTopics(),
-          fetchKnowledgeItemTopics(knowledgeItemId),
+          fetchStudyTopics(),
+          fetchKnowledgeItemStudyTopics(knowledgeItemId),
           fetchKnowledgeRelations(knowledgeItemId),
           fetchKnowledgeNotes(knowledgeItemId),
           fetchKnowledgeTasks(knowledgeItemId),
@@ -215,12 +284,21 @@ const KnowledgeDetailPage: React.FC = () => {
         setItem(fetchedItem);
         setKnowledgeItems(fetchedItems);
         setReferenceEntities(fetchedReferenceEntities);
-        setAllTopics(fetchedTopics);
-        setItemTopics(fetchedItemTopics);
+        setSubjects(fetchedSubjects);
+        setStudyTopics(fetchedStudyTopics);
+        setItemStudyTopics(fetchedItemStudyTopics);
         setRelations(fetchedRelations);
         setNotes(fetchedNotes);
         setTasks(fetchedTasks);
         setReviews(fetchedReviews);
+        setNewStudyTopicForm((current) => ({
+          ...current,
+          subjectId: current.subjectId
+            ? current.subjectId
+            : fetchedSubjects.length === 0
+              ? ''
+              : String(fetchedSubjects[0].id),
+        }));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load the item detail.');
@@ -232,12 +310,32 @@ const KnowledgeDetailPage: React.FC = () => {
     loadDetail();
   }, [knowledgeItemId]);
 
-  const topicMap = useMemo(() => new Map(allTopics.map((topic) => [topic.id, topic])), [allTopics]);
-  const orderedTopics = useMemo(() => orderTopics(allTopics), [allTopics]);
-  const assignedTopicIds = useMemo(() => new Set(itemTopics.map((topic) => topic.id)), [itemTopics]);
-  const assignableTopics = useMemo(
-    () => orderedTopics.filter(({ topic }) => !assignedTopicIds.has(topic.id)),
-    [assignedTopicIds, orderedTopics]
+  const subjectMap = useMemo(() => new Map(subjects.map((subject) => [subject.id, subject])), [subjects]);
+  const studyTopicMap = useMemo(
+    () => new Map(studyTopics.map((studyTopic) => [studyTopic.id, studyTopic])),
+    [studyTopics]
+  );
+  const orderedSubjects = useMemo(() => orderSubjects(subjects), [subjects]);
+  const orderedStudyTopics = useMemo(() => orderStudyTopics(subjects, studyTopics), [subjects, studyTopics]);
+  const assignedStudyTopicIds = useMemo(
+    () => new Set(itemStudyTopics.map((topic) => topic.id)),
+    [itemStudyTopics]
+  );
+  const assignableStudyTopics = useMemo(
+    () => orderedStudyTopics.filter(({ topic }) => !assignedStudyTopicIds.has(topic.id)),
+    [assignedStudyTopicIds, orderedStudyTopics]
+  );
+  const parentTopicOptions = useMemo(() => {
+    const selectedSubjectId = Number(newStudyTopicForm.subjectId);
+    if (!selectedSubjectId) return [];
+    return orderedStudyTopics.filter(({ topic }) => topic.subjectId === selectedSubjectId);
+  }, [newStudyTopicForm.subjectId, orderedStudyTopics]);
+  const selectedCreateSubject = useMemo(
+    () =>
+      newStudyTopicForm.subjectId
+        ? subjectMap.get(Number(newStudyTopicForm.subjectId)) ?? null
+        : null,
+    [newStudyTopicForm.subjectId, subjectMap]
   );
   const relationTargets = useMemo(
     () => knowledgeItems.filter((candidate) => candidate.id !== item?.id),
@@ -279,22 +377,22 @@ const KnowledgeDetailPage: React.FC = () => {
 
   const handleAttachTopic = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!item || !selectedTopicId) return;
+    if (!item || !selectedStudyTopicId) return;
 
     setSavingTopicAssignment(true);
     setError(null);
 
     try {
-      const assignedTopic = await assignTopicToKnowledgeItem(item.id, Number(selectedTopicId));
+      const assignedTopic = await assignStudyTopicToKnowledgeItem(item.id, Number(selectedStudyTopicId));
       startTransition(() => {
-        setItemTopics((current) =>
+        setItemStudyTopics((current) =>
           current.some((topic) => topic.id === assignedTopic.id) ? current : [...current, assignedTopic]
         );
       });
-      setSelectedTopicId('');
+      setSelectedStudyTopicId('');
     } catch (topicError) {
       console.error(topicError);
-      setError('Failed to attach subject.');
+      setError('Failed to attach topic.');
     } finally {
       setSavingTopicAssignment(false);
     }
@@ -302,37 +400,43 @@ const KnowledgeDetailPage: React.FC = () => {
 
   const handleCreateTopic = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!item || !newTopicForm.name.trim()) return;
+    if (!item || !newStudyTopicForm.name.trim() || !newStudyTopicForm.subjectId) return;
 
     setCreatingTopic(true);
     setError(null);
 
     try {
-      const createdTopic = await createTopic({
-        name: newTopicForm.name.trim(),
-        parentTopicId: newTopicForm.parentTopicId ? Number(newTopicForm.parentTopicId) : undefined,
-        description: newTopicForm.description.trim() || undefined,
+      const createdTopic = await createStudyTopic({
+        subjectId: Number(newStudyTopicForm.subjectId),
+        name: newStudyTopicForm.name.trim(),
+        parentTopicId: newStudyTopicForm.parentTopicId
+          ? Number(newStudyTopicForm.parentTopicId)
+          : undefined,
+        description: newStudyTopicForm.description.trim() || undefined,
       });
 
       startTransition(() => {
-        setAllTopics((current) => [...current, createdTopic]);
+        setStudyTopics((current) =>
+          current.some((topic) => topic.id === createdTopic.id) ? current : [...current, createdTopic]
+        );
       });
 
-      const assignedTopic = await assignTopicToKnowledgeItem(item.id, createdTopic.id);
+      const assignedTopic = await assignStudyTopicToKnowledgeItem(item.id, createdTopic.id);
       startTransition(() => {
-        setItemTopics((current) =>
+        setItemStudyTopics((current) =>
           current.some((topic) => topic.id === assignedTopic.id) ? current : [...current, assignedTopic]
         );
       });
 
-      setNewTopicForm({
+      setNewStudyTopicForm((current) => ({
+        ...current,
         name: '',
         parentTopicId: '',
         description: '',
-      });
+      }));
     } catch (topicError) {
       console.error(topicError);
-      setError('Failed to create and attach subject.');
+      setError('Failed to create and attach topic.');
     } finally {
       setCreatingTopic(false);
     }
@@ -342,13 +446,13 @@ const KnowledgeDetailPage: React.FC = () => {
     if (!item) return;
 
     try {
-      await removeTopicFromKnowledgeItem(item.id, topicId);
+      await removeStudyTopicFromKnowledgeItem(item.id, topicId);
       startTransition(() => {
-        setItemTopics((current) => current.filter((topic) => topic.id !== topicId));
+        setItemStudyTopics((current) => current.filter((topic) => topic.id !== topicId));
       });
     } catch (topicError) {
       console.error(topicError);
-      setError('Failed to remove subject.');
+      setError('Failed to remove topic.');
     }
   };
 
@@ -602,8 +706,8 @@ const KnowledgeDetailPage: React.FC = () => {
 
         <div className="knowledge-detail-stats">
           <div className="knowledge-detail-stat">
-            <strong>{itemTopics.length}</strong>
-            <span>Subjects for now</span>
+            <strong>{itemStudyTopics.length}</strong>
+            <span>Topics</span>
           </div>
           <div className="knowledge-detail-stat">
             <strong>{relations.length}</strong>
@@ -658,9 +762,9 @@ const KnowledgeDetailPage: React.FC = () => {
               <p>{item.description}</p>
             ) : (
               <p>
-                This workspace now covers classification and cross-links as well as notes, tasks, and
-                reviews. The current app still links items directly to subjects; a real topic layer will
-                be introduced later between subjects and items.
+                This workspace now covers notes, tasks, reviews, and the real topic layer. Subjects
+                provide the synchronic taxonomy; topics are the contextual places where items actually
+                live.
               </p>
             )}
             <dl>
@@ -684,18 +788,22 @@ const KnowledgeDetailPage: React.FC = () => {
           <section className="knowledge-detail-panel">
             <div className="knowledge-detail-section-head">
               <div>
-                <span className="knowledge-detail-eyebrow">Subject Spine</span>
-                <h2>Subject placement for now</h2>
+                <span className="knowledge-detail-eyebrow">Topic Spine</span>
+                <h2>Topic placement</h2>
               </div>
             </div>
 
             <div className="knowledge-detail-chips">
-              {itemTopics.length === 0 ? (
-                <div className="knowledge-detail-empty">This item is not assigned to a subject yet.</div>
+              {itemStudyTopics.length === 0 ? (
+                <div className="knowledge-detail-empty">
+                  This item is not assigned to a topic yet.
+                </div>
               ) : (
-                itemTopics.map((topic) => (
+                itemStudyTopics.map((topic) => (
                   <div key={topic.id} className="knowledge-detail-chip">
-                    <Link to={`/topics/${topic.id}`}>{buildTopicPath(topic, topicMap)}</Link>
+                    <Link to={`/study-topics/${topic.id}`}>
+                      {buildStudyTopicPath(topic, studyTopicMap, subjectMap)}
+                    </Link>
                     <button type="button" onClick={() => handleRemoveTopic(topic.id)}>
                       Remove
                     </button>
@@ -706,47 +814,68 @@ const KnowledgeDetailPage: React.FC = () => {
 
             <form className="knowledge-detail-form knowledge-detail-form-row" onSubmit={handleAttachTopic}>
               <select
-                value={selectedTopicId}
-                    onChange={(event) => setSelectedTopicId(event.target.value)}
-                    disabled={savingTopicAssignment || assignableTopics.length === 0}
+                value={selectedStudyTopicId}
+                onChange={(event) => setSelectedStudyTopicId(event.target.value)}
+                disabled={savingTopicAssignment || assignableStudyTopics.length === 0}
               >
-                <option value="">Attach an existing subject</option>
-                {assignableTopics.map(({ topic, depth }) => (
+                <option value="">Attach an existing topic</option>
+                {assignableStudyTopics.map(({ topic }) => (
                   <option key={topic.id} value={topic.id}>
-                    {`${'  '.repeat(depth)}${topic.name}`}
+                    {buildStudyTopicPath(topic, studyTopicMap, subjectMap)}
                   </option>
                 ))}
               </select>
-              <button type="submit" disabled={savingTopicAssignment || !selectedTopicId}>
-                {savingTopicAssignment ? 'Attaching...' : 'Attach subject'}
+              <button type="submit" disabled={savingTopicAssignment || !selectedStudyTopicId}>
+                {savingTopicAssignment ? 'Attaching...' : 'Attach topic'}
               </button>
             </form>
 
             <form className="knowledge-detail-form" onSubmit={handleCreateTopic}>
               <input
-                value={newTopicForm.name}
+                value={newStudyTopicForm.name}
                 onChange={(event) =>
-                  setNewTopicForm((current) => ({
+                  setNewStudyTopicForm((current) => ({
                     ...current,
                     name: event.target.value,
                   }))
                 }
-                placeholder="Create a new subject"
+                placeholder="Create a new topic"
               />
               <div className="knowledge-detail-inline-fields knowledge-detail-inline-fields-relations">
                 <label>
-                  Parent subject
+                  Subject
                   <select
-                    value={newTopicForm.parentTopicId}
+                    value={newStudyTopicForm.subjectId}
                     onChange={(event) =>
-                      setNewTopicForm((current) => ({
+                      setNewStudyTopicForm((current) => ({
+                        ...current,
+                        subjectId: event.target.value,
+                        parentTopicId: '',
+                      }))
+                    }
+                  >
+                    <option value="">Choose a subject</option>
+                    {orderedSubjects.map(({ subject, depth }) => (
+                      <option key={subject.id} value={subject.id}>
+                        {`${'  '.repeat(depth)}${subject.name}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Parent topic
+                  <select
+                    value={newStudyTopicForm.parentTopicId}
+                    onChange={(event) =>
+                      setNewStudyTopicForm((current) => ({
                         ...current,
                         parentTopicId: event.target.value,
                       }))
                     }
+                    disabled={!selectedCreateSubject}
                   >
-                    <option value="">No parent</option>
-                    {orderedTopics.map(({ topic, depth }) => (
+                    <option value="">No parent topic</option>
+                    {parentTopicOptions.map(({ topic, depth }) => (
                       <option key={topic.id} value={topic.id}>
                         {`${'  '.repeat(depth)}${topic.name}`}
                       </option>
@@ -756,19 +885,19 @@ const KnowledgeDetailPage: React.FC = () => {
                 <label>
                   Description
                   <input
-                    value={newTopicForm.description}
+                    value={newStudyTopicForm.description}
                     onChange={(event) =>
-                      setNewTopicForm((current) => ({
+                      setNewStudyTopicForm((current) => ({
                         ...current,
                         description: event.target.value,
                       }))
                     }
-                    placeholder="Optional subject note"
+                    placeholder="Optional topic note"
                   />
                 </label>
               </div>
-              <button type="submit" disabled={creatingTopic}>
-                {creatingTopic ? 'Creating subject...' : 'Create and attach subject'}
+              <button type="submit" disabled={creatingTopic || !newStudyTopicForm.subjectId}>
+                {creatingTopic ? 'Creating topic...' : 'Create and attach topic'}
               </button>
             </form>
           </section>

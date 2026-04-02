@@ -352,58 +352,86 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     });
 
     assert.equal(rootTopicResponse.status, 201);
-    const rootTopic = await rootTopicResponse.json();
-    assert.equal(rootTopic.slug, 'history');
-    assert.equal(rootTopic.parentTopicId, ontologyTopic.id);
+    const rootSubject = await rootTopicResponse.json();
+    assert.equal(rootSubject.slug, 'history');
+    assert.equal(rootSubject.parentTopicId, ontologyTopic.id);
 
     const childTopicResponse = await request('/api/topics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Late Antiquity',
-        parentTopicId: rootTopic.id,
+        parentTopicId: rootSubject.id,
         description: 'A child topic for taxonomy tests.',
       }),
     });
 
     assert.equal(childTopicResponse.status, 201);
-    const childTopic = await childTopicResponse.json();
-    assert.equal(childTopic.parentTopicId, rootTopic.id);
-    assert.equal(childTopic.slug, 'late-antiquity');
+    const childSubject = await childTopicResponse.json();
+    assert.equal(childSubject.parentTopicId, rootSubject.id);
+    assert.equal(childSubject.slug, 'late-antiquity');
+
+    const studyTopicResponse = await request('/api/study-topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subjectId: childSubject.id,
+        name: 'Late Antiquity in the Mediterranean',
+        description: 'A contextual topic beneath the Late Antiquity subject.',
+      }),
+    });
+
+    assert.equal(studyTopicResponse.status, 201);
+    const studyTopic = await studyTopicResponse.json();
+    assert.equal(studyTopic.subjectId, childSubject.id);
+    assert.equal(studyTopic.subjectName, 'Late Antiquity');
 
     const topicsResponse = await request('/api/topics');
     assert.equal(topicsResponse.status, 200);
     const topics = await topicsResponse.json();
-    assert.ok(topics.some((topic) => topic.id === rootTopic.id));
-    assert.ok(topics.some((topic) => topic.id === childTopic.id));
+    assert.ok(topics.some((topic) => topic.id === rootSubject.id));
+    assert.ok(topics.some((topic) => topic.id === childSubject.id));
 
-    const assignTopicResponse = await request(`/api/knowledge-items/${sourceItem.id}/topics`, {
+    const assignTopicResponse = await request(`/api/knowledge-items/${sourceItem.id}/study-topics`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        topicId: childTopic.id,
+        studyTopicId: studyTopic.id,
       }),
     });
 
     assert.equal(assignTopicResponse.status, 201);
 
-    const assignedTopicsResponse = await request(`/api/knowledge-items/${sourceItem.id}/topics`);
+    const assignedTopicsResponse = await request(`/api/knowledge-items/${sourceItem.id}/study-topics`);
     assert.equal(assignedTopicsResponse.status, 200);
     const assignedTopics = await assignedTopicsResponse.json();
     assert.equal(assignedTopics.length, 1);
-    assert.equal(assignedTopics[0].id, childTopic.id);
+    assert.equal(assignedTopics[0].id, studyTopic.id);
 
-    const fetchedTopicResponse = await request(`/api/topics/${childTopic.id}`);
-    assert.equal(fetchedTopicResponse.status, 200);
-    const fetchedTopic = await fetchedTopicResponse.json();
-    assert.equal(fetchedTopic.parentTopicId, rootTopic.id);
-    assert.equal(fetchedTopic.knowledgeItemCount, 1);
+    const fetchedStudyTopicResponse = await request(`/api/study-topics/${studyTopic.id}`);
+    assert.equal(fetchedStudyTopicResponse.status, 200);
+    const fetchedStudyTopic = await fetchedStudyTopicResponse.json();
+    assert.equal(fetchedStudyTopic.subjectId, childSubject.id);
+    assert.equal(fetchedStudyTopic.itemCount, 1);
 
-    const topicKnowledgeItemsResponse = await request(`/api/topics/${childTopic.id}/knowledge-items`);
+    const topicKnowledgeItemsResponse = await request(`/api/study-topics/${studyTopic.id}/knowledge-items`);
     assert.equal(topicKnowledgeItemsResponse.status, 200);
     const topicKnowledgeItems = await topicKnowledgeItemsResponse.json();
     assert.equal(topicKnowledgeItems.length, 1);
     assert.equal(topicKnowledgeItems[0].id, sourceItem.id);
+
+    const fetchedSubjectResponse = await request(`/api/topics/${childSubject.id}`);
+    assert.equal(fetchedSubjectResponse.status, 200);
+    const fetchedSubject = await fetchedSubjectResponse.json();
+    assert.equal(fetchedSubject.parentTopicId, rootSubject.id);
+    assert.equal(fetchedSubject.knowledgeItemCount, 1);
+    assert.equal(fetchedSubject.topicCount, 1);
+
+    const subjectKnowledgeItemsResponse = await request(`/api/topics/${childSubject.id}/knowledge-items`);
+    assert.equal(subjectKnowledgeItemsResponse.status, 200);
+    const subjectKnowledgeItems = await subjectKnowledgeItemsResponse.json();
+    assert.equal(subjectKnowledgeItems.length, 1);
+    assert.equal(subjectKnowledgeItems[0].id, sourceItem.id);
 
     const relationResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`, {
       method: 'POST',
@@ -471,7 +499,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.ok(relations.some((entry) => entry.toEntityKind === 'essay'));
     assert.ok(relations.some((entry) => entry.toEntityKind === 'era'));
 
-    const topicRelationResponse = await request(`/api/topics/${childTopic.id}/relations`, {
+    const topicRelationResponse = await request(`/api/topics/${childSubject.id}/relations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -487,7 +515,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(topicRelation.toEntityTitle, 'Late Antiquity');
     assert.equal(topicRelation.toEntityKind, 'era');
 
-    const topicRelationsResponse = await request(`/api/topics/${childTopic.id}/relations`);
+    const topicRelationsResponse = await request(`/api/topics/${childSubject.id}/relations`);
     assert.equal(topicRelationsResponse.status, 200);
     const topicRelations = await topicRelationsResponse.json();
     assert.equal(topicRelations.length, 1);
@@ -499,7 +527,18 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     assert.ok(
       activityEvents.some(
-        (event) => event.type === 'topic_created' && event.entityType === 'topic' && event.entityId === rootTopic.id
+        (event) =>
+          event.type === 'subject_created' &&
+          event.entityType === 'subject' &&
+          event.entityId === rootSubject.id
+      )
+    );
+    assert.ok(
+      activityEvents.some(
+        (event) =>
+          event.type === 'topic_created' &&
+          event.entityType === 'study_topic' &&
+          event.entityId === studyTopic.id
       )
     );
     assert.ok(
@@ -515,7 +554,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         (event) =>
           event.type === 'relation_created' &&
           event.entityType === 'topic' &&
-          event.entityId === childTopic.id
+          event.entityId === childSubject.id
       )
     );
 
@@ -528,11 +567,11 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       { method: 'DELETE' }
     );
     const deleteTopicRelationResponse = await request(
-      `/api/topics/${childTopic.id}/relations/${topicRelation.id}`,
+      `/api/topics/${childSubject.id}/relations/${topicRelation.id}`,
       { method: 'DELETE' }
     );
     const removeTopicResponse = await request(
-      `/api/knowledge-items/${sourceItem.id}/topics/${childTopic.id}`,
+      `/api/knowledge-items/${sourceItem.id}/study-topics/${studyTopic.id}`,
       { method: 'DELETE' }
     );
 

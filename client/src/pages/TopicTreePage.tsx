@@ -80,7 +80,7 @@ const buildTreeLayout = (topics: TopicSummary[]) => {
       x: BASE_X + depth * NODE_X_STEP,
       y,
       depth,
-      radius: Math.min(68, 34 + topic.knowledgeItemCount * 4 + topic.childTopicCount * 2),
+      radius: Math.min(68, 34 + topic.topicCount * 4 + topic.childTopicCount * 2),
     });
 
     return y;
@@ -142,8 +142,8 @@ const TopicTreePage: React.FC = () => {
   }, []);
 
   const layout = useMemo(() => buildTreeLayout(topics), [topics]);
-  const totalAssignedItems = useMemo(
-    () => topics.reduce((sum, topic) => sum + topic.knowledgeItemCount, 0),
+  const totalTopics = useMemo(
+    () => topics.reduce((sum, topic) => sum + topic.topicCount, 0),
     [topics]
   );
 
@@ -156,7 +156,7 @@ const TopicTreePage: React.FC = () => {
           <p>
             This is the encyclopedia’s synchronic subject taxonomy: a tech-tree style map rooted in
             Ontology, then branching into the disciplines and sub-disciplines you want to build out over
-            time. A separate topic layer will later sit beneath these subjects.
+            time. Subjects contain contextual topics, and those topics contain the concrete items.
           </p>
         </div>
         <div className="topic-tree-hero-stats">
@@ -165,8 +165,8 @@ const TopicTreePage: React.FC = () => {
             <span>Subjects</span>
           </div>
           <div className="topic-tree-stat">
-            <strong>{loading ? '...' : totalAssignedItems}</strong>
-            <span>Direct item links for now</span>
+            <strong>{loading ? '...' : totalTopics}</strong>
+            <span>Topics across subjects</span>
           </div>
         </div>
       </section>
@@ -263,7 +263,7 @@ const TopicTreePage: React.FC = () => {
                         ))}
                       </text>
                       <text className="topic-tree-node-count" y={position.radius - 12} textAnchor="middle">
-                        {position.topic.knowledgeItemCount} item{position.topic.knowledgeItemCount === 1 ? '' : 's'}
+                        {position.topic.topicCount} topic{position.topic.topicCount === 1 ? '' : 's'}
                       </text>
                     </g>
                   );

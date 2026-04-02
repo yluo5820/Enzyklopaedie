@@ -12,10 +12,12 @@ import knowledgeItemRoutes from './routes/knowledgeItemRoutes';
 import activityEventRoutes from './routes/activityEventRoutes';
 import knowledgeNoteRoutes from './routes/knowledgeNoteRoutes';
 import knowledgeItemTopicRoutes from './routes/knowledgeItemTopicRoutes';
+import knowledgeItemStudyTopicRoutes from './routes/knowledgeItemStudyTopicRoutes';
 import knowledgeRelationRoutes from './routes/knowledgeRelationRoutes';
 import knowledgeTaskRoutes from './routes/knowledgeTaskRoutes';
 import knowledgeReviewRoutes from './routes/knowledgeReviewRoutes';
 import topicRoutes from './routes/topicRoutes';
+import studyTopicRoutes from './routes/studyTopicRoutes';
 import referenceEntityRoutes from './routes/referenceEntityRoutes';
 import cors from 'cors'; // For development, allow cross-origin requests from client
 
@@ -35,9 +37,11 @@ app.use('/api/nations', nationRoutes);
 app.use('/api/civilizations', civilizationRoutes);
 app.use('/api/eras', eraRoutes);
 app.use('/api/topics', topicRoutes);
+app.use('/api/study-topics', studyTopicRoutes);
 app.use('/api/reference-entities', referenceEntityRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/notes', knowledgeNoteRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/topics', knowledgeItemTopicRoutes);
+app.use('/api/knowledge-items/:knowledgeItemId/study-topics', knowledgeItemStudyTopicRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/relations', knowledgeRelationRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/tasks', knowledgeTaskRoutes);
 app.use('/api/knowledge-items/:knowledgeItemId/reviews', knowledgeReviewRoutes);

@@ -87,11 +87,12 @@ After `npm start`, use this path:
 4. Open `Entities` and confirm the reference atlas loads with imported legacy entities like `Unknown Author`
 5. Create a new entity, open it, update it, and delete it again
 6. Open `Subjects` and confirm the tree loads with `Ontology` as the root
-7. Open a subject page from the tree, create a child subject, and link that subject to an entity from the reference atlas
-8. Open an item, attach or create a subject, then link it to an entity such as a person or era
-9. Add a note, a task, and a review on the item page
-10. Return to `Home` and confirm recent activity entries appear
-11. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+7. Open a subject page from the tree, create a child subject, and create a topic inside that subject
+8. Open the new topic page and confirm it shows child topics and contained items
+9. Open an item, attach or create a topic, then link it to an entity such as a person or era
+10. Add a note, a task, and a review on the item page
+11. Return to `Home` and confirm recent activity entries appear
+12. Open `World History` and confirm the map and timeline render if a MapTiler key is present
 
 ## Working Notes
 

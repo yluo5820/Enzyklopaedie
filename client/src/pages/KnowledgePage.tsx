@@ -222,8 +222,9 @@ const KnowledgePage: React.FC = () => {
               <span className="knowledge-eyebrow">Foundation</span>
               <h1>Unified Item Model</h1>
               <p>
-                This is the concrete inventory layer of the encyclopedia. The next layers will organize
-                these items through subjects, future topics, entities, notes, tasks, places, and exhibitions.
+                This is the concrete inventory layer of the encyclopedia. The surrounding layers now
+                organize these items through subjects, topics, entities, notes, tasks, places, and
+                exhibitions.
               </p>
             </div>
             <div className="knowledge-summary-grid">

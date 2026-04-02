@@ -48,7 +48,7 @@ const HomePage: React.FC = () => {
         <h1>A local-first encyclopedia for what you learn.</h1>
         <p>
           The direction is no longer just a reading log. This project is becoming a personal knowledge
-          world: capture items, organize them through subjects and future topics, place them in a
+          world: capture items, organize them through subjects and topics, place them in a
           chronology, track tasks and reviews, and eventually publish exhibition pages that show the
           growth of your collection.
         </p>
@@ -66,7 +66,7 @@ const HomePage: React.FC = () => {
             <span className="home-eyebrow">Product Spine</span>
             <h2>What we are building next</h2>
             <p>
-              The current rebuild is centered on a four-layer model: items, subjects, future topics,
+              The current rebuild is centered on a four-layer model: items, subjects, topics,
               and entities. Everything else should hang off that structure instead of living as isolated
               CRUD screens.
             </p>
@@ -81,7 +81,7 @@ const HomePage: React.FC = () => {
               </div>
               <div className="home-pillar">
                 <strong>Topics</strong>
-                <p>The real topic layer will later sit between subjects and items as contextual domains of study.</p>
+                <p>Topics sit between subjects and items as the contextual domains where actual study lives.</p>
               </div>
               <div className="home-pillar">
                 <strong>Reference atlas</strong>
