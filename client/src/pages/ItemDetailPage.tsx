@@ -985,21 +985,35 @@ const ItemDetailPage: React.FC = () => {
 
       <section className="knowledge-detail-hero">
         <div className="knowledge-detail-hero-main">
-          <div className="knowledge-detail-badges">
-            <span className="knowledge-detail-badge">{item.kind}</span>
-            <span className="knowledge-detail-badge knowledge-detail-status">{item.status}</span>
-          </div>
-          <div className="knowledge-detail-title">
-            <h1>{item.title}</h1>
-            <div className="knowledge-detail-meta">
-              {creatorDisplay ? <span>{creatorDisplay}</span> : null}
-              {item.sourceName ? <span>{item.sourceName}</span> : null}
-              {item.publishedYear ? <span>{item.publishedYear}</span> : null}
-              {itemRecordDetail ? <span>{itemRecordDetail}</span> : null}
-              <span>Updated {formatDate(item.updatedAt)}</span>
+          <div className="knowledge-detail-hero-summary">
+            {item.coverImageUrl ? (
+              <div className="knowledge-detail-cover-frame">
+                <img
+                  src={item.coverImageUrl}
+                  alt={`Cover for ${item.title}`}
+                  className="knowledge-detail-cover"
+                />
+              </div>
+            ) : null}
+
+            <div className="knowledge-detail-hero-copy">
+              <div className="knowledge-detail-badges">
+                <span className="knowledge-detail-badge">{item.kind}</span>
+                <span className="knowledge-detail-badge knowledge-detail-status">{item.status}</span>
+              </div>
+              <div className="knowledge-detail-title">
+                <h1>{item.title}</h1>
+                <div className="knowledge-detail-meta">
+                  {creatorDisplay ? <span>{creatorDisplay}</span> : null}
+                  {item.sourceName ? <span>{item.sourceName}</span> : null}
+                  {item.publishedYear ? <span>{item.publishedYear}</span> : null}
+                  {itemRecordDetail ? <span>{itemRecordDetail}</span> : null}
+                  <span>Updated {formatDate(item.updatedAt)}</span>
+                </div>
+              </div>
+              {item.summary ? <p>{item.summary}</p> : null}
             </div>
           </div>
-          {item.summary ? <p>{item.summary}</p> : null}
         </div>
 
         <div className="knowledge-detail-hero-actions">

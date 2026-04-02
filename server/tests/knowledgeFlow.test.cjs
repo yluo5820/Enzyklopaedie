@@ -1150,9 +1150,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(parsedUrl.searchParams.get('fo'), 'json');
       assert.equal(parsedUrl.searchParams.get('c'), '10');
       assert.equal(parsedUrl.searchParams.get('sp'), '1');
-      assert.match(parsedUrl.searchParams.get('q') ?? '', /hegel/);
-      assert.match(parsedUrl.searchParams.get('q') ?? '', /kojeve/);
-      assert.equal(parsedUrl.searchParams.get('fa'), 'language:english');
+      assert.equal(parsedUrl.searchParams.get('q'), 'hegel');
+      assert.equal(parsedUrl.searchParams.get('fa'), 'contributor:kojeve|language:english');
 
       return new Response(
         JSON.stringify({
@@ -1205,6 +1204,60 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         sourceUrl: 'https://www.loc.gov/item/123456/',
         title: 'Introduction to the Reading of Hegel',
       });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await t.test('GET /api/library-of-congress/search supports author-only queries', async () => {
+    const originalFetch = global.fetch;
+
+    global.fetch = async (input) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      const parsedUrl = new URL(url);
+      assert.match(parsedUrl.toString(), /loc\.gov\/books\/\?/);
+      assert.equal(parsedUrl.searchParams.get('q'), null);
+      assert.equal(parsedUrl.searchParams.get('fa'), 'contributor:asimov');
+
+      return new Response(
+        JSON.stringify({
+          pagination: {
+            of: 1,
+          },
+          results: [
+            {
+              id: 'https://www.loc.gov/item/654321/',
+              title: 'Author-only result',
+              contributor: ['Isaac Asimov'],
+              url: 'https://www.loc.gov/item/654321/',
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const response = await requestThroughHttp(
+        '/api/library-of-congress/search?author=asimov&page=1&maxResults=10'
+      );
+      assert.equal(response.status, 200);
+
+      const books = await response.json();
+      assert.equal(books.matches.length, 1);
+      assert.equal(books.matches[0].title, 'Author-only result');
+      assert.deepEqual(books.matches[0].authors, ['Isaac Asimov']);
     } finally {
       global.fetch = originalFetch;
     }

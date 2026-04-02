@@ -68,6 +68,21 @@ const locLanguageFacetByCode: Record<string, string> = {
   spa: 'language:spanish',
 };
 
+const buildLocFacets = (author?: string, language?: string) => {
+  const facets: string[] = [];
+
+  if (author) {
+    facets.push(`contributor:${author.toLowerCase()}`);
+  }
+
+  const languageFacet = language ? locLanguageFacetByCode[language] : undefined;
+  if (languageFacet) {
+    facets.push(languageFacet);
+  }
+
+  return facets;
+};
+
 const normalizeLanguageCodes = (values?: string[]) =>
   (values ?? [])
     .map((value) => value.trim().toLowerCase())
@@ -105,18 +120,20 @@ export const searchLibraryOfCongressBooks = asyncErrorHandler(async (req: Reques
 
   const page = parsePage(req.query.page);
   const limit = parseMaxResults(req.query.maxResults);
-  const q = [query, author].filter(Boolean).join(' ').trim();
+  const facets = buildLocFacets(author, language);
 
   const params = new URLSearchParams({
     fo: 'json',
     c: String(limit),
     sp: String(page),
-    q,
   });
 
-  const languageFacet = language ? locLanguageFacetByCode[language] : undefined;
-  if (languageFacet) {
-    params.set('fa', languageFacet);
+  if (query) {
+    params.set('q', query);
+  }
+
+  if (facets.length > 0) {
+    params.set('fa', facets.join('|'));
   }
 
   const upstreamResponse = await fetch(`https://www.loc.gov/books/?${params.toString()}`, {
