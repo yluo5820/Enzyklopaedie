@@ -59,6 +59,27 @@
   color: var(--muted);
 }
 
+.reference-entities-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.reference-entities-note strong {
+  color: var(--accent-dark);
+}
+
+.reference-entities-note span,
+.reference-entities-field-hint {
+  color: var(--muted);
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+
 .reference-entities-form,
 .reference-entities-content {
   display: grid;

@@ -20,17 +20,105 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
   era: 'Eras',
   place: 'Places',
 };
+const singularKindLabels: Record<ReferenceEntityKind, string> = {
+  person: 'Person',
+  nation: 'Nation',
+  civilization: 'Civilization',
+  era: 'Era',
+  place: 'Place',
+};
+
+type EntityWorkbenchPreset = {
+  lead: string;
+  startYearLabel: string;
+  endYearLabel: string;
+  startYearPlaceholder: string;
+  endYearPlaceholder: string;
+  chronologyHint: string;
+  summaryPlaceholder: string;
+  descriptionPlaceholder: string;
+  submitLabel: string;
+  nextStep: string;
+};
+
+const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset> = {
+  person: {
+    lead:
+      'People anchor provenance. Start with identity and life dates here, then link nation, era, and influences on the detail page.',
+    startYearLabel: 'Birth Year',
+    endYearLabel: 'Death Year',
+    startYearPlaceholder: '384 for Aristotle',
+    endYearPlaceholder: '322',
+    chronologyHint: 'Use life dates when known. Leave either field blank if uncertain.',
+    summaryPlaceholder: 'Who is this person in one sentence?',
+    descriptionPlaceholder: 'Biographical notes, role, major works, and why this person matters.',
+    submitLabel: 'Add Person',
+    nextStep: 'After saving, connect this person to items through created_by and to entities like nation or era.',
+  },
+  nation: {
+    lead:
+      'Nations ground political and historical context. Start with the polity itself; broader civilizational placement can come after.',
+    startYearLabel: 'Begin Year',
+    endYearLabel: 'End Year',
+    startYearPlaceholder: '-27',
+    endYearPlaceholder: '476',
+    chronologyHint: 'Use the period during which this nation or polity meaningfully existed.',
+    summaryPlaceholder: 'What is this nation or polity in one sentence?',
+    descriptionPlaceholder: 'Notes on political form, territory, significance, and major historical context.',
+    submitLabel: 'Add Nation',
+    nextStep: 'After saving, connect the nation to civilizations, eras, places, and relevant topics.',
+  },
+  civilization: {
+    lead:
+      'Civilizations are broad spatial-temporal continuities. Start with the high-level record here; compose nations and eras on the detail page.',
+    startYearLabel: 'Rise Year',
+    endYearLabel: 'End Year',
+    startYearPlaceholder: '-3300',
+    endYearPlaceholder: '1453',
+    chronologyHint: 'Use rough bounding years if needed. This layer is allowed to stay interpretive.',
+    summaryPlaceholder: 'What defines this civilization at a high level?',
+    descriptionPlaceholder: 'Longer notes on scope, continuity, internal divisions, and historical character.',
+    submitLabel: 'Add Civilization',
+    nextStep: 'After saving, use the structure panel to attach nations, eras, and sub-civilizations.',
+  },
+  era: {
+    lead:
+      'Eras are chronological containers for historical understanding. Create the period first, then attach topics and entities that belong inside it.',
+    startYearLabel: 'Begins',
+    endYearLabel: 'Ends',
+    startYearPlaceholder: '-500',
+    endYearPlaceholder: '476',
+    chronologyHint: 'Use the span of the period itself, not the dates of later scholarship about it.',
+    summaryPlaceholder: 'How would you define this era in one sentence?',
+    descriptionPlaceholder: 'Notes on boundaries, major transitions, and what makes this period distinct.',
+    submitLabel: 'Add Era',
+    nextStep: 'After saving, use the detail page to build sub-eras and connect nations, civilizations, and topics.',
+  },
+  place: {
+    lead:
+      'Places anchor geography. If chronology matters, record the relevant span; otherwise treat time here as optional context.',
+    startYearLabel: 'Earliest Relevant Year',
+    endYearLabel: 'Latest Relevant Year',
+    startYearPlaceholder: '-800',
+    endYearPlaceholder: 'Present or blank',
+    chronologyHint: 'These dates are optional for places. Use them only when the place matters in a limited historical frame.',
+    summaryPlaceholder: 'What place is this, and why does it matter?',
+    descriptionPlaceholder: 'Notes on geography, historical role, and the entities or topics tied to this place.',
+    submitLabel: 'Add Place',
+    nextStep: 'After saving, connect the place to nations, civilizations, and historically situated topics.',
+  },
+};
 
 type EntityFilter = 'all' | ReferenceEntityKind;
 
-const initialFormState = {
-  kind: 'person' as ReferenceEntityKind,
+const createInitialFormState = (kind: ReferenceEntityKind = 'person') => ({
+  kind,
   title: '',
   summary: '',
   description: '',
   startYear: '',
   endYear: '',
-};
+});
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -78,7 +166,7 @@ const ReferenceEntitiesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState<EntityFilter>('all');
-  const [formState, setFormState] = useState(initialFormState);
+  const [formState, setFormState] = useState(createInitialFormState());
 
   useEffect(() => {
     const loadEntities = async () => {
@@ -94,6 +182,8 @@ const ReferenceEntitiesPage: React.FC = () => {
 
     loadEntities();
   }, []);
+
+  const workbenchPreset = entityWorkbenchPresets[formState.kind];
 
   const counts = useMemo(() => {
     const byKind = Object.fromEntries(kindOptions.map((kind) => [kind, 0])) as Record<
@@ -141,6 +231,7 @@ const ReferenceEntitiesPage: React.FC = () => {
 
     try {
       const createdEntity = await createReferenceEntity(payload);
+      const savedKind = payload.kind;
       startTransition(() => {
         setEntities((current) => {
           const existingIndex = current.findIndex((entity) => entity.id === createdEntity.id);
@@ -153,7 +244,7 @@ const ReferenceEntitiesPage: React.FC = () => {
           return [...current, createdEntity];
         });
       });
-      setFormState(initialFormState);
+      setFormState(createInitialFormState(savedKind));
     } catch (submitError) {
       console.error(submitError);
       setError('Failed to create reference entity.');
@@ -180,12 +271,13 @@ const ReferenceEntitiesPage: React.FC = () => {
         <aside className="reference-entities-panel reference-entities-form-panel">
           <div className="reference-entities-header">
             <span className="reference-entities-eyebrow">Reference Atlas</span>
-            <h1>People, nations, eras, places</h1>
-            <p>
-              This is the second structural layer of the encyclopedia. Topics stay as the subject tree;
-              reference entities hold the beings, polities, periods, and locations that knowledge items
-              can later point to.
-            </p>
+            <h1>Create {singularKindLabels[formState.kind]}</h1>
+            <p>{workbenchPreset.lead}</p>
+          </div>
+
+          <div className="reference-entities-note">
+            <strong>Next step after creation</strong>
+            <span>{workbenchPreset.nextStep}</span>
           </div>
 
           <form className="reference-entities-form" onSubmit={handleSubmit}>
@@ -194,7 +286,7 @@ const ReferenceEntitiesPage: React.FC = () => {
               <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
                 {kindOptions.map((kind) => (
                   <option key={kind} value={kind}>
-                    {kindLabels[kind]}
+                    {singularKindLabels[kind]}
                   </option>
                 ))}
               </select>
@@ -207,29 +299,31 @@ const ReferenceEntitiesPage: React.FC = () => {
 
             <div className="reference-entities-grid">
               <div className="reference-entities-field">
-                <label htmlFor="startYear">Start Year</label>
+                <label htmlFor="startYear">{workbenchPreset.startYearLabel}</label>
                 <input
                   id="startYear"
                   name="startYear"
                   type="number"
                   value={formState.startYear}
                   onChange={handleChange}
-                  placeholder="-500 for BCE"
+                  placeholder={workbenchPreset.startYearPlaceholder}
                 />
               </div>
 
               <div className="reference-entities-field">
-                <label htmlFor="endYear">End Year</label>
+                <label htmlFor="endYear">{workbenchPreset.endYearLabel}</label>
                 <input
                   id="endYear"
                   name="endYear"
                   type="number"
                   value={formState.endYear}
                   onChange={handleChange}
-                  placeholder="1453"
+                  placeholder={workbenchPreset.endYearPlaceholder}
                 />
               </div>
             </div>
+
+            <div className="reference-entities-field-hint">{workbenchPreset.chronologyHint}</div>
 
             <div className="reference-entities-field">
               <label htmlFor="summary">Summary</label>
@@ -238,7 +332,7 @@ const ReferenceEntitiesPage: React.FC = () => {
                 name="summary"
                 value={formState.summary}
                 onChange={handleChange}
-                placeholder="A short encyclopedic description"
+                placeholder={workbenchPreset.summaryPlaceholder}
               />
             </div>
 
@@ -249,12 +343,12 @@ const ReferenceEntitiesPage: React.FC = () => {
                 name="description"
                 value={formState.description}
                 onChange={handleChange}
-                placeholder="Longer notes about this person, nation, civilization, era, or place"
+                placeholder={workbenchPreset.descriptionPlaceholder}
               />
             </div>
 
             <button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Add Reference Entity'}
+              {submitting ? 'Saving...' : workbenchPreset.submitLabel}
             </button>
           </form>
         </aside>
