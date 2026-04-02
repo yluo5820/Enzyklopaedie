@@ -29,59 +29,239 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
 };
 
 type EntityStructurePreset = {
-  allowedRelationTypes: KnowledgeRelationType[];
-  defaultRelationType: KnowledgeRelationType;
   helperText: string;
-  notePlaceholder: string;
-  targetPrompt: string;
-  targetKinds: ReferenceEntityKind[];
+  modes: Array<{
+    id: string;
+    label: string;
+    description: string;
+    allowedRelationTypes: KnowledgeRelationType[];
+    defaultRelationType: KnowledgeRelationType;
+    notePlaceholder: string;
+    targetPrompt: string;
+    targetKinds: ReferenceEntityKind[];
+  }>;
 };
 
 const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
   person: {
-    allowedRelationTypes: ['located_in', 'during', 'part_of', 'related_to', 'influenced_by'],
-    defaultRelationType: 'located_in',
     helperText:
-      'Use entity links here for provenance and setting: where this person belongs, when they belong, and who influenced them.',
-    notePlaceholder: 'Optional note about this affiliation or influence',
-    targetPrompt: 'Choose a nation, civilization, era, place, or related person',
-    targetKinds: ['nation', 'civilization', 'era', 'place', 'person'],
+      'Use structure modes here for provenance and setting: where this person belongs, when they belong, and who influenced them.',
+    modes: [
+      {
+        id: 'homeland',
+        label: 'Homeland',
+        description: 'Place the person in a nation or place.',
+        allowedRelationTypes: ['located_in'],
+        defaultRelationType: 'located_in',
+        notePlaceholder: 'Optional note about this homeland or place',
+        targetPrompt: 'Choose a nation or place',
+        targetKinds: ['nation', 'place'],
+      },
+      {
+        id: 'era',
+        label: 'Era',
+        description: 'Attach the era this person belongs to.',
+        allowedRelationTypes: ['during'],
+        defaultRelationType: 'during',
+        notePlaceholder: 'Optional note about this historical period',
+        targetPrompt: 'Choose an era',
+        targetKinds: ['era'],
+      },
+      {
+        id: 'civilization',
+        label: 'Civilization',
+        description: 'Place the person inside a broader civilizational horizon.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this civilizational frame',
+        targetPrompt: 'Choose a civilization',
+        targetKinds: ['civilization'],
+      },
+      {
+        id: 'influence',
+        label: 'Influence',
+        description: 'Record another person who influenced this figure.',
+        allowedRelationTypes: ['influenced_by', 'related_to'],
+        defaultRelationType: 'influenced_by',
+        notePlaceholder: 'Optional note about this influence',
+        targetPrompt: 'Choose another person',
+        targetKinds: ['person'],
+      },
+    ],
   },
   nation: {
-    allowedRelationTypes: ['contains', 'part_of', 'during', 'located_in', 'related_to', 'influenced_by'],
-    defaultRelationType: 'part_of',
     helperText:
-      'Use this to place the nation inside a broader civilization, era, or geography, or to record sub-polities when useful.',
-    notePlaceholder: 'Optional note about this national structure',
-    targetPrompt: 'Choose a civilization, era, place, nation, or related polity',
-    targetKinds: ['civilization', 'era', 'place', 'nation'],
+      'Use structure modes here to place the nation in a civilization, era, or geography, or to record sub-polities and peer links.',
+    modes: [
+      {
+        id: 'civilization',
+        label: 'Civilization',
+        description: 'Place the nation inside a broader civilization.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this civilizational membership',
+        targetPrompt: 'Choose a civilization',
+        targetKinds: ['civilization'],
+      },
+      {
+        id: 'era',
+        label: 'Era',
+        description: 'Attach the period in which this polity belongs.',
+        allowedRelationTypes: ['during'],
+        defaultRelationType: 'during',
+        notePlaceholder: 'Optional note about this historical period',
+        targetPrompt: 'Choose an era',
+        targetKinds: ['era'],
+      },
+      {
+        id: 'geography',
+        label: 'Geography',
+        description: 'Place the nation inside a larger geographic container.',
+        allowedRelationTypes: ['located_in'],
+        defaultRelationType: 'located_in',
+        notePlaceholder: 'Optional note about this geography',
+        targetPrompt: 'Choose a place',
+        targetKinds: ['place'],
+      },
+      {
+        id: 'sub-polity',
+        label: 'Sub-polity',
+        description: 'Record a contained polity or political subdivision.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this contained polity',
+        targetPrompt: 'Choose another nation',
+        targetKinds: ['nation'],
+      },
+      {
+        id: 'peer-link',
+        label: 'Peer Link',
+        description: 'Record influence or affinity with another polity.',
+        allowedRelationTypes: ['influenced_by', 'related_to'],
+        defaultRelationType: 'related_to',
+        notePlaceholder: 'Optional note about this peer relation',
+        targetPrompt: 'Choose another nation or civilization',
+        targetKinds: ['nation', 'civilization'],
+      },
+    ],
   },
   civilization: {
-    allowedRelationTypes: ['contains', 'part_of', 'located_in', 'related_to', 'influenced_by'],
-    defaultRelationType: 'contains',
     helperText:
-      'Civilizations usually contain nations and eras. Use part-of only when you need nested civilizational groupings.',
-    notePlaceholder: 'Optional note about this civilizational scope',
-    targetPrompt: 'Choose a nation, era, place, or sub-/super-civilization',
-    targetKinds: ['nation', 'era', 'place', 'civilization'],
+      'Civilizations usually contain nations and eras. Use the modes here to build that scope deliberately.',
+    modes: [
+      {
+        id: 'member-nation',
+        label: 'Member Nation',
+        description: 'Add a nation contained within this civilization.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this member nation',
+        targetPrompt: 'Choose a nation',
+        targetKinds: ['nation'],
+      },
+      {
+        id: 'era-span',
+        label: 'Era Span',
+        description: 'Add an era that belongs inside this civilization.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this era span',
+        targetPrompt: 'Choose an era',
+        targetKinds: ['era'],
+      },
+      {
+        id: 'super-civilization',
+        label: 'Super-civilization',
+        description: 'Nest this civilization inside a broader one when useful.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this broader frame',
+        targetPrompt: 'Choose another civilization',
+        targetKinds: ['civilization'],
+      },
+      {
+        id: 'geography',
+        label: 'Geography',
+        description: 'Anchor the civilization to a place.',
+        allowedRelationTypes: ['located_in'],
+        defaultRelationType: 'located_in',
+        notePlaceholder: 'Optional note about this geography',
+        targetPrompt: 'Choose a place',
+        targetKinds: ['place'],
+      },
+    ],
   },
   era: {
-    allowedRelationTypes: ['contains', 'part_of', 'related_to', 'influenced_by'],
-    defaultRelationType: 'contains',
     helperText:
-      'Eras work best as chronological containers. Use contains for sub-eras and part-of for broader historical periods.',
-    notePlaceholder: 'Optional note about this chronological structure',
-    targetPrompt: 'Choose a sub-era, super-era, or closely related period',
-    targetKinds: ['era'],
+      'Eras work best as chronological containers. Use the modes here to build period hierarchy and parallels deliberately.',
+    modes: [
+      {
+        id: 'sub-era',
+        label: 'Sub-era',
+        description: 'Add a narrower period contained within this one.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this sub-era',
+        targetPrompt: 'Choose another era',
+        targetKinds: ['era'],
+      },
+      {
+        id: 'broader-era',
+        label: 'Broader Era',
+        description: 'Place this era inside a larger period.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this broader period',
+        targetPrompt: 'Choose another era',
+        targetKinds: ['era'],
+      },
+      {
+        id: 'parallel-period',
+        label: 'Parallel Period',
+        description: 'Link a related or influencing period.',
+        allowedRelationTypes: ['related_to', 'influenced_by'],
+        defaultRelationType: 'related_to',
+        notePlaceholder: 'Optional note about this parallel period',
+        targetPrompt: 'Choose another era',
+        targetKinds: ['era'],
+      },
+    ],
   },
   place: {
-    allowedRelationTypes: ['contains', 'part_of', 'located_in', 'related_to'],
-    defaultRelationType: 'part_of',
     helperText:
       'Places usually nest inside other places, and they can also host nations or civilizations when geography matters.',
-    notePlaceholder: 'Optional note about this spatial structure',
-    targetPrompt: 'Choose a place, nation, or civilization',
-    targetKinds: ['place', 'nation', 'civilization'],
+    modes: [
+      {
+        id: 'contained-place',
+        label: 'Contained Place',
+        description: 'Add a smaller place inside this one.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this contained place',
+        targetPrompt: 'Choose another place',
+        targetKinds: ['place'],
+      },
+      {
+        id: 'broader-place',
+        label: 'Broader Place',
+        description: 'Place this location inside a larger geography.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this larger geography',
+        targetPrompt: 'Choose another place',
+        targetKinds: ['place'],
+      },
+      {
+        id: 'hosted-polity',
+        label: 'Hosted Polity',
+        description: 'Attach a nation or civilization hosted by this geography.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this hosted polity',
+        targetPrompt: 'Choose a nation or civilization',
+        targetKinds: ['nation', 'civilization'],
+      },
+    ],
   },
 };
 
@@ -197,6 +377,7 @@ const ReferenceEntityPage: React.FC = () => {
     relationType: 'contains' as KnowledgeRelationType,
     note: '',
   });
+  const [structureModeId, setStructureModeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -271,13 +452,15 @@ const ReferenceEntityPage: React.FC = () => {
     [incomingRelations]
   );
   const structurePreset = entity ? entityStructurePresets[entity.kind] : entityStructurePresets.person;
+  const activeStructureMode =
+    structurePreset.modes.find((mode) => mode.id === structureModeId) ?? structurePreset.modes[0];
   const selectableEntities = useMemo(() => {
-    const kindPriority = getKindPriority(structurePreset.targetKinds);
+    const kindPriority = getKindPriority(activeStructureMode.targetKinds);
 
     return [...allEntities]
       .filter(
         (candidate) =>
-          candidate.id !== entity?.id && structurePreset.targetKinds.includes(candidate.kind)
+          candidate.id !== entity?.id && activeStructureMode.targetKinds.includes(candidate.kind)
       )
       .sort((left, right) => {
         const leftPriority = kindPriority[left.kind] ?? 99;
@@ -289,15 +472,26 @@ const ReferenceEntityPage: React.FC = () => {
 
         return left.id - right.id;
       });
-  }, [allEntities, entity?.id, structurePreset]);
+  }, [activeStructureMode, allEntities, entity?.id]);
+
+  const outgoingStructureRelations = useMemo(
+    () => outgoingRelations.filter((relation) => relation.toEntityType === 'reference_entity'),
+    [outgoingRelations]
+  );
+
+  useEffect(() => {
+    if (!structurePreset.modes.some((mode) => mode.id === structureModeId)) {
+      setStructureModeId(structurePreset.modes[0]?.id ?? '');
+    }
+  }, [structureModeId, structurePreset]);
 
   useEffect(() => {
     if (!entity) return;
 
     setRelationForm((current) => {
-      const nextRelationType = structurePreset.allowedRelationTypes.includes(current.relationType)
+      const nextRelationType = activeStructureMode.allowedRelationTypes.includes(current.relationType)
         ? current.relationType
-        : structurePreset.defaultRelationType;
+        : activeStructureMode.defaultRelationType;
       const hasSelectedTarget = selectableEntities.some(
         (candidate) => String(candidate.id) === current.toEntityId
       );
@@ -316,7 +510,7 @@ const ReferenceEntityPage: React.FC = () => {
         toEntityId: nextTargetId,
       };
     });
-  }, [entity, selectableEntities, structurePreset]);
+  }, [activeStructureMode, entity, selectableEntities]);
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -390,7 +584,7 @@ const ReferenceEntityPage: React.FC = () => {
 
       setRelationForm({
         toEntityId: '',
-        relationType: structurePreset.defaultRelationType,
+        relationType: activeStructureMode.defaultRelationType,
         note: '',
       });
     } catch (relationError) {
@@ -696,7 +890,36 @@ const ReferenceEntityPage: React.FC = () => {
               </div>
             </div>
 
+            <div className="reference-entity-mode-list">
+              {structurePreset.modes.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  className={
+                    activeStructureMode.id === mode.id
+                      ? 'reference-entity-mode is-active'
+                      : 'reference-entity-mode'
+                  }
+                  onClick={() => {
+                    setStructureModeId(mode.id);
+                    setRelationForm({
+                      toEntityId: '',
+                      relationType: mode.defaultRelationType,
+                      note: '',
+                    });
+                  }}
+                >
+                  <strong>{mode.label}</strong>
+                  <span>{mode.description}</span>
+                </button>
+              ))}
+            </div>
+
             <form className="reference-entity-form" onSubmit={handleCreateRelation}>
+              <div className="reference-entity-note">
+                <strong>Current mode</strong>
+                <span>{activeStructureMode.description}</span>
+              </div>
               <div className="reference-entity-grid-inline">
                 <div className="reference-entity-field">
                   <label htmlFor="entity-relation-type">Relation</label>
@@ -710,7 +933,7 @@ const ReferenceEntityPage: React.FC = () => {
                       }))
                     }
                   >
-                    {structurePreset.allowedRelationTypes.map((relationType) => (
+                    {activeStructureMode.allowedRelationTypes.map((relationType) => (
                       <option key={relationType} value={relationType}>
                         {formatRelationType(relationType)}
                       </option>
@@ -729,7 +952,7 @@ const ReferenceEntityPage: React.FC = () => {
                       }))
                     }
                   >
-                    <option value="">{structurePreset.targetPrompt}</option>
+                    <option value="">{activeStructureMode.targetPrompt}</option>
                     {selectableEntities.map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>
                         {candidate.title} ({candidate.kind})
@@ -749,7 +972,7 @@ const ReferenceEntityPage: React.FC = () => {
                       note: event.target.value,
                     }))
                   }
-                  placeholder={structurePreset.notePlaceholder}
+                  placeholder={activeStructureMode.notePlaceholder}
                 />
               </div>
               <button type="submit" disabled={savingRelation || !relationForm.toEntityId}>
@@ -763,48 +986,63 @@ const ReferenceEntityPage: React.FC = () => {
               </div>
             ) : (
               <div className="reference-entity-stack">
-                {outgoingRelations.map((relation) => (
-                  <article key={relation.id} className="reference-entity-card">
-                    <div className="reference-entity-card-top">
-                      <div>
-                        <div className="reference-entity-badges">
-                          <span>{formatRelationType(relation.relationType)}</span>
-                          <span>outgoing</span>
-                        </div>
-                        <Link
-                          to={buildRelationHref(relation, 'outgoing') as string}
-                          className="reference-entity-card-link"
-                        >
-                          <h3>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</h3>
-                        </Link>
-                      </div>
-                      <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
-                        Delete
-                      </button>
+                {outgoingStructureRelations.length > 0 ? (
+                  <div className="reference-entity-subsection">
+                    <h3>This entity points to</h3>
+                    <div className="reference-entity-stack">
+                      {outgoingStructureRelations.map((relation) => (
+                        <article key={relation.id} className="reference-entity-card">
+                          <div className="reference-entity-card-top">
+                            <div>
+                              <div className="reference-entity-badges">
+                                <span>{formatRelationType(relation.relationType)}</span>
+                                <span>outgoing</span>
+                              </div>
+                              <Link
+                                to={buildRelationHref(relation, 'outgoing') as string}
+                                className="reference-entity-card-link"
+                              >
+                                <h3>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</h3>
+                              </Link>
+                            </div>
+                            <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
+                              Delete
+                            </button>
+                          </div>
+                          {relation.note ? <p>{relation.note}</p> : null}
+                        </article>
+                      ))}
                     </div>
-                    {relation.note ? <p>{relation.note}</p> : null}
-                  </article>
-                ))}
-                {incomingEntityRelations.map((relation) => (
-                  <article key={relation.id} className="reference-entity-card">
-                    <div className="reference-entity-card-top">
-                      <div>
-                        <div className="reference-entity-badges">
-                          <span>{formatIncomingRelationType(relation.relationType)}</span>
-                          <span>incoming</span>
-                        </div>
-                        <Link
-                          to={buildRelationHref(relation, 'incoming') as string}
-                          className="reference-entity-card-link"
-                        >
-                          <h3>{relation.fromEntityTitle || `Entity #${relation.fromEntityId}`}</h3>
-                        </Link>
-                      </div>
-                      <span>{formatDate(relation.createdAt)}</span>
+                  </div>
+                ) : null}
+
+                {incomingEntityRelations.length > 0 ? (
+                  <div className="reference-entity-subsection">
+                    <h3>Other entities place or contain this one</h3>
+                    <div className="reference-entity-stack">
+                      {incomingEntityRelations.map((relation) => (
+                        <article key={relation.id} className="reference-entity-card">
+                          <div className="reference-entity-card-top">
+                            <div>
+                              <div className="reference-entity-badges">
+                                <span>{formatIncomingRelationType(relation.relationType)}</span>
+                                <span>incoming</span>
+                              </div>
+                              <Link
+                                to={buildRelationHref(relation, 'incoming') as string}
+                                className="reference-entity-card-link"
+                              >
+                                <h3>{relation.fromEntityTitle || `Entity #${relation.fromEntityId}`}</h3>
+                              </Link>
+                            </div>
+                            <span>{formatDate(relation.createdAt)}</span>
+                          </div>
+                          {relation.note ? <p>{relation.note}</p> : null}
+                        </article>
+                      ))}
                     </div>
-                    {relation.note ? <p>{relation.note}</p> : null}
-                  </article>
-                ))}
+                  </div>
+                ) : null}
               </div>
             )}
           </section>

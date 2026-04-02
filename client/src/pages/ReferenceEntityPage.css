@@ -220,6 +220,45 @@
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
 }
 
+.reference-entity-mode-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.reference-entity-mode,
+.reference-entity-note {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.reference-entity-mode {
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reference-entity-mode strong,
+.reference-entity-note strong {
+  color: var(--accent-dark);
+}
+
+.reference-entity-mode span,
+.reference-entity-note span {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.reference-entity-mode.is-active {
+  border-color: rgba(111, 69, 37, 0.28);
+  background: rgba(145, 95, 54, 0.12);
+}
+
 .reference-entity-form {
   display: grid;
   gap: 12px;
