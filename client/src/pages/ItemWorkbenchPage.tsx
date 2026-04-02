@@ -209,6 +209,20 @@ const formatLanguageLabel = (code: string) => languageLabelByCode.get(code) ?? c
 const formatProviderLabel = (provider: BookSearchProvider) =>
   providerLabelByValue.get(provider) ?? provider;
 
+const resolveBookSearchProvider = (
+  selectedProvider: BookSearchProvider,
+  filters: BookSearchFilters
+): BookSearchProvider => {
+  const hasQuery = Boolean(filters.query?.trim());
+  const hasAuthor = Boolean(filters.author?.trim());
+
+  if (selectedProvider === 'library_of_congress' && !hasQuery && hasAuthor) {
+    return 'open_library';
+  }
+
+  return selectedProvider;
+};
+
 const normalizeSearchText = (value?: string) =>
   (value ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -331,6 +345,7 @@ const ItemWorkbenchPage: React.FC = () => {
   const [bookSearchPage, setBookSearchPage] = useState(1);
   const [bookSearchHasMore, setBookSearchHasMore] = useState(false);
   const [bookSearchTotal, setBookSearchTotal] = useState<number | null>(null);
+  const [bookSearchActiveProvider, setBookSearchActiveProvider] = useState<BookSearchProvider>('library_of_congress');
   const [bookSearchSort, setBookSearchSort] = useState<SearchResultSort>('relevance');
   const [hideResultsWithoutAuthors, setHideResultsWithoutAuthors] = useState(false);
   const [hideResultsWithoutCovers, setHideResultsWithoutCovers] = useState(false);
@@ -717,25 +732,35 @@ const ItemWorkbenchPage: React.FC = () => {
 
   const runBookSearch = async (page: number, append = false) => {
     if (!currentSearchFilters.query?.trim() && !currentSearchFilters.author?.trim()) return;
+    const effectiveProvider = append
+      ? bookSearchActiveProvider
+      : resolveBookSearchProvider(bookSearchProvider, currentSearchFilters);
     setSearchingBooks(true);
     setBookSearchError(null);
-    setNotice(null);
+    if (!append) {
+      setNotice(
+        effectiveProvider !== bookSearchProvider
+          ? `Author-only searches are using ${formatProviderLabel(effectiveProvider)} because Library of Congress contributor matching is too sparse.`
+          : null
+      );
+      setBookSearchActiveProvider(effectiveProvider);
+    }
 
     try {
-      const pageData = await searchBookCatalog(bookSearchProvider, currentSearchFilters, page, 10);
+      const pageData = await searchBookCatalog(effectiveProvider, currentSearchFilters, page, 10);
       handleSearchResponse(pageData, append);
       if (!append) {
         setSelectedBookIds([]);
       }
       if (!append && pageData.matches.length === 0) {
-        setBookSearchError(`No matching books came back from ${formatProviderLabel(bookSearchProvider)}.`);
+        setBookSearchError(`No matching books came back from ${formatProviderLabel(effectiveProvider)}.`);
       }
     } catch (searchError) {
       console.error(searchError);
       setBookSearchError(
         searchError instanceof Error
           ? searchError.message
-          : `Failed to search ${formatProviderLabel(bookSearchProvider)} right now.`
+          : `Failed to search ${formatProviderLabel(effectiveProvider)} right now.`
       );
     } finally {
       setSearchingBooks(false);
@@ -748,6 +773,7 @@ const ItemWorkbenchPage: React.FC = () => {
     setBookSearchPage(1);
     setBookSearchHasMore(false);
     setBookSearchTotal(null);
+    setBookSearchActiveProvider(resolveBookSearchProvider(bookSearchProvider, currentSearchFilters));
     await runBookSearch(1, false);
   };
 
@@ -782,7 +808,7 @@ const ItemWorkbenchPage: React.FC = () => {
       setNotice(
         relationFailures
           ? `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'}, but some creator links could not be saved.`
-          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from Open Library.`
+          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchActiveProvider)}.`
       );
     } catch (importError) {
       console.error(importError);
@@ -884,6 +910,7 @@ const ItemWorkbenchPage: React.FC = () => {
                       setBookSearchPage(1);
                       setBookSearchHasMore(false);
                       setBookSearchTotal(null);
+                      setBookSearchActiveProvider(option.value);
                     }}
                   >
                     {option.label}
@@ -974,7 +1001,7 @@ const ItemWorkbenchPage: React.FC = () => {
                     <span>
                       Showing {visibleBookSearchResults.length} of {bookSearchResults.length} loaded
                       {bookSearchTotal ? ` of about ${bookSearchTotal}` : ''} matches from{' '}
-                      {formatProviderLabel(bookSearchProvider)}
+                      {formatProviderLabel(bookSearchActiveProvider)}
                     </span>
                     <div className="knowledge-search-action-group">
                       <button
