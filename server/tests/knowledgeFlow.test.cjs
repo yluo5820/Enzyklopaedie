@@ -793,7 +793,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const unknownAuthor = initialPeople.find((entity) => entity.title === 'Unknown Author');
     assert.ok(unknownAuthor);
     assert.equal(unknownAuthor.kind, 'person');
-    assert.equal(unknownAuthor.metadata.legacySource, 'authors');
+    assert.equal(unknownAuthor.slug, 'person-unknown-author');
+    assert.match(unknownAuthor.summary, /fallback person record/i);
 
     const createResponse = await request('/api/reference-entities', {
       method: 'POST',
