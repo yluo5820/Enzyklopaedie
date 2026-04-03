@@ -12,6 +12,13 @@
   --accent-dark: #5f3c21;
 }
 
+.home-page,
+.home-page *,
+.home-page *::before,
+.home-page *::after {
+  box-sizing: border-box;
+}
+
 .home-hero {
   position: relative;
   overflow: hidden;
@@ -76,6 +83,75 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
   gap: 22px;
   margin-top: 22px;
+}
+
+.home-surface-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  margin-top: 22px;
+}
+
+.home-surface-card {
+  display: grid;
+  gap: 12px;
+  padding: 22px 24px;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 20px 44px rgba(47, 31, 18, 0.06);
+}
+
+.home-surface-card h2 {
+  margin: 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+.home-surface-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.home-surface-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+.home-surface-meta span {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(141, 93, 53, 0.12);
+}
+
+.home-surface-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.home-surface-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  border: 1px solid rgba(95, 60, 33, 0.18);
+  color: var(--accent-dark);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.home-surface-actions a:first-child {
+  background: linear-gradient(135deg, #8a572d, #694121);
+  color: #fff9f2;
+  border-color: transparent;
 }
 
 .home-panel {
@@ -167,14 +243,29 @@
   background: rgba(255, 255, 255, 0.8);
 }
 
+.home-activity-top,
+.home-activity-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
 .home-activity-item strong {
   display: block;
   margin-bottom: 4px;
 }
 
-.home-activity-item span {
+.home-activity-item span,
+.home-activity-item a {
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.home-activity-item a {
+  text-decoration: none;
+  color: var(--accent-dark);
+  font-weight: 600;
 }
 
 .home-empty {
@@ -187,6 +278,7 @@
 }
 
 @media (max-width: 960px) {
+  .home-surface-grid,
   .home-grid {
     grid-template-columns: 1fr;
   }
