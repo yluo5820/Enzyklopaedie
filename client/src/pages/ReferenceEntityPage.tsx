@@ -81,6 +81,14 @@ type ContextGroup = {
   entries: ContextEntry[];
 };
 
+type OverviewCard = {
+  key: string;
+  eyebrow: string;
+  value: string;
+  meta: string;
+  hint: string;
+};
+
 const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
   person: {
     helperText:
@@ -422,6 +430,21 @@ const buildContextGroup = (
   empty,
   entries: sortContextEntries(entries),
 });
+
+const getGroupByKey = <T extends { key: string }>(groups: T[], key: string) =>
+  groups.find((group) => group.key === key);
+
+const getGroupPreview = (
+  group: { entries: Array<{ title: string }> } | undefined,
+  fallback: string,
+  limit = 2
+) => {
+  if (!group || group.entries.length === 0) return fallback;
+
+  const preview = group.entries.slice(0, limit).map((entry) => entry.title).join(' · ');
+  if (group.entries.length > limit) return `${preview} +${group.entries.length - limit}`;
+  return preview;
+};
 
 const getRelationCounterpartyTitle = (
   relation: KnowledgeRelationDetail,
@@ -1010,10 +1033,182 @@ const ReferenceEntityPage: React.FC = () => {
   }, [entity?.kind, incomingEntityRelations, outgoingStructureRelations]);
   const topicContextCount = topicRelations.length + subjectRelations.length;
   const structureLinkCount = outgoingStructureRelations.length + incomingEntityRelations.length;
-  const itemLinkSummary =
-    entity?.kind === 'person'
-      ? `${authoredWorks.length} authored${relatedItems.length ? `, ${relatedItems.length} other` : ''}`
-      : `${itemRelations.length} linked`;
+  const overviewCards = useMemo<OverviewCard[]>(() => {
+    if (!entity) return [];
+
+    const chronologyCard: OverviewCard = {
+      key: 'chronology',
+      eyebrow: 'Chronology',
+      value: formatTimespan(entity),
+      meta: legacySource ? `Imported from ${legacySource}` : 'Native atlas record',
+      hint: 'The main time span currently recorded for this entity.',
+    };
+
+    if (entity.kind === 'person') {
+      const belongsIn = getGroupByKey(structureGroups, 'belongs-in');
+      const influencedByGroup = getGroupByKey(structureGroups, 'influenced-by');
+      const influencesGroup = getGroupByKey(structureGroups, 'influences');
+      const peerLinksGroup = getGroupByKey(structureGroups, 'peer-links');
+      const influenceCount =
+        (influencedByGroup?.entries.length ?? 0) +
+        (influencesGroup?.entries.length ?? 0) +
+        (peerLinksGroup?.entries.length ?? 0);
+
+      return [
+        chronologyCard,
+        {
+          key: 'belongs-in',
+          eyebrow: 'Belongs In',
+          value: `${belongsIn?.entries.length ?? 0} links`,
+          meta: getGroupPreview(belongsIn, 'No homeland, era, or civilization links yet.'),
+          hint: 'Homeland, era, place, and civilization links that situate this person.',
+        },
+        {
+          key: 'works',
+          eyebrow: 'Works',
+          value: `${authoredWorks.length} authored`,
+          meta:
+            relatedItems.length > 0
+              ? `${relatedItems.length} other item references`
+              : 'Only authored works are linked so far.',
+          hint: 'Items that point to this person, especially through authorship.',
+        },
+        {
+          key: 'influence-web',
+          eyebrow: 'Influence Web',
+          value: `${influenceCount} links`,
+          meta: getGroupPreview(influencedByGroup ?? peerLinksGroup, 'No influence links yet.'),
+          hint: 'Influence and peer links around this person.',
+        },
+      ];
+    }
+
+    if (entity.kind === 'nation') {
+      const containedScope = getGroupByKey(structureGroups, 'contained-scope');
+      const placedIn = getGroupByKey(structureGroups, 'placed-in');
+
+      return [
+        chronologyCard,
+        {
+          key: 'contained-scope',
+          eyebrow: 'Contained Scope',
+          value: `${containedScope?.entries.length ?? 0} links`,
+          meta: getGroupPreview(containedScope, 'No contained scope recorded yet.'),
+          hint: 'Sub-polities or member entities recorded inside this nation.',
+        },
+        {
+          key: 'placed-in',
+          eyebrow: 'Placed In',
+          value: `${placedIn?.entries.length ?? 0} links`,
+          meta: getGroupPreview(placedIn, 'No broader geography, civilization, or era links yet.'),
+          hint: 'Broader civilization, geography, and era links for this nation.',
+        },
+        {
+          key: 'coverage',
+          eyebrow: 'Coverage',
+          value: `${topicContextCount} topics`,
+          meta: `${itemRelations.length} linked items`,
+          hint: 'How many topics and items currently use this nation in the atlas.',
+        },
+      ];
+    }
+
+    if (entity.kind === 'civilization') {
+      const containedScope = getGroupByKey(structureGroups, 'contained-scope');
+      const historicalLinks = getGroupByKey(structureGroups, 'historical-links');
+
+      return [
+        chronologyCard,
+        {
+          key: 'contained-scope',
+          eyebrow: 'Contained Scope',
+          value: `${containedScope?.entries.length ?? 0} links`,
+          meta: getGroupPreview(containedScope, 'No member nations or eras yet.'),
+          hint: 'Member nations, eras, or sub-civilizations inside this civilization.',
+        },
+        {
+          key: 'historical-links',
+          eyebrow: 'Historical Links',
+          value: `${historicalLinks?.entries.length ?? 0} links`,
+          meta: getGroupPreview(historicalLinks, 'No historical links yet.'),
+          hint: 'Era links and entities associated with this civilizational horizon.',
+        },
+        {
+          key: 'coverage',
+          eyebrow: 'Coverage',
+          value: `${topicContextCount} topics`,
+          meta: `${itemRelations.length} linked items`,
+          hint: 'How many topics and items currently use this civilization in the atlas.',
+        },
+      ];
+    }
+
+    if (entity.kind === 'era') {
+      const containedPeriods = getGroupByKey(structureGroups, 'contained-periods');
+      const inThisEra = getGroupByKey(structureGroups, 'in-this-era');
+
+      return [
+        chronologyCard,
+        {
+          key: 'contained-periods',
+          eyebrow: 'Contained Periods',
+          value: `${containedPeriods?.entries.length ?? 0} links`,
+          meta: getGroupPreview(containedPeriods, 'No sub-eras recorded yet.'),
+          hint: 'Sub-eras or member entities recorded within this period.',
+        },
+        {
+          key: 'in-this-era',
+          eyebrow: 'In This Era',
+          value: `${inThisEra?.entries.length ?? 0} links`,
+          meta: getGroupPreview(inThisEra, 'No entities are placed in this era yet.'),
+          hint: 'Entities that are explicitly placed during this era.',
+        },
+        {
+          key: 'coverage',
+          eyebrow: 'Coverage',
+          value: `${topicContextCount} topics`,
+          meta: `${itemRelations.length} linked items`,
+          hint: 'How many topics and items currently use this era in the atlas.',
+        },
+      ];
+    }
+
+    const containedPlaces = getGroupByKey(structureGroups, 'contained-places');
+    const locatedHere = getGroupByKey(structureGroups, 'located-here');
+
+    return [
+      chronologyCard,
+      {
+        key: 'contained-places',
+        eyebrow: 'Contained Places',
+        value: `${containedPlaces?.entries.length ?? 0} links`,
+        meta: getGroupPreview(containedPlaces, 'No contained places recorded yet.'),
+        hint: 'Places or hosted entities recorded inside this geography.',
+      },
+      {
+        key: 'located-here',
+        eyebrow: 'Located Here',
+        value: `${locatedHere?.entries.length ?? 0} links`,
+        meta: getGroupPreview(locatedHere, 'Nothing is located here yet.'),
+        hint: 'Entities that are placed inside this geography.',
+      },
+      {
+        key: 'coverage',
+        eyebrow: 'Coverage',
+        value: `${topicContextCount} topics`,
+        meta: `${itemRelations.length} linked items`,
+        hint: 'How many topics and items currently use this place in the atlas.',
+      },
+    ];
+  }, [
+    authoredWorks.length,
+    entity,
+    itemRelations.length,
+    legacySource,
+    relatedItems.length,
+    structureGroups,
+    topicContextCount,
+  ]);
 
   useEffect(() => {
     if (!structurePreset.modes.some((mode) => mode.id === structureModeId)) {
@@ -1300,44 +1495,16 @@ const ReferenceEntityPage: React.FC = () => {
             ) : null}
           </div>
           <div className="reference-entity-overview-grid">
-            <article className="reference-entity-overview-card">
-              <div className="reference-entity-overview-label">
-                <span className="reference-entity-eyebrow">Chronology</span>
-                <EntityHint text="The main time span recorded for this entity." />
-              </div>
-              <strong>{formatTimespan(entity)}</strong>
-              <span className="reference-entity-overview-meta">
-                {legacySource ? `Imported from ${legacySource}` : 'Native atlas record'}
-              </span>
-            </article>
-            <article className="reference-entity-overview-card">
-              <div className="reference-entity-overview-label">
-                <span className="reference-entity-eyebrow">Atlas Context</span>
-                <EntityHint text="Subjects and topics that point to this entity as part of their conceptual or historical framing." />
-              </div>
-              <strong>{topicContextCount} links</strong>
-              <span className="reference-entity-overview-meta">
-                {topicRelations.length} topic, {subjectRelations.length} legacy subject
-              </span>
-            </article>
-            <article className="reference-entity-overview-card">
-              <div className="reference-entity-overview-label">
-                <span className="reference-entity-eyebrow">Item Context</span>
-                <EntityHint text={entity.kind === 'person' ? 'Items linked through authorship and other person-level connections.' : 'Items that point to this entity.'} />
-              </div>
-              <strong>{itemRelations.length} items</strong>
-              <span className="reference-entity-overview-meta">{itemLinkSummary}</span>
-            </article>
-            <article className="reference-entity-overview-card">
-              <div className="reference-entity-overview-label">
-                <span className="reference-entity-eyebrow">Structure</span>
-                <EntityHint text="Entity-to-entity containment, placement, and affiliation links." />
-              </div>
-              <strong>{structureLinkCount} links</strong>
-              <span className="reference-entity-overview-meta">
-                {outgoingStructureRelations.length} outgoing, {incomingEntityRelations.length} incoming
-              </span>
-            </article>
+            {overviewCards.map((card) => (
+              <article key={card.key} className="reference-entity-overview-card">
+                <div className="reference-entity-overview-label">
+                  <span className="reference-entity-eyebrow">{card.eyebrow}</span>
+                  <EntityHint text={card.hint} />
+                </div>
+                <strong>{card.value}</strong>
+                <span className="reference-entity-overview-meta">{card.meta}</span>
+              </article>
+            ))}
           </div>
           {showEditor ? (
             <section className="reference-entity-inline-panel">
