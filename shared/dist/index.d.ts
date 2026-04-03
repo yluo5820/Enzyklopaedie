@@ -179,6 +179,12 @@ export interface CanonicalHistoricalSearchMatch {
     sourceUrl?: string;
     metadata?: Record<string, unknown>;
 }
+export interface CanonicalHistoricalGeometryResponse {
+    entityId: number;
+    title: string;
+    source: 'wikimedia_commons_map';
+    geojson: Record<string, unknown>;
+}
 export interface Exhibit {
     id: number;
     title: string;

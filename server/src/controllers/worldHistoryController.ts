@@ -290,6 +290,14 @@ const buildSearchQuery = (query: string, kind: CanonicalHistoricalEntityKind | '
   return trimmed;
 };
 
+const getStringClaim = (
+  claims: Record<string, WikidataClaim[]> | undefined,
+  property: string
+) => {
+  const value = getClaimValues(claims, property)[0];
+  return typeof value === 'string' ? value : undefined;
+};
+
 const localEntityKindMap: Partial<Record<CanonicalHistoricalEntityKind, ReferenceEntityKind>> = {
   civilization: 'civilization',
   era: 'era',
@@ -420,6 +428,7 @@ export const searchCanonicalHistoricalEntities = asyncErrorHandler(async (req: R
       const coordinates = getCoordinate(claims);
       const detectedKind = detectKind(kind, description ?? '', claims);
       const imageFilename = getClaimValues(claims, 'P18')[0];
+      const geoshapeTitle = getStringClaim(claims, 'P3896');
 
       const match: CanonicalHistoricalSearchMatch & { score: number } = {
         authority: 'wikidata',
@@ -436,6 +445,8 @@ export const searchCanonicalHistoricalEntities = asyncErrorHandler(async (req: R
         sourceUrl: result.concepturi || `https://www.wikidata.org/wiki/${result.id}`,
         metadata: {
           description,
+          geoshapeTitle,
+          hasGeoshape: Boolean(geoshapeTitle),
           wikidataId: result.id,
         },
         score: scoreMatch(kind, query, title, description ?? '', detectedKind, claims),
@@ -487,6 +498,69 @@ export const createCanonicalHistoricalEntity = asyncErrorHandler(async (req: Req
   });
 
   res.status(201).json(entity);
+});
+
+export const getCanonicalHistoricalEntityGeometry = asyncErrorHandler(async (req: Request, res: Response) => {
+  const id = parseId(req.params.id);
+  if (!id) {
+    return res.status(400).json({ message: 'Invalid atlas entity id' });
+  }
+
+  const db = await getDb();
+  const row = await db.get<CanonicalHistoricalEntityRow>(
+    'SELECT * FROM canonical_historical_entities WHERE id = ?',
+    id
+  );
+
+  if (!row) {
+    return res.status(404).json({ message: 'Atlas entity not found' });
+  }
+
+  const entity = hydrateCanonicalHistoricalEntity(row);
+  const geoshapeTitle =
+    typeof entity.metadata?.geoshapeTitle === 'string' ? entity.metadata.geoshapeTitle : undefined;
+
+  if (!geoshapeTitle) {
+    return res.status(404).json({ message: 'No boundary geometry is available for this atlas entity yet.' });
+  }
+
+  const shapeUrl = `https://commons.wikimedia.org/w/index.php?title=${encodeURIComponent(
+    geoshapeTitle
+  )}&action=raw`;
+
+  const upstreamResponse = await fetch(shapeUrl, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Enzyklopaedie/1.0',
+    },
+  });
+
+  if (!upstreamResponse.ok) {
+    return res.status(upstreamResponse.status).json({
+      message: 'Failed to fetch boundary geometry from Wikimedia Commons.',
+    });
+  }
+
+  const payload = await upstreamResponse.json() as {
+    data?: Record<string, unknown>;
+    type?: string;
+  } | Record<string, unknown>;
+
+  const geojson =
+    payload && typeof payload === 'object' && 'data' in payload && payload.data && typeof payload.data === 'object'
+      ? payload.data
+      : payload;
+
+  if (!geojson || typeof geojson !== 'object') {
+    return res.status(502).json({ message: 'Wikimedia Commons returned invalid boundary geometry.' });
+  }
+
+  res.json({
+    entityId: entity.id,
+    title: entity.title,
+    source: 'wikimedia_commons_map',
+    geojson,
+  });
 });
 
 export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Request, res: Response) => {

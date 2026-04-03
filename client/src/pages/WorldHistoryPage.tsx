@@ -6,6 +6,7 @@ import type {
 } from '@enzyklopaedie/shared';
 import {
   deleteHistoricalAtlasEntity,
+  fetchHistoricalAtlasGeometry,
   fetchHistoricalAtlasEntities,
   promoteHistoricalAtlasEntity,
   saveHistoricalAtlasEntity,
@@ -47,6 +48,8 @@ type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
   longitude: number;
 };
 
+type GeoJsonLike = Record<string, any>;
+
 const formatYear = (year?: number) => {
   if (year === undefined) return 'Undated';
   if (year < 0) return `${Math.abs(year)} BCE`;
@@ -83,6 +86,68 @@ const hasCoordinates = (
   entity: Pick<CanonicalHistoricalEntity, 'latitude' | 'longitude'>
 ): entity is CanonicalHistoricalEntityWithCoordinates =>
   typeof entity.latitude === 'number' && typeof entity.longitude === 'number';
+
+const hasBoundaryGeometry = (entity: CanonicalHistoricalEntity) =>
+  Boolean(entity.metadata?.hasGeoshape && entity.metadata?.geoshapeTitle);
+
+const collectGeoJsonCoordinates = (value: unknown, accumulator: Array<[number, number]>) => {
+  if (!Array.isArray(value)) return;
+
+  if (
+    value.length >= 2 &&
+    typeof value[0] === 'number' &&
+    typeof value[1] === 'number'
+  ) {
+    accumulator.push([value[0], value[1]]);
+    return;
+  }
+
+  for (const entry of value) {
+    collectGeoJsonCoordinates(entry, accumulator);
+  }
+};
+
+const getGeoJsonBounds = (geojson: GeoJsonLike) => {
+  const coordinates: Array<[number, number]> = [];
+
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+
+    if (Array.isArray((node as { features?: unknown }).features)) {
+      for (const feature of (node as { features: unknown[] }).features) {
+        visit(feature);
+      }
+      return;
+    }
+
+    if ((node as { geometry?: unknown }).geometry) {
+      visit((node as { geometry: unknown }).geometry);
+      return;
+    }
+
+    if (Array.isArray((node as { geometries?: unknown }).geometries)) {
+      for (const geometry of (node as { geometries: unknown[] }).geometries) {
+        visit(geometry);
+      }
+      return;
+    }
+
+    if ((node as { coordinates?: unknown }).coordinates) {
+      collectGeoJsonCoordinates((node as { coordinates: unknown }).coordinates, coordinates);
+    }
+  };
+
+  visit(geojson);
+
+  if (coordinates.length === 0) return null;
+
+  return {
+    west: Math.min(...coordinates.map(([lng]) => lng)),
+    east: Math.max(...coordinates.map(([lng]) => lng)),
+    south: Math.min(...coordinates.map(([, lat]) => lat)),
+    north: Math.max(...coordinates.map(([, lat]) => lat)),
+  };
+};
 
 const buildAtlasGeoJson = (entities: CanonicalHistoricalEntity[]) => ({
   type: 'FeatureCollection',
@@ -140,6 +205,8 @@ const WorldHistoryPage: React.FC = () => {
   const [pendingSaveAuthorityId, setPendingSaveAuthorityId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [pendingPromoteId, setPendingPromoteId] = useState<number | null>(null);
+  const [selectedGeometry, setSelectedGeometry] = useState<GeoJsonLike | null>(null);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
   const [selectedAtlasEntityId, setSelectedAtlasEntityId] = useState<number | null>(() => {
     const parsed = Number(searchParams.get('selected'));
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -273,6 +340,29 @@ const WorldHistoryPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const loadGeometry = async () => {
+      if (!selectedAtlasEntity || !hasBoundaryGeometry(selectedAtlasEntity)) {
+        setSelectedGeometry(null);
+        setGeometryError(null);
+        return;
+      }
+
+      try {
+        setGeometryError(null);
+        const geometry = await fetchHistoricalAtlasGeometry(selectedAtlasEntity.id);
+        setSelectedGeometry(geometry.geojson);
+      } catch (error) {
+        setSelectedGeometry(null);
+        setGeometryError(
+          error instanceof Error ? error.message : 'Failed to load boundary geometry.'
+        );
+      }
+    };
+
+    void loadGeometry();
+  }, [selectedAtlasEntity]);
+
   const runSearch = async () => {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
@@ -389,6 +479,14 @@ const WorldHistoryPage: React.FC = () => {
           data: buildAtlasGeoJson([]) as any,
         });
 
+        map.addSource('atlas-selected-geometry', {
+          type: 'geojson',
+          data: {
+            type: 'FeatureCollection',
+            features: [],
+          } as any,
+        });
+
         map.addLayer({
           id: 'atlas-entities-points',
           type: 'circle',
@@ -451,6 +549,27 @@ const WorldHistoryPage: React.FC = () => {
           },
         });
 
+        map.addLayer({
+          id: 'atlas-selected-geometry-fill',
+          type: 'fill',
+          source: 'atlas-selected-geometry',
+          paint: {
+            'fill-color': '#8d5d35',
+            'fill-opacity': 0.16,
+          },
+        });
+
+        map.addLayer({
+          id: 'atlas-selected-geometry-outline',
+          type: 'line',
+          source: 'atlas-selected-geometry',
+          paint: {
+            'line-color': '#5b3822',
+            'line-width': 2,
+            'line-opacity': 0.82,
+          },
+        });
+
         map.on('click', 'atlas-entities-points', (event) => {
           const feature = event.features?.[0];
           const id = feature?.properties?.id;
@@ -489,9 +608,16 @@ const WorldHistoryPage: React.FC = () => {
     if (!map || !mapLoadedRef.current) return;
 
     const source = map.getSource('atlas-entities') as import('@maptiler/sdk').GeoJSONSource | undefined;
-    if (!source) return;
+    const geometrySource = map.getSource('atlas-selected-geometry') as import('@maptiler/sdk').GeoJSONSource | undefined;
+    if (!source || !geometrySource) return;
 
     source.setData(buildAtlasGeoJson(visibleAtlasEntities) as any);
+    geometrySource.setData(
+      (selectedGeometry ?? {
+        type: 'FeatureCollection',
+        features: [],
+      }) as any
+    );
 
     const selectedId =
       selectedVisibleAtlasEntity && hasCoordinates(selectedVisibleAtlasEntity)
@@ -499,6 +625,20 @@ const WorldHistoryPage: React.FC = () => {
         : -1;
     if (map.getLayer('atlas-entities-selected')) {
       map.setFilter('atlas-entities-selected', ['==', ['get', 'id'], selectedId] as any);
+    }
+
+    if (selectedGeometry) {
+      const bounds = getGeoJsonBounds(selectedGeometry);
+      if (bounds) {
+        map.fitBounds(
+          [
+            [bounds.west, bounds.south],
+            [bounds.east, bounds.north],
+          ],
+          { padding: 70, duration: 900, maxZoom: 5.2 }
+        );
+        return;
+      }
     }
 
     if (selectedVisibleAtlasEntity) {
@@ -532,7 +672,7 @@ const WorldHistoryPage: React.FC = () => {
         { padding: 80, duration: 900, maxZoom: 4.8 }
       );
     }
-  }, [mappableAtlasEntities, selectedVisibleAtlasEntity, visibleAtlasEntities]);
+  }, [mappableAtlasEntities, selectedGeometry, selectedVisibleAtlasEntity, visibleAtlasEntities]);
 
   return (
     <div className="world-history-page">
@@ -741,6 +881,10 @@ const WorldHistoryPage: React.FC = () => {
                         <span className="world-history-panel__eyebrow">Local encyclopedia</span>
                         <strong>{selectedAtlasEntity.referenceEntityId ? 'Linked' : 'Not linked yet'}</strong>
                       </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Boundary layer</span>
+                        <strong>{hasBoundaryGeometry(selectedAtlasEntity) ? 'Available' : 'Point only'}</strong>
+                      </div>
                     </div>
 
                     <div className="world-history-selected-card__actions">
@@ -776,6 +920,9 @@ const WorldHistoryPage: React.FC = () => {
                         </a>
                       )}
                     </div>
+                    {geometryError ? (
+                      <div className="world-history-feedback is-error">{geometryError}</div>
+                    ) : null}
                   </div>
                 )}
               </section>

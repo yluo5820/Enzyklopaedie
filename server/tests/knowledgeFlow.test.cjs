@@ -1417,9 +1417,9 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
             : input.url;
 
       const parsedUrl = new URL(url);
-      assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
 
       if (callCount === 1) {
+        assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
         assert.equal(parsedUrl.searchParams.get('action'), 'wbsearchentities');
         assert.match(parsedUrl.searchParams.get('search') || '', /roman empire/i);
 
@@ -1443,62 +1443,107 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         );
       }
 
-      assert.equal(parsedUrl.searchParams.get('action'), 'wbgetentities');
-      assert.equal(parsedUrl.searchParams.get('ids'), 'Q2277');
+      if (callCount === 2) {
+        assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
+        assert.equal(parsedUrl.searchParams.get('action'), 'wbgetentities');
+        assert.equal(parsedUrl.searchParams.get('ids'), 'Q2277');
+
+        return new Response(
+          JSON.stringify({
+            entities: {
+              Q2277: {
+                id: 'Q2277',
+                labels: {
+                  en: {
+                    value: 'Roman Empire',
+                  },
+                },
+                descriptions: {
+                  en: {
+                    value: 'empire in the Mediterranean region',
+                  },
+                },
+                claims: {
+                  P571: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            time: '-0027-01-01T00:00:00Z',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P576: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            time: '+0476-01-01T00:00:00Z',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P625: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            latitude: 41.89,
+                            longitude: 12.49,
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P3896: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: 'Data:Roman Empire.map',
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      assert.match(parsedUrl.toString(), /commons\.wikimedia\.org\/w\/index\.php\?/);
+      assert.equal(parsedUrl.searchParams.get('title'), 'Data:Roman Empire.map');
 
       return new Response(
         JSON.stringify({
-          entities: {
-            Q2277: {
-              id: 'Q2277',
-              labels: {
-                en: {
-                  value: 'Roman Empire',
-                },
-              },
-              descriptions: {
-                en: {
-                  value: 'empire in the Mediterranean region',
-                },
-              },
-              claims: {
-                P571: [
-                  {
-                    mainsnak: {
-                      datavalue: {
-                        value: {
-                          time: '-0027-01-01T00:00:00Z',
-                        },
-                      },
-                    },
-                  },
-                ],
-                P576: [
-                  {
-                    mainsnak: {
-                      datavalue: {
-                        value: {
-                          time: '+0476-01-01T00:00:00Z',
-                        },
-                      },
-                    },
-                  },
-                ],
-                P625: [
-                  {
-                    mainsnak: {
-                      datavalue: {
-                        value: {
-                          latitude: 41.89,
-                          longitude: 12.49,
-                        },
-                      },
-                    },
-                  },
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Polygon',
+                coordinates: [
+                  [
+                    [10, 40],
+                    [20, 40],
+                    [20, 45],
+                    [10, 45],
+                    [10, 40],
+                  ],
                 ],
               },
             },
-          },
+          ],
         }),
         {
           status: 200,
@@ -1535,6 +1580,15 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       const cached = await listResponse.json();
       assert.equal(cached.length, 1);
       assert.equal(cached[0].authorityId, 'Q2277');
+      assert.equal(cached[0].metadata.geoshapeTitle, 'Data:Roman Empire.map');
+
+      const geometryResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/geometry`
+      );
+      assert.equal(geometryResponse.status, 200);
+      const geometry = await geometryResponse.json();
+      assert.equal(geometry.source, 'wikimedia_commons_map');
+      assert.equal(geometry.geojson.type, 'FeatureCollection');
 
       const promoteResponse = await requestThroughHttp(
         `/api/world-history/entities/${created.id}/promote`,

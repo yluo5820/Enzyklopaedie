@@ -1,6 +1,7 @@
 import {
   ActivityEvent,
   CanonicalHistoricalEntity,
+  CanonicalHistoricalGeometryResponse,
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
   KnowledgeItem,
@@ -237,6 +238,18 @@ export const promoteHistoricalAtlasEntity = async (
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(errorPayload?.message || 'Failed to create a local entity from the atlas');
+  }
+
+  return response.json();
+};
+
+export const fetchHistoricalAtlasGeometry = async (
+  id: number
+): Promise<CanonicalHistoricalGeometryResponse> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}/geometry`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to fetch atlas geometry');
   }
 
   return response.json();
