@@ -1,56 +1,62 @@
 .world-history-page {
   width: 100%;
-  max-width: 1400px;
+  max-width: 1480px;
   padding: 12px 24px 40px;
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman", serif;
   color: #2f241b;
+  box-sizing: border-box;
   --ink: #2f241b;
   --ink-muted: #6f5c4d;
   --accent: #9c6b3f;
   --accent-strong: #7b4d2a;
   --paper: #f6ecda;
   --paper-strong: #f1e0c7;
+  --paper-faint: rgba(255, 255, 255, 0.72);
   --border: #d7c3ab;
-  --shadow: rgba(53, 33, 18, 0.18);
+  --shadow: rgba(53, 33, 18, 0.16);
+}
+
+.world-history-page *,
+.world-history-page *::before,
+.world-history-page *::after {
+  box-sizing: border-box;
 }
 
 .world-history-frame {
   position: relative;
   background: linear-gradient(180deg, #fbf2e3 0%, #f1e2cb 100%);
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: 24px;
   padding: 20px;
-  box-shadow: 0 18px 40px var(--shadow);
+  box-shadow: 0 18px 42px var(--shadow);
   overflow: hidden;
-  animation: reveal 0.6s ease-out;
+  animation: world-history-reveal 0.45s ease-out;
 }
 
 .world-history-frame::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.7), transparent 55%),
-    radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.4), transparent 45%),
-    linear-gradient(120deg, rgba(255, 255, 255, 0.15), rgba(0, 0, 0, 0.08));
-  opacity: 0.6;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(255, 255, 255, 0.75), transparent 42%),
+    radial-gradient(circle at 86% 4%, rgba(255, 255, 255, 0.4), transparent 38%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.06));
+  opacity: 0.65;
   pointer-events: none;
 }
 
-.world-history-header {
+.world-history-header,
+.world-history-layout {
   position: relative;
+  z-index: 1;
+}
+
+.world-history-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
-  margin-bottom: 16px;
-  z-index: 1;
-}
-
-.world-history-title p {
-  margin: 6px 0 0;
-  color: var(--ink-muted);
-  max-width: 520px;
-  font-size: 1.05rem;
+  margin-bottom: 18px;
 }
 
 .world-history-title h1 {
@@ -59,9 +65,19 @@
   letter-spacing: 0.02em;
 }
 
-.world-history-eyebrow {
+.world-history-title p {
+  margin: 8px 0 0;
+  max-width: 620px;
+  color: var(--ink-muted);
+  font-size: 1.03rem;
+  line-height: 1.55;
+}
+
+.world-history-eyebrow,
+.world-history-panel__eyebrow {
+  display: inline-block;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.22em;
   font-size: 0.7rem;
   color: var(--accent);
 }
@@ -69,15 +85,21 @@
 .world-history-meta {
   display: grid;
   gap: 10px;
-  min-width: 220px;
-  z-index: 1;
+  min-width: 240px;
+}
+
+.world-history-meta-card,
+.world-history-panel,
+.world-history-result-card,
+.world-history-shelf-card {
+  background: var(--paper-faint);
+  border: 1px solid rgba(215, 195, 171, 0.9);
+  box-shadow: 0 14px 28px rgba(53, 33, 18, 0.07);
 }
 
 .world-history-meta-card {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(215, 195, 171, 0.8);
-  border-radius: 14px;
-  padding: 12px 14px;
+  border-radius: 16px;
+  padding: 13px 14px;
   backdrop-filter: blur(6px);
 }
 
@@ -98,25 +120,241 @@
   color: var(--ink);
 }
 
+.world-history-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.world-history-sidebar,
+.world-history-main {
+  min-width: 0;
+}
+
+.world-history-main {
+  display: grid;
+  gap: 16px;
+}
+
+.world-history-panel {
+  border-radius: 20px;
+  padding: 18px;
+  min-width: 0;
+}
+
+.world-history-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.world-history-panel__header h2 {
+  margin: 4px 0 0;
+  font-size: 1.4rem;
+}
+
+.world-history-count-chip,
+.world-history-kind-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  background: rgba(156, 107, 63, 0.12);
+  color: var(--accent-strong);
+}
+
+.world-history-count-chip {
+  min-width: 34px;
+}
+
+.world-history-search {
+  display: grid;
+  gap: 12px;
+}
+
+.world-history-search input,
+.world-history-search select {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+  font: inherit;
+  min-width: 0;
+}
+
+.world-history-search input {
+  min-height: 54px;
+  padding: 0 16px;
+  font-size: 1.02rem;
+}
+
+.world-history-search select {
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.world-history-search input:focus,
+.world-history-search select:focus {
+  outline: 2px solid rgba(123, 77, 42, 0.28);
+  outline-offset: 2px;
+}
+
+.world-history-search__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.world-history-result-card__actions button,
+.world-history-search__controls button,
+.world-history-selected-card__actions button {
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 16px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.world-history-search__controls button,
+.world-history-result-card__actions .is-primary,
+.world-history-selected-card__actions .is-primary {
+  background: linear-gradient(135deg, #986132, #7f4d23);
+  color: #fff8ee;
+  box-shadow: 0 10px 18px rgba(84, 44, 15, 0.18);
+}
+
+.world-history-selected-card__actions .is-destructive {
+  background: rgba(148, 58, 44, 0.14);
+  color: #7a2d21;
+}
+
+.world-history-result-card__actions button:hover,
+.world-history-search__controls button:hover,
+.world-history-selected-card__actions button:hover,
+.world-history-result-card__actions a:hover,
+.world-history-selected-card__actions a:hover,
+.world-history-shelf-card:hover {
+  transform: translateY(-1px);
+}
+
+.world-history-search__controls button:disabled,
+.world-history-result-card__actions button:disabled,
+.world-history-selected-card__actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+.world-history-feedback,
+.world-history-empty {
+  border-radius: 16px;
+  padding: 13px 14px;
+  margin-top: 12px;
+  font-size: 0.96rem;
+}
+
+.world-history-feedback {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(215, 195, 171, 0.85);
+}
+
+.world-history-feedback.is-error {
+  background: rgba(156, 53, 32, 0.07);
+  border-color: rgba(156, 53, 32, 0.22);
+  color: #8a2f22;
+}
+
+.world-history-empty {
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px dashed rgba(215, 195, 171, 0.95);
+  color: var(--ink-muted);
+}
+
+.world-history-results {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.world-history-result-card {
+  border-radius: 18px;
+  padding: 15px;
+  min-width: 0;
+}
+
+.world-history-result-card h3 {
+  margin: 8px 0 0;
+  font-size: 1.12rem;
+}
+
+.world-history-result-card p {
+  margin: 12px 0;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.world-history-result-card__head,
+.world-history-selected-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.world-history-result-card__thumb,
+.world-history-selected-card__thumb {
+  width: 72px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(215, 195, 171, 0.9);
+  background: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+.world-history-result-card__meta,
+.world-history-result-card__actions,
+.world-history-selected-card__facts,
+.world-history-selected-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.world-history-result-card__meta {
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+}
+
+.world-history-result-card__actions,
+.world-history-selected-card__actions {
+  margin-top: 12px;
+  align-items: center;
+}
+
+.world-history-result-card__actions a,
+.world-history-selected-card__actions a {
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 600;
+}
+
 .world-history-map {
   position: relative;
-  height: min(62vh, 620px);
-  border-radius: 18px;
+  min-height: min(58vh, 620px);
+  border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: linear-gradient(180deg, #ede1cf, #e3d1bb);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6), 0 14px 30px rgba(53, 33, 18, 0.15);
-  z-index: 1;
-}
-
-.world-history-map::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 15% 15%, rgba(255, 255, 255, 0.3), transparent 45%),
-    radial-gradient(circle at 85% 60%, rgba(0, 0, 0, 0.12), transparent 55%);
-  opacity: 0.4;
-  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58), 0 14px 30px rgba(53, 33, 18, 0.14);
 }
 
 .world-history-map__canvas {
@@ -135,25 +373,22 @@
   text-align: center;
   padding: 20px;
   color: var(--ink);
-  background: rgba(246, 236, 218, 0.85);
+  background: rgba(246, 236, 218, 0.88);
   border: 1px dashed var(--border);
   z-index: 2;
 }
 
 .world-history-map__overlay code {
   padding: 3px 6px;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.82);
   border-radius: 6px;
 }
 
 .world-history-timeline {
-  margin-top: 18px;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(215, 195, 171, 0.9);
-  border-radius: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(215, 195, 171, 0.92);
+  background: rgba(255, 255, 255, 0.76);
   padding: 14px 16px 18px;
-  z-index: 1;
-  position: relative;
 }
 
 .world-history-range {
@@ -167,7 +402,7 @@
   appearance: none;
   width: 100%;
   height: 6px;
-  background: linear-gradient(90deg, rgba(156, 107, 63, 0.4), rgba(56, 92, 101, 0.6));
+  background: linear-gradient(90deg, rgba(156, 107, 63, 0.38), rgba(56, 92, 101, 0.6));
   border-radius: 999px;
   outline: none;
 }
@@ -197,90 +432,113 @@
 .world-history-ticks {
   display: flex;
   justify-content: space-between;
-  font-size: 0.8rem;
+  gap: 10px;
+  font-size: 0.79rem;
   color: var(--ink-muted);
 }
 
-.world-history-segments {
-  margin-top: 12px;
-  display: flex;
+.world-history-details-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 16px;
+}
+
+.world-history-selected-card {
+  display: grid;
+  gap: 14px;
+}
+
+.world-history-selected-card p {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.world-history-selected-card__timespan {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+}
+
+.world-history-selected-card__facts > div {
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.world-history-shelf {
+  display: grid;
+  gap: 10px;
+}
+
+.world-history-shelf-card {
+  width: 100%;
+  border-radius: 16px;
+  padding: 13px 14px;
+  display: grid;
   gap: 8px;
-  flex-wrap: wrap;
-}
-
-.timeline-segment {
-  flex: 1;
-  min-width: 180px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(215, 195, 171, 0.8);
-  background: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
   text-align: left;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-  position: relative;
-  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
-.timeline-segment::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(120deg, transparent, rgba(0, 0, 0, 0.06));
-  opacity: 0.6;
+.world-history-shelf-card.is-selected {
+  border-color: rgba(123, 77, 42, 0.65);
+  box-shadow: 0 16px 28px rgba(53, 33, 18, 0.1);
 }
 
-.timeline-segment:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 18px rgba(53, 33, 18, 0.15);
+.world-history-shelf-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 
-.timeline-segment.is-active {
-  border-color: var(--accent-strong);
-  box-shadow: 0 10px 24px rgba(53, 33, 18, 0.2);
+.world-history-shelf-card strong {
+  font-size: 1rem;
 }
 
-.timeline-segment::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-top: 3px solid var(--segment-color, #9c6b3f);
-  opacity: 0.75;
-}
-
-.timeline-segment-name {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--ink);
-  position: relative;
-  z-index: 1;
-}
-
-.timeline-segment-range {
-  font-size: 0.85rem;
+.world-history-shelf-card span:last-child {
   color: var(--ink-muted);
-  position: relative;
-  z-index: 1;
+  font-size: 0.88rem;
+}
+
+.world-history-visibility-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(111, 92, 77, 0.22);
+}
+
+.world-history-visibility-dot.is-visible {
+  background: #4f7a52;
+  box-shadow: 0 0 0 4px rgba(79, 122, 82, 0.14);
 }
 
 .world-history-hint {
-  margin-top: 6px;
-  font-size: 0.9rem;
   color: var(--ink-muted);
+  font-size: 0.88rem;
 }
 
-@keyframes reveal {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
+@media (max-width: 1200px) {
+  .world-history-layout,
+  .world-history-details-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .world-history-sidebar {
+    order: 2;
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 820px) {
+  .world-history-page {
+    padding-inline: 16px;
+  }
+
+  .world-history-frame {
+    padding: 16px;
+  }
+
   .world-history-header {
     flex-direction: column;
   }
@@ -290,17 +548,29 @@
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
 
-  .world-history-map {
-    height: 52vh;
+  .world-history-search__controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .world-history-result-card__head,
+  .world-history-selected-card__head {
+    flex-direction: column;
+  }
+
+  .world-history-result-card__thumb,
+  .world-history-selected-card__thumb {
+    width: 60px;
+    height: 80px;
   }
 }
 
-@media (max-width: 600px) {
-  .world-history-page {
-    padding: 8px 14px 28px;
+@keyframes world-history-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-
-  .timeline-segment {
-    min-width: 140px;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

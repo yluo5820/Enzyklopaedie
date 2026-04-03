@@ -1,5 +1,8 @@
 import {
   ActivityEvent,
+  CanonicalHistoricalEntity,
+  CanonicalHistoricalEntityKind,
+  CanonicalHistoricalSearchMatch,
   KnowledgeItem,
   KnowledgeRelationEntityType,
   KnowledgeNote,
@@ -30,6 +33,7 @@ import {
 const API_BASE_URL = 'http://localhost:3001/api';
 
 export type BookSearchProvider = 'open_library' | 'library_of_congress';
+export type HistoricalAtlasKind = CanonicalHistoricalEntityKind | 'all';
 
 export type BookSearchMatch = {
   id: string;
@@ -152,6 +156,85 @@ export const searchBookCatalog = async (
   }
 
   return response.json() as Promise<BookSearchPage>;
+};
+
+export const fetchHistoricalAtlasEntities = async (
+  options: {
+    kind?: HistoricalAtlasKind;
+    year?: number;
+  } = {}
+): Promise<CanonicalHistoricalEntity[]> => {
+  const params = new URLSearchParams();
+
+  if (options.kind && options.kind !== 'all') {
+    params.set('kind', options.kind);
+  }
+  if (options.year !== undefined) {
+    params.set('year', String(options.year));
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/world-history/entities${params.toString() ? `?${params.toString()}` : ''}`
+  );
+  if (!response.ok) {
+    throw new Error('Failed to fetch world history atlas entities');
+  }
+  return response.json();
+};
+
+export const searchHistoricalAtlas = async (
+  query: string,
+  kind: HistoricalAtlasKind = 'all',
+  limit = 10
+): Promise<CanonicalHistoricalSearchMatch[]> => {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    q: trimmedQuery,
+    limit: String(Math.min(Math.max(limit, 1), 20)),
+  });
+
+  if (kind !== 'all') {
+    params.set('kind', kind);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/world-history/search?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to search the world history atlas');
+  }
+
+  return response.json();
+};
+
+export const saveHistoricalAtlasEntity = async (
+  entityData: Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<CanonicalHistoricalEntity> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(entityData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to save atlas entity');
+  }
+
+  return response.json();
+};
+
+export const deleteHistoricalAtlasEntity = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete atlas entity');
+  }
 };
 
 export const updateKnowledgeItem = async (

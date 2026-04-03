@@ -143,6 +143,41 @@ export interface TimelineEvent {
     createdAt: string;
     updatedAt: string;
 }
+export type CanonicalHistoricalEntityAuthority = 'wikidata';
+export type CanonicalHistoricalEntityKind = 'person' | 'ruler' | 'battle' | 'nation' | 'civilization' | 'era' | 'place' | 'region';
+export interface CanonicalHistoricalEntity {
+    id: number;
+    authority: CanonicalHistoricalEntityAuthority;
+    authorityId: string;
+    kind: CanonicalHistoricalEntityKind;
+    title: string;
+    summary?: string;
+    description?: string;
+    startYear?: number;
+    endYear?: number;
+    latitude?: number;
+    longitude?: number;
+    imageUrl?: string;
+    sourceUrl?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface CanonicalHistoricalSearchMatch {
+    authority: CanonicalHistoricalEntityAuthority;
+    authorityId: string;
+    kind: CanonicalHistoricalEntityKind;
+    title: string;
+    summary?: string;
+    description?: string;
+    startYear?: number;
+    endYear?: number;
+    latitude?: number;
+    longitude?: number;
+    imageUrl?: string;
+    sourceUrl?: string;
+    metadata?: Record<string, unknown>;
+}
 export interface Exhibit {
     id: number;
     title: string;
@@ -193,5 +228,7 @@ export type NewPlace = Omit<Place, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdatePlace = Partial<Omit<Place, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewTimelineEvent = Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateTimelineEvent = Partial<Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewCanonicalHistoricalEntity = Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateCanonicalHistoricalEntity = Partial<Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewExhibit = Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateExhibit = Partial<Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>>;

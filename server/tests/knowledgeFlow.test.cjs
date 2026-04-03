@@ -1402,4 +1402,151 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       global.fetch = originalFetch;
     }
   });
+
+  await t.test('world history routes search, cache, list, and delete canonical atlas entities', async () => {
+    const originalFetch = global.fetch;
+    let callCount = 0;
+
+    global.fetch = async (input) => {
+      callCount += 1;
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      const parsedUrl = new URL(url);
+      assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
+
+      if (callCount === 1) {
+        assert.equal(parsedUrl.searchParams.get('action'), 'wbsearchentities');
+        assert.match(parsedUrl.searchParams.get('search') || '', /roman empire/i);
+
+        return new Response(
+          JSON.stringify({
+            search: [
+              {
+                id: 'Q2277',
+                label: 'Roman Empire',
+                description: 'empire in the Mediterranean region',
+                concepturi: 'https://www.wikidata.org/wiki/Q2277',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      assert.equal(parsedUrl.searchParams.get('action'), 'wbgetentities');
+      assert.equal(parsedUrl.searchParams.get('ids'), 'Q2277');
+
+      return new Response(
+        JSON.stringify({
+          entities: {
+            Q2277: {
+              id: 'Q2277',
+              labels: {
+                en: {
+                  value: 'Roman Empire',
+                },
+              },
+              descriptions: {
+                en: {
+                  value: 'empire in the Mediterranean region',
+                },
+              },
+              claims: {
+                P571: [
+                  {
+                    mainsnak: {
+                      datavalue: {
+                        value: {
+                          time: '-0027-01-01T00:00:00Z',
+                        },
+                      },
+                    },
+                  },
+                ],
+                P576: [
+                  {
+                    mainsnak: {
+                      datavalue: {
+                        value: {
+                          time: '+0476-01-01T00:00:00Z',
+                        },
+                      },
+                    },
+                  },
+                ],
+                P625: [
+                  {
+                    mainsnak: {
+                      datavalue: {
+                        value: {
+                          latitude: 41.89,
+                          longitude: 12.49,
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const searchResponse = await requestThroughHttp(
+        '/api/world-history/search?q=Roman%20Empire&kind=nation'
+      );
+      assert.equal(searchResponse.status, 200);
+      const matches = await searchResponse.json();
+      assert.equal(matches.length, 1);
+      assert.equal(matches[0].authorityId, 'Q2277');
+      assert.equal(matches[0].kind, 'nation');
+      assert.equal(matches[0].startYear, -27);
+      assert.equal(matches[0].endYear, 476);
+
+      const createResponse = await requestThroughHttp('/api/world-history/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(matches[0]),
+      });
+      assert.equal(createResponse.status, 201);
+      const created = await createResponse.json();
+      assert.equal(created.title, 'Roman Empire');
+
+      const listResponse = await requestThroughHttp('/api/world-history/entities?year=100');
+      assert.equal(listResponse.status, 200);
+      const cached = await listResponse.json();
+      assert.equal(cached.length, 1);
+      assert.equal(cached[0].authorityId, 'Q2277');
+
+      const deleteResponse = await requestThroughHttp(`/api/world-history/entities/${created.id}`, {
+        method: 'DELETE',
+      });
+      assert.equal(deleteResponse.status, 204);
+
+      const afterDeleteResponse = await requestThroughHttp('/api/world-history/entities?year=100');
+      assert.equal(afterDeleteResponse.status, 200);
+      const afterDelete = await afterDeleteResponse.json();
+      assert.equal(afterDelete.length, 0);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

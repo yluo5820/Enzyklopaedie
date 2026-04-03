@@ -173,6 +173,26 @@ export async function initializeDatabase() {
       FOREIGN KEY (placeId) REFERENCES places(id)
     );
 
+    CREATE TABLE IF NOT EXISTS canonical_historical_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      authority TEXT NOT NULL,
+      authorityId TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT,
+      description TEXT,
+      startYear INTEGER,
+      endYear INTEGER,
+      latitude REAL,
+      longitude REAL,
+      imageUrl TEXT,
+      sourceUrl TEXT,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(authority, authorityId)
+    );
+
     CREATE TABLE IF NOT EXISTS exhibits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -198,6 +218,10 @@ export async function initializeDatabase() {
       ON knowledge_relations(fromEntityType, fromEntityId, createdAt DESC);
     CREATE INDEX IF NOT EXISTS idx_knowledge_tasks_item ON knowledge_tasks(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_item ON knowledge_reviews(knowledgeItemId);
+    CREATE INDEX IF NOT EXISTS idx_canonical_historical_entities_kind
+      ON canonical_historical_entities(kind, lower(title));
+    CREATE INDEX IF NOT EXISTS idx_canonical_historical_entities_years
+      ON canonical_historical_entities(startYear, endYear);
   `);
 
   const now = new Date().toISOString();
