@@ -64,6 +64,23 @@ type StructureGroup = {
   entries: StructureEntry[];
 };
 
+type ContextEntry = {
+  key: string;
+  title: string;
+  href: string | null;
+  badges: string[];
+  note?: string;
+  createdAtLabel: string;
+};
+
+type ContextGroup = {
+  key: string;
+  title: string;
+  hint: string;
+  empty: string;
+  entries: ContextEntry[];
+};
+
 const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
   person: {
     helperText:
@@ -361,6 +378,51 @@ const buildRelationHref = (relation: KnowledgeRelationDetail, direction: 'incomi
   return null;
 };
 
+const createContextEntry = (
+  relation: KnowledgeRelationDetail,
+  options?: {
+    relationLabel?: string;
+    sourceLabel?: string;
+    extraBadges?: string[];
+  }
+): ContextEntry => {
+  const badges = [
+    options?.relationLabel ?? formatRelationType(relation.relationType),
+    options?.sourceLabel,
+    ...(options?.extraBadges ?? []),
+  ].filter(Boolean) as string[];
+
+  return {
+    key: `incoming-${relation.id}`,
+    title: relation.fromEntityTitle || `${relation.fromEntityType} #${relation.fromEntityId}`,
+    href: buildRelationHref(relation, 'incoming'),
+    badges,
+    note: relation.note,
+    createdAtLabel: formatDate(relation.createdAt),
+  };
+};
+
+const sortContextEntries = (entries: ContextEntry[]) =>
+  [...entries].sort(
+    (left, right) =>
+      left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }) ||
+      left.key.localeCompare(right.key)
+  );
+
+const buildContextGroup = (
+  key: string,
+  title: string,
+  hint: string,
+  empty: string,
+  entries: ContextEntry[]
+): ContextGroup => ({
+  key,
+  title,
+  hint,
+  empty,
+  entries: sortContextEntries(entries),
+});
+
 const getRelationCounterpartyTitle = (
   relation: KnowledgeRelationDetail,
   direction: RelationDirection
@@ -418,17 +480,17 @@ const buildStructureGroup = (
   entries: sortStructureEntries(entries),
 });
 
-const getTopicSectionLabel = (kind: ReferenceEntityKind) => {
-  if (kind === 'person') return 'Topics about this person';
-  if (kind === 'nation') return 'Topics about this nation';
-  if (kind === 'civilization') return 'Topics about this civilization';
-  if (kind === 'era') return 'Topics about this era';
-  return 'Topics about this place';
-};
-
 const getItemSectionLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'person') return 'Authored works';
   return 'Linked items';
+};
+
+const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
+  if (kind === 'person') return 'Biographical coverage';
+  if (kind === 'era') return 'Historical framing';
+  if (kind === 'nation') return 'National framing';
+  if (kind === 'civilization') return 'Civilizational framing';
+  return 'Geographic framing';
 };
 
 const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
@@ -574,6 +636,130 @@ const ReferenceEntityPage: React.FC = () => {
     () => outgoingRelations.filter((relation) => relation.toEntityType === 'reference_entity'),
     [outgoingRelations]
   );
+  const atlasContextGroups = useMemo(() => {
+    const topicalCoverage = topicRelations
+      .filter((relation) => relation.relationType === 'about')
+      .map((relation) =>
+        createContextEntry(relation, {
+          sourceLabel: 'topic',
+        })
+      );
+    const contextualCoverage = topicRelations
+      .filter((relation) => relation.relationType !== 'about')
+      .map((relation) =>
+        createContextEntry(relation, {
+          sourceLabel: 'topic',
+        })
+      );
+    const legacyCoverage = subjectRelations.map((relation) =>
+      createContextEntry(relation, {
+        sourceLabel: 'legacy subject',
+      })
+    );
+
+    if (entity?.kind === 'person') {
+      return [
+        buildContextGroup(
+          'topic-coverage',
+          'Topics about this person',
+          'Study topics that explicitly treat this person as a subject.',
+          'No topics explicitly point to this person yet.',
+          [...topicalCoverage, ...contextualCoverage]
+        ),
+        buildContextGroup(
+          'legacy-subjects',
+          'Legacy subject links',
+          'Older subject-level links that still point here.',
+          'No legacy subject links remain here.',
+          legacyCoverage
+        ),
+      ].filter((group) => group.entries.length > 0);
+    }
+
+    return [
+      buildContextGroup(
+        'topic-coverage',
+        `Topics about this ${entity?.kind ?? 'entity'}`,
+        'Study topics that directly treat this entity as the main historical or geographic subject.',
+        `No topics explicitly point to this ${entity?.kind ?? 'entity'} yet.`,
+        topicalCoverage
+      ),
+      buildContextGroup(
+        'contextual-coverage',
+        'Contextual topic links',
+        'Topics that use this entity as part of their framing rather than as the main subject.',
+        'No contextual topic links yet.',
+        contextualCoverage
+      ),
+      buildContextGroup(
+        'legacy-subjects',
+        'Legacy subject links',
+        'Older subject-level links that still point here.',
+        'No legacy subject links remain here.',
+        legacyCoverage
+      ),
+    ].filter((group) => group.entries.length > 0);
+  }, [entity?.kind, subjectRelations, topicRelations]);
+  const itemContextGroups = useMemo(() => {
+    if (entity?.kind === 'person') {
+      return [
+        buildContextGroup(
+          'authored-works',
+          'Authored works',
+          'Items that name this person as the creator.',
+          'No authored works point to this person yet.',
+          authoredWorks.map((relation) =>
+            createContextEntry(relation, {
+              extraBadges: relation.fromEntityKind ? [relation.fromEntityKind] : undefined,
+            })
+          )
+        ),
+        buildContextGroup(
+          'other-item-links',
+          'Referenced in items',
+          'Other item links that point to this person without using authorship.',
+          'No other item links yet.',
+          relatedItems.map((relation) =>
+            createContextEntry(relation, {
+              extraBadges: relation.fromEntityKind ? [relation.fromEntityKind] : undefined,
+            })
+          )
+        ),
+      ].filter((group) => group.entries.length > 0);
+    }
+
+    const directItems = itemRelations
+      .filter((relation) => relation.relationType === 'about')
+      .map((relation) =>
+        createContextEntry(relation, {
+          extraBadges: relation.fromEntityKind ? [relation.fromEntityKind] : undefined,
+        })
+      );
+    const contextualItems = itemRelations
+      .filter((relation) => relation.relationType !== 'about')
+      .map((relation) =>
+        createContextEntry(relation, {
+          extraBadges: relation.fromEntityKind ? [relation.fromEntityKind] : undefined,
+        })
+      );
+
+    return [
+      buildContextGroup(
+        'direct-items',
+        `Items about this ${entity?.kind}`,
+        'Items that directly treat this entity as their main subject.',
+        `No items explicitly point to this ${entity?.kind} yet.`,
+        directItems
+      ),
+      buildContextGroup(
+        'contextual-items',
+        'Items using this frame',
+        'Items that use this entity as historical, geographic, or contextual framing.',
+        'No contextual item links yet.',
+        contextualItems
+      ),
+    ].filter((group) => group.entries.length > 0);
+  }, [authoredWorks, entity?.kind, itemRelations, relatedItems]);
   const structureGroups = useMemo(() => {
     const outgoingContains = outgoingStructureRelations
       .filter((relation) => relation.relationType === 'contains')
@@ -1017,6 +1203,42 @@ const ReferenceEntityPage: React.FC = () => {
     </div>
   );
 
+  const renderContextGroup = (group: ContextGroup) => (
+    <div key={group.key} className="reference-entity-subsection">
+      <div className="reference-entity-subsection-head">
+        <h3>{group.title}</h3>
+        <div className="reference-entity-inline-meta">
+          <EntityHint text={group.hint} />
+          <span>{group.entries.length}</span>
+        </div>
+      </div>
+      <div className="reference-entity-stack">
+        {group.entries.map((entry) => (
+          <article key={entry.key} className="reference-entity-card">
+            <div className="reference-entity-card-top">
+              <div>
+                <div className="reference-entity-badges">
+                  {entry.badges.map((badge) => (
+                    <span key={`${entry.key}-${badge}`}>{badge}</span>
+                  ))}
+                </div>
+                {entry.href ? (
+                  <Link to={entry.href} className="reference-entity-card-link">
+                    <h3>{entry.title}</h3>
+                  </Link>
+                ) : (
+                  <h3>{entry.title}</h3>
+                )}
+              </div>
+              <span>{entry.createdAtLabel}</span>
+            </div>
+            {entry.note ? <p>{entry.note}</p> : null}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="reference-entity-page">
@@ -1206,58 +1428,17 @@ const ReferenceEntityPage: React.FC = () => {
               <div>
                 <span className="reference-entity-eyebrow">Atlas Context</span>
                 <h2>
-                  {getTopicSectionLabel(entity.kind)}
+                  {getAtlasSectionLabel(entity.kind)}
                   <EntityHint text="Topics and legacy subject links that currently point to this entity." />
                   <span className="reference-entity-count-badge">{topicRelations.length + subjectRelations.length}</span>
                 </h2>
               </div>
             </div>
 
-            {topicRelations.length === 0 && subjectRelations.length === 0 ? (
+            {atlasContextGroups.length === 0 ? (
               <div className="reference-entity-empty">No topics point here yet.</div>
             ) : (
-              <div className="reference-entity-stack">
-                {topicRelations.map((relation) => (
-                  <article key={relation.id} className="reference-entity-card">
-                    <div className="reference-entity-card-top">
-                      <div>
-                        <div className="reference-entity-badges">
-                          <span>{formatRelationType(relation.relationType)}</span>
-                          <span>topic</span>
-                        </div>
-                        <Link
-                          to={buildRelationHref(relation, 'incoming') as string}
-                          className="reference-entity-card-link"
-                        >
-                          <h3>{relation.fromEntityTitle || `Topic #${relation.fromEntityId}`}</h3>
-                        </Link>
-                      </div>
-                      <span>{formatDate(relation.createdAt)}</span>
-                    </div>
-                    {relation.note ? <p>{relation.note}</p> : null}
-                  </article>
-                ))}
-                {subjectRelations.map((relation) => (
-                  <article key={relation.id} className="reference-entity-card">
-                    <div className="reference-entity-card-top">
-                      <div>
-                        <div className="reference-entity-badges">
-                          <span>{formatRelationType(relation.relationType)}</span>
-                          <span>legacy subject</span>
-                        </div>
-                        <Link
-                          to={buildRelationHref(relation, 'incoming') as string}
-                          className="reference-entity-card-link"
-                        >
-                          <h3>{relation.fromEntityTitle || `Subject #${relation.fromEntityId}`}</h3>
-                        </Link>
-                      </div>
-                      <span>{formatDate(relation.createdAt)}</span>
-                    </div>
-                    {relation.note ? <p>{relation.note}</p> : null}
-                  </article>
-                ))}
-              </div>
+              <div className="reference-entity-stack">{atlasContextGroups.map(renderContextGroup)}</div>
             )}
           </section>
 
@@ -1273,87 +1454,17 @@ const ReferenceEntityPage: React.FC = () => {
               </div>
             </div>
 
-            {entity.kind === 'person' ? (
-              authoredWorks.length === 0 ? (
-                <div className="reference-entity-empty">No authored works point to this person yet.</div>
-              ) : (
-                <div className="reference-entity-stack">
-                  {authoredWorks.map((relation) => (
-                    <article key={relation.id} className="reference-entity-card">
-                      <div className="reference-entity-card-top">
-                        <div>
-                          <div className="reference-entity-badges">
-                            <span>{formatRelationType(relation.relationType)}</span>
-                            {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
-                          </div>
-                          <Link
-                            to={buildRelationHref(relation, 'incoming') as string}
-                            className="reference-entity-card-link"
-                          >
-                            <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
-                          </Link>
-                        </div>
-                        <span>{formatDate(relation.createdAt)}</span>
-                      </div>
-                      {relation.note ? <p>{relation.note}</p> : null}
-                    </article>
-                  ))}
-                </div>
-              )
-            ) : itemRelations.length === 0 ? (
-              <div className="reference-entity-empty">No items point to this entity yet.</div>
+            {itemContextGroups.length === 0 ? (
+              <div className="reference-entity-empty">
+                {entity.kind === 'person'
+                  ? 'No items point to this person yet.'
+                  : 'No items point to this entity yet.'}
+              </div>
             ) : (
               <div className="reference-entity-stack">
-                {itemRelations.map((relation) => (
-                  <article key={relation.id} className="reference-entity-card">
-                    <div className="reference-entity-card-top">
-                      <div>
-                        <div className="reference-entity-badges">
-                          <span>{formatRelationType(relation.relationType)}</span>
-                          {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
-                        </div>
-                        <Link
-                          to={buildRelationHref(relation, 'incoming') as string}
-                          className="reference-entity-card-link"
-                        >
-                          <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
-                        </Link>
-                      </div>
-                      <span>{formatDate(relation.createdAt)}</span>
-                    </div>
-                    {relation.note ? <p>{relation.note}</p> : null}
-                  </article>
-                ))}
+                {itemContextGroups.map(renderContextGroup)}
               </div>
             )}
-
-            {entity.kind === 'person' && relatedItems.length > 0 ? (
-              <div className="reference-entity-subsection">
-                <h3>Other item links</h3>
-                <div className="reference-entity-stack">
-                  {relatedItems.map((relation) => (
-                    <article key={relation.id} className="reference-entity-card">
-                      <div className="reference-entity-card-top">
-                        <div>
-                          <div className="reference-entity-badges">
-                            <span>{formatRelationType(relation.relationType)}</span>
-                            {relation.fromEntityKind ? <span>{relation.fromEntityKind}</span> : null}
-                          </div>
-                          <Link
-                            to={buildRelationHref(relation, 'incoming') as string}
-                            className="reference-entity-card-link"
-                          >
-                            <h3>{relation.fromEntityTitle || `Item #${relation.fromEntityId}`}</h3>
-                          </Link>
-                        </div>
-                        <span>{formatDate(relation.createdAt)}</span>
-                      </div>
-                      {relation.note ? <p>{relation.note}</p> : null}
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </section>
 
           <section className="reference-entity-panel">
