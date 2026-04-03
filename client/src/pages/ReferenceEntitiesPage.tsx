@@ -27,6 +27,13 @@ const singularKindLabels: Record<ReferenceEntityKind, string> = {
   era: 'Era',
   place: 'Place',
 };
+const kindAtlasLeads: Record<ReferenceEntityKind, string> = {
+  person: 'Writers, thinkers, speakers, and other individual figures.',
+  nation: 'Polities and historical nations that ground political context.',
+  civilization: 'Broad civilizational horizons spanning nations and eras.',
+  era: 'Chronological containers for historical understanding.',
+  place: 'Geographic anchors for topics, nations, and civilizations.',
+};
 
 type EntityWorkbenchPreset = {
   lead: string;
@@ -160,6 +167,13 @@ const sortEntities = (entities: ReferenceEntity[]) =>
     return left.kind.localeCompare(right.kind);
   });
 
+const previewTitles = (entities: ReferenceEntity[], limit = 2) => {
+  if (entities.length === 0) return 'No entries yet';
+  const preview = entities.slice(0, limit).map((entity) => entity.title).join(' · ');
+  if (entities.length > limit) return `${preview} +${entities.length - limit}`;
+  return preview;
+};
+
 const ReferenceEntitiesPage: React.FC = () => {
   const [entities, setEntities] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,6 +216,22 @@ const ReferenceEntitiesPage: React.FC = () => {
     if (filter === 'all') return sortEntities(entities);
     return sortEntities(entities.filter((entity) => entity.kind === filter));
   }, [entities, filter]);
+  const groupedEntities = useMemo(
+    () =>
+      kindOptions.map((kind) => ({
+        kind,
+        title: kindLabels[kind],
+        lead: kindAtlasLeads[kind],
+        entities: sortEntities(entities.filter((entity) => entity.kind === kind)),
+      })),
+    [entities]
+  );
+  const visibleGroups = useMemo(() => {
+    if (filter === 'all') return groupedEntities.filter((group) => group.entities.length > 0);
+
+    const group = groupedEntities.find((candidate) => candidate.kind === filter);
+    return group ? [group] : [];
+  }, [filter, groupedEntities]);
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -356,11 +386,11 @@ const ReferenceEntitiesPage: React.FC = () => {
         <section className="reference-entities-content">
           <section className="reference-entities-panel reference-entities-summary">
             <div className="reference-entities-header">
-              <span className="reference-entities-eyebrow">Structure</span>
-              <h1>Unified Reference Model</h1>
+              <span className="reference-entities-eyebrow">Atlas Index</span>
+              <h1>Reference Atlas</h1>
               <p>
-                The old author, nation, civilization, and era screens are now being folded into one
-                system. The tree remains about disciplines; this atlas handles the rest of the world.
+                Subjects hold the taxonomy of knowledge. This atlas holds the world around it:
+                people, nations, civilizations, eras, and places.
               </p>
             </div>
 
@@ -369,10 +399,11 @@ const ReferenceEntitiesPage: React.FC = () => {
                 <strong>{entities.length}</strong>
                 <span>Total entities</span>
               </div>
-              {kindOptions.map((kind) => (
-                <div key={kind} className="reference-entities-stat">
-                  <strong>{counts[kind]}</strong>
-                  <span>{kindLabels[kind]}</span>
+              {groupedEntities.map((group) => (
+                <div key={group.kind} className="reference-entities-stat reference-entities-stat-rich">
+                  <strong>{counts[group.kind]}</strong>
+                  <span>{group.title}</span>
+                  <small>{previewTitles(group.entities)}</small>
                 </div>
               ))}
             </div>
@@ -381,8 +412,8 @@ const ReferenceEntitiesPage: React.FC = () => {
           <section className="reference-entities-panel reference-entities-list-panel">
             <div className="reference-entities-list-header">
               <div>
-                <span className="reference-entities-eyebrow">Inventory</span>
-                <h2>Reference entities</h2>
+                <span className="reference-entities-eyebrow">Atlas</span>
+                <h2>{filter === 'all' ? 'Browse the world structure' : kindLabels[filter]}</h2>
               </div>
             </div>
 
@@ -417,43 +448,60 @@ const ReferenceEntitiesPage: React.FC = () => {
             ) : null}
 
             {!loading && filteredEntities.length > 0 ? (
-              <div className="reference-entities-items">
-                {filteredEntities.map((entity) => {
-                  const legacySource = getLegacySource(entity);
-
-                  return (
-                    <article key={entity.id} className="reference-entities-item">
-                      <div className="reference-entities-item-top">
-                        <div>
-                          <div className="reference-entities-meta">
-                            <span className="reference-entities-badge">{entity.kind}</span>
-                            {legacySource ? (
-                              <span className="reference-entities-badge reference-entities-badge-secondary">
-                                imported from {legacySource}
-                              </span>
-                            ) : null}
-                          </div>
-                          <h3>{entity.title}</h3>
-                          <div className="reference-entities-meta">
-                            <span>{formatTimespan(entity)}</span>
-                            <span>Updated {formatDate(entity.updatedAt)}</span>
-                          </div>
+              <div className="reference-entities-groups">
+                {visibleGroups.map((group) => (
+                  <section key={group.kind} className="reference-entities-kind-group">
+                    <div className="reference-entities-kind-head">
+                      <div>
+                        <div className="reference-entities-meta">
+                          <span className="reference-entities-badge">{group.kind}</span>
+                          <span className="reference-entities-kind-count">{group.entities.length}</span>
                         </div>
-
-                        <div className="reference-entities-actions">
-                          <Link to={`/entities/${entity.id}`} className="reference-entities-link">
-                            Open
-                          </Link>
-                          <button type="button" onClick={() => handleDelete(entity)}>
-                            Remove
-                          </button>
-                        </div>
+                        <h3>{group.title}</h3>
+                        <p>{group.lead}</p>
                       </div>
+                    </div>
 
-                      {entity.summary ? <p>{entity.summary}</p> : null}
-                    </article>
-                  );
-                })}
+                    <div className="reference-entities-items">
+                      {group.entities.map((entity) => {
+                        const legacySource = getLegacySource(entity);
+
+                        return (
+                          <article key={entity.id} className="reference-entities-item">
+                            <div className="reference-entities-item-top">
+                              <div>
+                                <div className="reference-entities-meta">
+                                  <span className="reference-entities-badge">{entity.kind}</span>
+                                  {legacySource ? (
+                                    <span className="reference-entities-badge reference-entities-badge-secondary">
+                                      imported from {legacySource}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <h4>{entity.title}</h4>
+                                <div className="reference-entities-meta">
+                                  <span>{formatTimespan(entity)}</span>
+                                  <span>Updated {formatDate(entity.updatedAt)}</span>
+                                </div>
+                              </div>
+
+                              <div className="reference-entities-actions">
+                                <Link to={`/entities/${entity.id}`} className="reference-entities-link">
+                                  Open
+                                </Link>
+                                <button type="button" onClick={() => handleDelete(entity)}>
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+
+                            {entity.summary ? <p>{entity.summary}</p> : null}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             ) : null}
           </section>

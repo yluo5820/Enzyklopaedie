@@ -176,10 +176,20 @@
   background: rgba(255, 255, 255, 0.84);
 }
 
+.reference-entities-stat-rich {
+  display: grid;
+  gap: 4px;
+}
+
 .reference-entities-stat strong {
   display: block;
   font-size: 1.6rem;
   margin-bottom: 4px;
+}
+
+.reference-entities-stat small {
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .reference-entities-list-header {
@@ -202,6 +212,37 @@
   gap: 12px;
 }
 
+.reference-entities-groups {
+  display: grid;
+  gap: 22px;
+}
+
+.reference-entities-kind-group {
+  display: grid;
+  gap: 14px;
+}
+
+.reference-entities-kind-head {
+  padding-bottom: 4px;
+}
+
+.reference-entities-kind-head h3 {
+  margin: 6px 0 6px;
+  font-size: 1.4rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+.reference-entities-kind-head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.reference-entities-kind-count {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .reference-entities-item {
   padding: 16px;
   border-radius: 18px;
@@ -217,7 +258,8 @@
   margin-bottom: 10px;
 }
 
-.reference-entities-item h3 {
+.reference-entities-item h3,
+.reference-entities-item h4 {
   margin: 0 0 6px;
   font-size: 1.12rem;
 }
