@@ -45,7 +45,7 @@ const HomePage: React.FC = () => {
       try {
         const [items, events, fetchedSubjects, fetchedTopics, fetchedReferenceEntities] = await Promise.all([
           fetchKnowledgeItems(),
-          fetchActivityEvents(8),
+          fetchActivityEvents(5),
           fetchSubjects(),
           fetchTopics(),
           fetchReferenceEntities(),
@@ -70,6 +70,7 @@ const HomePage: React.FC = () => {
   const recentSubject = useMemo(() => getMostRecent(subjects), [subjects]);
   const recentTopic = useMemo(() => getMostRecent(topics), [topics]);
   const recentEntity = useMemo(() => getMostRecent(referenceEntities), [referenceEntities]);
+  const recentActivityEvents = useMemo(() => activityEvents.slice(0, 5), [activityEvents]);
   const focusItems = useMemo(() => {
     const statusPriority: Record<KnowledgeItem['status'], number> = {
       active: 0,
@@ -326,15 +327,15 @@ const HomePage: React.FC = () => {
           <span className="home-eyebrow">Activity</span>
           <h2>Recent development of the encyclopedia</h2>
           {loading ? <div className="home-empty">Loading activity...</div> : null}
-          {!loading && activityEvents.length === 0 ? (
+          {!loading && recentActivityEvents.length === 0 ? (
             <div className="home-empty">
               No recorded activity yet. Add something in the item workbench and it will start
               appearing here.
             </div>
           ) : null}
-          {!loading && activityEvents.length > 0 ? (
+          {!loading && recentActivityEvents.length > 0 ? (
             <div className="home-activity">
-              {activityEvents.map((event) => (
+              {recentActivityEvents.map((event) => (
                 <div key={event.id} className="home-activity-item">
                   <div className="home-activity-top">
                     <strong>{event.message}</strong>
