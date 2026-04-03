@@ -321,6 +321,13 @@
   gap: 12px;
 }
 
+.reference-entity-subsection-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
 .reference-entity-subsection h3 {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
@@ -527,6 +534,10 @@
   .reference-entity-section-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .reference-entity-subsection-head {
+    align-items: start;
   }
 
   .reference-entity-grid-inline {

@@ -42,6 +42,28 @@ type EntityStructurePreset = {
   }>;
 };
 
+type RelationDirection = 'incoming' | 'outgoing';
+
+type StructureEntry = {
+  key: string;
+  relationId: number;
+  title: string;
+  href: string | null;
+  kindLabel?: string;
+  relationLabel: string;
+  note?: string;
+  createdAtLabel: string;
+  canDelete: boolean;
+};
+
+type StructureGroup = {
+  key: string;
+  title: string;
+  hint: string;
+  empty: string;
+  entries: StructureEntry[];
+};
+
 const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
   person: {
     helperText:
@@ -339,6 +361,63 @@ const buildRelationHref = (relation: KnowledgeRelationDetail, direction: 'incomi
   return null;
 };
 
+const getRelationCounterpartyTitle = (
+  relation: KnowledgeRelationDetail,
+  direction: RelationDirection
+) => {
+  if (direction === 'incoming') return relation.fromEntityTitle || `Entity #${relation.fromEntityId}`;
+  return relation.toEntityTitle || `Entity #${relation.toEntityId}`;
+};
+
+const getRelationCounterpartyKind = (
+  relation: KnowledgeRelationDetail,
+  direction: RelationDirection
+) => {
+  if (direction === 'incoming') return relation.fromEntityKind;
+  return relation.toEntityKind;
+};
+
+const createStructureEntry = (
+  relation: KnowledgeRelationDetail,
+  direction: RelationDirection,
+  relationLabel?: string
+): StructureEntry => ({
+  key: `${direction}-${relation.id}`,
+  relationId: relation.id,
+  title: getRelationCounterpartyTitle(relation, direction),
+  href: buildRelationHref(relation, direction),
+  kindLabel: getRelationCounterpartyKind(relation, direction),
+  relationLabel:
+    relationLabel ??
+    (direction === 'incoming'
+      ? formatIncomingRelationType(relation.relationType)
+      : formatRelationType(relation.relationType)),
+  note: relation.note,
+  createdAtLabel: formatDate(relation.createdAt),
+  canDelete: direction === 'outgoing',
+});
+
+const sortStructureEntries = (entries: StructureEntry[]) =>
+  [...entries].sort(
+    (left, right) =>
+      left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }) ||
+      left.relationId - right.relationId
+  );
+
+const buildStructureGroup = (
+  key: string,
+  title: string,
+  hint: string,
+  empty: string,
+  entries: StructureEntry[]
+): StructureGroup => ({
+  key,
+  title,
+  hint,
+  empty,
+  entries: sortStructureEntries(entries),
+});
+
 const getTopicSectionLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'person') return 'Topics about this person';
   if (kind === 'nation') return 'Topics about this nation';
@@ -495,6 +574,254 @@ const ReferenceEntityPage: React.FC = () => {
     () => outgoingRelations.filter((relation) => relation.toEntityType === 'reference_entity'),
     [outgoingRelations]
   );
+  const structureGroups = useMemo(() => {
+    const outgoingContains = outgoingStructureRelations
+      .filter((relation) => relation.relationType === 'contains')
+      .map((relation) => createStructureEntry(relation, 'outgoing', 'contains'));
+    const incomingContains = incomingEntityRelations
+      .filter((relation) => relation.relationType === 'contains')
+      .map((relation) => createStructureEntry(relation, 'incoming', 'contains this'));
+    const outgoingPartOf = outgoingStructureRelations
+      .filter((relation) => relation.relationType === 'part_of')
+      .map((relation) => createStructureEntry(relation, 'outgoing', 'part of'));
+    const incomingPartOf = incomingEntityRelations
+      .filter((relation) => relation.relationType === 'part_of')
+      .map((relation) => createStructureEntry(relation, 'incoming', 'member here'));
+    const outgoingLocatedIn = outgoingStructureRelations
+      .filter((relation) => relation.relationType === 'located_in')
+      .map((relation) => createStructureEntry(relation, 'outgoing', 'located in'));
+    const incomingLocatedIn = incomingEntityRelations
+      .filter((relation) => relation.relationType === 'located_in')
+      .map((relation) => createStructureEntry(relation, 'incoming', 'located here'));
+    const outgoingDuring = outgoingStructureRelations
+      .filter((relation) => relation.relationType === 'during')
+      .map((relation) => createStructureEntry(relation, 'outgoing', 'during'));
+    const incomingDuring = incomingEntityRelations
+      .filter((relation) => relation.relationType === 'during')
+      .map((relation) => createStructureEntry(relation, 'incoming', 'during this era'));
+    const outgoingInfluencedBy = outgoingStructureRelations
+      .filter((relation) => relation.relationType === 'influenced_by')
+      .map((relation) => createStructureEntry(relation, 'outgoing', 'influenced by'));
+    const incomingInfluencedBy = incomingEntityRelations
+      .filter((relation) => relation.relationType === 'influenced_by')
+      .map((relation) => createStructureEntry(relation, 'incoming', 'influences this'));
+    const outgoingRelatedTo = outgoingStructureRelations
+      .filter((relation) => relation.relationType === 'related_to')
+      .map((relation) => createStructureEntry(relation, 'outgoing', 'related to'));
+    const incomingRelatedTo = incomingEntityRelations
+      .filter((relation) => relation.relationType === 'related_to')
+      .map((relation) => createStructureEntry(relation, 'incoming', 'related here'));
+
+    const containedScope = [...outgoingContains, ...incomingPartOf];
+    const broaderContainers = [...outgoingPartOf, ...incomingContains];
+    const locationWithin = outgoingLocatedIn;
+    const hostedHere = incomingLocatedIn;
+    const periodPlacement = outgoingDuring;
+    const inThisEra = incomingDuring;
+    const influencedBy = outgoingInfluencedBy;
+    const influences = incomingInfluencedBy;
+    const peerLinks = [...outgoingRelatedTo, ...incomingRelatedTo];
+
+    const usedEntryKeys = new Set<string>(
+      [
+        ...containedScope,
+        ...broaderContainers,
+        ...locationWithin,
+        ...hostedHere,
+        ...periodPlacement,
+        ...inThisEra,
+        ...influencedBy,
+        ...influences,
+        ...peerLinks,
+      ].map((entry) => entry.key)
+    );
+
+    const otherLinks = sortStructureEntries(
+      [
+        ...outgoingStructureRelations.map((relation) => createStructureEntry(relation, 'outgoing')),
+        ...incomingEntityRelations.map((relation) => createStructureEntry(relation, 'incoming')),
+      ].filter((entry) => !usedEntryKeys.has(entry.key))
+    );
+
+    const finalizeGroups = (groups: StructureGroup[]) =>
+      (
+        otherLinks.length > 0
+          ? [
+              ...groups,
+              buildStructureGroup(
+                'other-links',
+                'Other atlas links',
+                'Any remaining entity links that do not fit the main structure buckets yet.',
+                'No additional atlas links yet.',
+                otherLinks
+              ),
+            ]
+          : groups
+      ).filter((group) => group.entries.length > 0);
+
+    if (entity?.kind === 'person') {
+      return finalizeGroups([
+        buildStructureGroup(
+          'belongs-in',
+          'Belongs in',
+          'Homeland, era, place, and civilization links for this person.',
+          'No homeland, era, or civilization links yet.',
+          [...locationWithin, ...periodPlacement, ...broaderContainers]
+        ),
+        buildStructureGroup(
+          'influenced-by',
+          'Influenced by',
+          'Figures or traditions recorded as shaping this person.',
+          'No influences recorded yet.',
+          influencedBy
+        ),
+        buildStructureGroup(
+          'influences',
+          'Influences',
+          'Figures or traditions that currently point back to this person.',
+          'No reverse influence links yet.',
+          influences
+        ),
+        buildStructureGroup(
+          'peer-links',
+          'Peer links',
+          'Sideways intellectual or historical links to other people.',
+          'No peer links recorded yet.',
+          peerLinks
+        ),
+      ]);
+    }
+
+    if (entity?.kind === 'nation') {
+      return finalizeGroups([
+        buildStructureGroup(
+          'contained-scope',
+          'Contained scope',
+          'Sub-polities or member entities that sit inside this nation.',
+          'No contained scope recorded yet.',
+          containedScope
+        ),
+        buildStructureGroup(
+          'placed-in',
+          'Placed in',
+          'Civilization, era, and larger geography links for this nation.',
+          'No broader civilization, geography, or era links yet.',
+          [...broaderContainers, ...locationWithin, ...periodPlacement]
+        ),
+        buildStructureGroup(
+          'located-here',
+          'Located here',
+          'People or other entities that are placed inside this nation.',
+          'Nothing is located here yet.',
+          hostedHere
+        ),
+        buildStructureGroup(
+          'peer-links',
+          'Peer links',
+          'Peer nations or civilizations linked through influence or affinity.',
+          'No peer links recorded yet.',
+          [...peerLinks, ...influencedBy, ...influences]
+        ),
+      ]);
+    }
+
+    if (entity?.kind === 'civilization') {
+      return finalizeGroups([
+        buildStructureGroup(
+          'contained-scope',
+          'Contained scope',
+          'Member nations, eras, or sub-civilizations inside this civilization.',
+          'No contained scope recorded yet.',
+          containedScope
+        ),
+        buildStructureGroup(
+          'placed-in',
+          'Placed in',
+          'Broader civilization or geography links for this civilization.',
+          'No broader placement links yet.',
+          [...broaderContainers, ...locationWithin]
+        ),
+        buildStructureGroup(
+          'historical-links',
+          'Historical links',
+          'Era links and entities that are recorded as belonging in this civilizational horizon.',
+          'No historical links recorded yet.',
+          [...periodPlacement, ...inThisEra]
+        ),
+        buildStructureGroup(
+          'peer-links',
+          'Peer links',
+          'Civilizations linked through influence or historical affinity.',
+          'No peer links recorded yet.',
+          [...peerLinks, ...influencedBy, ...influences]
+        ),
+      ]);
+    }
+
+    if (entity?.kind === 'era') {
+      return finalizeGroups([
+        buildStructureGroup(
+          'contained-periods',
+          'Contained periods',
+          'Sub-eras or member entities recorded within this era.',
+          'No contained periods recorded yet.',
+          containedScope
+        ),
+        buildStructureGroup(
+          'broader-periods',
+          'Broader periods',
+          'Larger eras that this period belongs to.',
+          'No broader periods recorded yet.',
+          broaderContainers
+        ),
+        buildStructureGroup(
+          'in-this-era',
+          'In this era',
+          'Entities explicitly placed during this era.',
+          'No entities are placed in this era yet.',
+          inThisEra
+        ),
+        buildStructureGroup(
+          'parallel-links',
+          'Parallel links',
+          'Parallel or influencing era links.',
+          'No parallel links recorded yet.',
+          [...peerLinks, ...influencedBy, ...influences]
+        ),
+      ]);
+    }
+
+    return finalizeGroups([
+      buildStructureGroup(
+        'contained-places',
+        'Contained places',
+        'Places or hosted entities recorded inside this geography.',
+        'No contained places recorded yet.',
+        containedScope
+      ),
+      buildStructureGroup(
+        'broader-geography',
+        'Broader geography',
+        'Larger places that contain this one.',
+        'No broader geography recorded yet.',
+        broaderContainers
+      ),
+      buildStructureGroup(
+        'located-here',
+        'Located here',
+        'Entities that are placed in this geography.',
+        'Nothing is located here yet.',
+        hostedHere
+      ),
+      buildStructureGroup(
+        'period-links',
+        'Period links',
+        'Era links associated with this place.',
+        'No period links recorded yet.',
+        [...periodPlacement, ...inThisEra]
+      ),
+    ]);
+  }, [entity?.kind, incomingEntityRelations, outgoingStructureRelations]);
   const topicContextCount = topicRelations.length + subjectRelations.length;
   const structureLinkCount = outgoingStructureRelations.length + incomingEntityRelations.length;
   const itemLinkSummary =
@@ -648,6 +975,47 @@ const ReferenceEntityPage: React.FC = () => {
       setDeleting(false);
     }
   };
+
+  const renderStructureGroup = (group: StructureGroup) => (
+    <div key={group.key} className="reference-entity-subsection">
+      <div className="reference-entity-subsection-head">
+        <h3>{group.title}</h3>
+        <div className="reference-entity-inline-meta">
+          <EntityHint text={group.hint} />
+          <span>{group.entries.length}</span>
+        </div>
+      </div>
+      <div className="reference-entity-stack">
+        {group.entries.map((entry) => (
+          <article key={entry.key} className="reference-entity-card">
+            <div className="reference-entity-card-top">
+              <div>
+                <div className="reference-entity-badges">
+                  <span>{entry.relationLabel}</span>
+                  {entry.kindLabel ? <span>{entry.kindLabel}</span> : null}
+                </div>
+                {entry.href ? (
+                  <Link to={entry.href} className="reference-entity-card-link">
+                    <h3>{entry.title}</h3>
+                  </Link>
+                ) : (
+                  <h3>{entry.title}</h3>
+                )}
+              </div>
+              {entry.canDelete ? (
+                <button type="button" onClick={() => handleDeleteRelation(entry.relationId)}>
+                  Delete
+                </button>
+              ) : (
+                <span>{entry.createdAtLabel}</span>
+              )}
+            </div>
+            {entry.note ? <p>{entry.note}</p> : null}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
 
   if (loading) {
     return (
@@ -1110,70 +1478,12 @@ const ReferenceEntityPage: React.FC = () => {
               </section>
             ) : null}
 
-            {outgoingRelations.length === 0 && incomingEntityRelations.length === 0 ? (
+            {outgoingStructureRelations.length === 0 && incomingEntityRelations.length === 0 ? (
               <div className="reference-entity-empty">
                 No entity-to-entity links have been recorded yet.
               </div>
             ) : (
-              <div className="reference-entity-stack">
-                {outgoingStructureRelations.length > 0 ? (
-                  <div className="reference-entity-subsection">
-                    <h3>This entity points to</h3>
-                    <div className="reference-entity-stack">
-                      {outgoingStructureRelations.map((relation) => (
-                        <article key={relation.id} className="reference-entity-card">
-                          <div className="reference-entity-card-top">
-                            <div>
-                              <div className="reference-entity-badges">
-                                <span>{formatRelationType(relation.relationType)}</span>
-                                <span>outgoing</span>
-                              </div>
-                              <Link
-                                to={buildRelationHref(relation, 'outgoing') as string}
-                                className="reference-entity-card-link"
-                              >
-                                <h3>{relation.toEntityTitle || `Entity #${relation.toEntityId}`}</h3>
-                              </Link>
-                            </div>
-                            <button type="button" onClick={() => handleDeleteRelation(relation.id)}>
-                              Delete
-                            </button>
-                          </div>
-                          {relation.note ? <p>{relation.note}</p> : null}
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {incomingEntityRelations.length > 0 ? (
-                  <div className="reference-entity-subsection">
-                    <h3>Other entities place or contain this one</h3>
-                    <div className="reference-entity-stack">
-                      {incomingEntityRelations.map((relation) => (
-                        <article key={relation.id} className="reference-entity-card">
-                          <div className="reference-entity-card-top">
-                            <div>
-                              <div className="reference-entity-badges">
-                                <span>{formatIncomingRelationType(relation.relationType)}</span>
-                                <span>incoming</span>
-                              </div>
-                              <Link
-                                to={buildRelationHref(relation, 'incoming') as string}
-                                className="reference-entity-card-link"
-                              >
-                                <h3>{relation.fromEntityTitle || `Entity #${relation.fromEntityId}`}</h3>
-                              </Link>
-                            </div>
-                            <span>{formatDate(relation.createdAt)}</span>
-                          </div>
-                          {relation.note ? <p>{relation.note}</p> : null}
-                        </article>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              <div className="reference-entity-stack">{structureGroups.map(renderStructureGroup)}</div>
             )}
           </section>
 
