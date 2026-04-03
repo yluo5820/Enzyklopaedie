@@ -228,6 +228,20 @@ export const saveHistoricalAtlasEntity = async (
   return response.json();
 };
 
+export const promoteHistoricalAtlasEntity = async (
+  id: number
+): Promise<{ atlasEntity: CanonicalHistoricalEntity; referenceEntity: ReferenceEntity }> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}/promote`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create a local entity from the atlas');
+  }
+
+  return response.json();
+};
+
 export const deleteHistoricalAtlasEntity = async (id: number): Promise<void> => {
   const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}`, {
     method: 'DELETE',

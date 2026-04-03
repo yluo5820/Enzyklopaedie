@@ -51,6 +51,7 @@ export const upsertCanonicalHistoricalEntity = async (
     await db.run(
       `UPDATE canonical_historical_entities
        SET kind = ?,
+           referenceEntityId = ?,
            title = ?,
            summary = ?,
            description = ?,
@@ -64,6 +65,7 @@ export const upsertCanonicalHistoricalEntity = async (
            updatedAt = ?
        WHERE id = ?`,
       entity.kind,
+      entity.referenceEntityId ?? null,
       entity.title,
       entity.summary ?? null,
       entity.description ?? null,
@@ -93,8 +95,8 @@ export const upsertCanonicalHistoricalEntity = async (
   const result = await db.run(
     `INSERT INTO canonical_historical_entities
       (authority, authorityId, kind, title, summary, description, startYear, endYear, latitude, longitude,
-       imageUrl, sourceUrl, metadata, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       imageUrl, sourceUrl, metadata, referenceEntityId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     entity.authority,
     entity.authorityId,
     entity.kind,
@@ -108,6 +110,7 @@ export const upsertCanonicalHistoricalEntity = async (
     entity.imageUrl ?? null,
     entity.sourceUrl ?? null,
     entity.metadata ? JSON.stringify(entity.metadata) : null,
+    entity.referenceEntityId ?? null,
     now,
     now
   );

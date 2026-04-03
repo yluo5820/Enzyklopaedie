@@ -4,17 +4,28 @@ import type {
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
   NewCanonicalHistoricalEntity,
+  ReferenceEntity,
+  ReferenceEntityKind,
 } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
+import { recordActivityEvent } from '../lib/activity';
 import {
   hydrateCanonicalHistoricalEntity,
   listCanonicalHistoricalEntities,
   upsertCanonicalHistoricalEntity,
 } from '../lib/canonicalHistoricalEntities';
+import {
+  generateUniqueReferenceEntitySlug,
+  hydrateReferenceEntity,
+} from '../lib/referenceEntities';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
 type CanonicalHistoricalEntityRow = Omit<CanonicalHistoricalEntity, 'metadata'> & {
+  metadata?: string | null;
+};
+
+type ReferenceEntityRow = Omit<ReferenceEntity, 'metadata'> & {
   metadata?: string | null;
 };
 
@@ -279,6 +290,16 @@ const buildSearchQuery = (query: string, kind: CanonicalHistoricalEntityKind | '
   return trimmed;
 };
 
+const localEntityKindMap: Partial<Record<CanonicalHistoricalEntityKind, ReferenceEntityKind>> = {
+  civilization: 'civilization',
+  era: 'era',
+  nation: 'nation',
+  person: 'person',
+  place: 'place',
+  region: 'place',
+  ruler: 'person',
+};
+
 const isVisibleInYear = (entity: CanonicalHistoricalEntity, year: number | null) => {
   if (year === null) return true;
   if (entity.startYear !== undefined && entity.endYear !== undefined) {
@@ -466,6 +487,138 @@ export const createCanonicalHistoricalEntity = asyncErrorHandler(async (req: Req
   });
 
   res.status(201).json(entity);
+});
+
+export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Request, res: Response) => {
+  const id = parseId(req.params.id);
+  if (!id) {
+    return res.status(400).json({ message: 'Invalid atlas entity id' });
+  }
+
+  const db = await getDb();
+  const canonicalRow = await db.get<CanonicalHistoricalEntityRow>(
+    'SELECT * FROM canonical_historical_entities WHERE id = ?',
+    id
+  );
+
+  if (!canonicalRow) {
+    return res.status(404).json({ message: 'Atlas entity not found' });
+  }
+
+  const canonicalEntity = hydrateCanonicalHistoricalEntity(canonicalRow);
+
+  if (canonicalEntity.referenceEntityId) {
+    const existingRow = await db.get<ReferenceEntityRow>(
+      'SELECT * FROM reference_entities WHERE id = ?',
+      canonicalEntity.referenceEntityId
+    );
+
+    if (existingRow) {
+      return res.json({
+        atlasEntity: canonicalEntity,
+        referenceEntity: hydrateReferenceEntity(existingRow),
+      });
+    }
+  }
+
+  const targetKind = localEntityKindMap[canonicalEntity.kind];
+  if (!targetKind) {
+    return res.status(400).json({ message: 'This atlas entity kind cannot be promoted yet.' });
+  }
+
+  const slug = await generateUniqueReferenceEntitySlug(db, targetKind, canonicalEntity.title);
+  const now = new Date().toISOString();
+
+  const result = await db.run(
+    `INSERT INTO reference_entities
+      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    targetKind,
+    canonicalEntity.title,
+    slug,
+    canonicalEntity.summary ?? null,
+    canonicalEntity.description ?? null,
+    canonicalEntity.startYear ?? null,
+    canonicalEntity.endYear ?? null,
+    JSON.stringify({
+      ...(canonicalEntity.metadata ?? {}),
+      atlasAuthority: canonicalEntity.authority,
+      atlasAuthorityId: canonicalEntity.authorityId,
+      atlasKind: canonicalEntity.kind,
+      atlasSourceUrl: canonicalEntity.sourceUrl,
+      atlasImageUrl: canonicalEntity.imageUrl,
+      atlasCoordinates:
+        canonicalEntity.latitude !== undefined && canonicalEntity.longitude !== undefined
+          ? {
+              latitude: canonicalEntity.latitude,
+              longitude: canonicalEntity.longitude,
+            }
+          : undefined,
+    }),
+    now,
+    now
+  );
+
+  const referenceEntityId = result.lastID as number;
+
+  await db.run(
+    `UPDATE canonical_historical_entities
+     SET referenceEntityId = ?, updatedAt = ?
+     WHERE id = ?`,
+    referenceEntityId,
+    now,
+    canonicalEntity.id
+  );
+
+  const referenceEntity: ReferenceEntity = {
+    id: referenceEntityId,
+    kind: targetKind,
+    title: canonicalEntity.title,
+    slug,
+    summary: canonicalEntity.summary,
+    description: canonicalEntity.description,
+    startYear: canonicalEntity.startYear,
+    endYear: canonicalEntity.endYear,
+    metadata: {
+      ...(canonicalEntity.metadata ?? {}),
+      atlasAuthority: canonicalEntity.authority,
+      atlasAuthorityId: canonicalEntity.authorityId,
+      atlasKind: canonicalEntity.kind,
+      atlasSourceUrl: canonicalEntity.sourceUrl,
+      atlasImageUrl: canonicalEntity.imageUrl,
+      atlasCoordinates:
+        canonicalEntity.latitude !== undefined && canonicalEntity.longitude !== undefined
+          ? {
+              latitude: canonicalEntity.latitude,
+              longitude: canonicalEntity.longitude,
+            }
+          : undefined,
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await recordActivityEvent({
+    type: 'reference_entity_created',
+    entityType: 'reference_entity',
+    entityId: referenceEntity.id,
+    message: `Created ${referenceEntity.kind} "${referenceEntity.title}" from the world history atlas`,
+    metadata: {
+      kind: referenceEntity.kind,
+      slug: referenceEntity.slug,
+      atlasAuthority: canonicalEntity.authority,
+      atlasAuthorityId: canonicalEntity.authorityId,
+    },
+  });
+
+  res.json({
+    atlasEntity: {
+      ...canonicalEntity,
+      referenceEntityId,
+      updatedAt: now,
+    },
+    referenceEntity,
+  });
 });
 
 export const deleteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Request, res: Response) => {

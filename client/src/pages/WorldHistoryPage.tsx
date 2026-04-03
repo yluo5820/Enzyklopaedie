@@ -1,15 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
-  CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
-  ReferenceEntity,
 } from '@enzyklopaedie/shared';
 import {
-  createReferenceEntity,
   deleteHistoricalAtlasEntity,
   fetchHistoricalAtlasEntities,
+  promoteHistoricalAtlasEntity,
   saveHistoricalAtlasEntity,
   searchHistoricalAtlas,
   type HistoricalAtlasKind,
@@ -39,18 +37,6 @@ const atlasKindOptions: HistoricalAtlasKind[] = [
   'ruler',
   'person',
 ];
-
-const localEntityKindMap: Partial<
-  Record<CanonicalHistoricalEntityKind, ReferenceEntity['kind']>
-> = {
-  civilization: 'civilization',
-  era: 'era',
-  nation: 'nation',
-  person: 'person',
-  place: 'place',
-  region: 'place',
-  ruler: 'person',
-};
 
 const DEFAULT_YEAR = 1862;
 const DEFAULT_MIN_YEAR = -1200;
@@ -136,9 +122,15 @@ const getYearBounds = (entities: CanonicalHistoricalEntity[]) => {
 
 const WorldHistoryPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [atlasEntities, setAtlasEntities] = useState<CanonicalHistoricalEntity[]>([]);
-  const [query, setQuery] = useState('');
-  const [searchKind, setSearchKind] = useState<HistoricalAtlasKind>('all');
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
+  const [searchKind, setSearchKind] = useState<HistoricalAtlasKind>(() => {
+    const requestedKind = searchParams.get('kind');
+    return atlasKindOptions.includes(requestedKind as HistoricalAtlasKind)
+      ? (requestedKind as HistoricalAtlasKind)
+      : 'all';
+  });
   const [searchResults, setSearchResults] = useState<CanonicalHistoricalSearchMatch[]>([]);
   const [isLoadingAtlas, setIsLoadingAtlas] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
@@ -148,8 +140,14 @@ const WorldHistoryPage: React.FC = () => {
   const [pendingSaveAuthorityId, setPendingSaveAuthorityId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [pendingPromoteId, setPendingPromoteId] = useState<number | null>(null);
-  const [selectedAtlasEntityId, setSelectedAtlasEntityId] = useState<number | null>(null);
-  const [year, setYear] = useState(DEFAULT_YEAR);
+  const [selectedAtlasEntityId, setSelectedAtlasEntityId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('selected'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
+  const [year, setYear] = useState(() => {
+    const parsed = Number(searchParams.get('year'));
+    return Number.isInteger(parsed) ? parsed : DEFAULT_YEAR;
+  });
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import('@maptiler/sdk').Map | null>(null);
   const mapLoadedRef = useRef(false);
@@ -218,6 +216,35 @@ const WorldHistoryPage: React.FC = () => {
       .map((kind) => `${kindLabels[kind]} ${counts[kind]}`);
   }, [visibleAtlasEntities]);
 
+  const visibleTimelineEntities = useMemo(
+    () =>
+      [...visibleAtlasEntities].sort((left, right) => {
+        const leftYear = left.startYear ?? left.endYear ?? Number.POSITIVE_INFINITY;
+        const rightYear = right.startYear ?? right.endYear ?? Number.POSITIVE_INFINITY;
+        return leftYear - rightYear || left.title.localeCompare(right.title);
+      }),
+    [visibleAtlasEntities]
+  );
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (query.trim()) nextParams.set('q', query.trim());
+    else nextParams.delete('q');
+
+    if (searchKind !== 'all') nextParams.set('kind', searchKind);
+    else nextParams.delete('kind');
+
+    nextParams.set('year', String(year));
+
+    if (selectedAtlasEntityId) nextParams.set('selected', String(selectedAtlasEntityId));
+    else nextParams.delete('selected');
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [query, searchKind, year, selectedAtlasEntityId, searchParams, setSearchParams]);
+
   useEffect(() => {
     const loadAtlas = async () => {
       setIsLoadingAtlas(true);
@@ -236,6 +263,14 @@ const WorldHistoryPage: React.FC = () => {
     };
 
     void loadAtlas();
+  }, []);
+
+  useEffect(() => {
+    if (!query.trim()) return;
+
+    void runSearch();
+    // Seed once from URL-backed initial state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runSearch = async () => {
@@ -302,35 +337,15 @@ const WorldHistoryPage: React.FC = () => {
   };
 
   const handlePromoteToEntity = async (entity: CanonicalHistoricalEntity) => {
-    const targetKind = localEntityKindMap[entity.kind];
-    if (!targetKind) {
-      setStatusMessage(`"${kindLabels[entity.kind]}" does not map to a local entity type yet.`);
-      return;
-    }
-
     setPendingPromoteId(entity.id);
     setStatusMessage(null);
 
     try {
-      const created = await createReferenceEntity({
-        kind: targetKind,
-        title: entity.title,
-        summary: entity.summary,
-        description: entity.description,
-        startYear: entity.startYear,
-        endYear: entity.endYear,
-        metadata: {
-          ...(entity.metadata ?? {}),
-          atlasAuthority: entity.authority,
-          atlasAuthorityId: entity.authorityId,
-          atlasKind: entity.kind,
-          atlasSourceUrl: entity.sourceUrl,
-          atlasImageUrl: entity.imageUrl,
-          atlasCoordinates:
-            hasCoordinates(entity) ? { latitude: entity.latitude, longitude: entity.longitude } : undefined,
-        },
-      });
-      navigate(`/entities/${created.id}`);
+      const promoted = await promoteHistoricalAtlasEntity(entity.id);
+      setAtlasEntities((current) =>
+        current.map((entry) => (entry.id === promoted.atlasEntity.id ? promoted.atlasEntity : entry))
+      );
+      navigate(`/entities/${promoted.referenceEntity.id}`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to create a local entity.');
     } finally {
@@ -722,17 +737,31 @@ const WorldHistoryPage: React.FC = () => {
                         <span className="world-history-panel__eyebrow">Visible at {formatYear(year)}</span>
                         <strong>{isVisibleInYear(selectedAtlasEntity, year) ? 'Yes' : 'No'}</strong>
                       </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Local encyclopedia</span>
+                        <strong>{selectedAtlasEntity.referenceEntityId ? 'Linked' : 'Not linked yet'}</strong>
+                      </div>
                     </div>
 
                     <div className="world-history-selected-card__actions">
-                      <button
-                        type="button"
-                        className="is-primary"
-                        onClick={() => void handlePromoteToEntity(selectedAtlasEntity)}
-                        disabled={pendingPromoteId === selectedAtlasEntity.id}
-                      >
-                        {pendingPromoteId === selectedAtlasEntity.id ? 'Opening…' : 'Create local entity'}
-                      </button>
+                      {selectedAtlasEntity.referenceEntityId ? (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() => navigate(`/entities/${selectedAtlasEntity.referenceEntityId}`)}
+                        >
+                          Open linked entity
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() => void handlePromoteToEntity(selectedAtlasEntity)}
+                          disabled={pendingPromoteId === selectedAtlasEntity.id}
+                        >
+                          {pendingPromoteId === selectedAtlasEntity.id ? 'Opening…' : 'Create local entity'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="is-destructive"
@@ -783,6 +812,45 @@ const WorldHistoryPage: React.FC = () => {
                           <div className="world-history-shelf-card__head">
                             <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
                             <span className={`world-history-visibility-dot ${isVisible ? 'is-visible' : ''}`} />
+                          </div>
+                          <strong>{entity.title}</strong>
+                          <span>{formatTimespan(entity)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Timeline</span>
+                    <h2>Visible in {formatYear(year)}</h2>
+                  </div>
+                  <span className="world-history-count-chip">{visibleTimelineEntities.length}</span>
+                </div>
+
+                {visibleTimelineEntities.length === 0 ? (
+                  <div className="world-history-empty">
+                    No pinned atlas entities are visible at this year yet.
+                  </div>
+                ) : (
+                  <div className="world-history-shelf">
+                    {visibleTimelineEntities.map((entity) => {
+                      const isSelected = entity.id === selectedAtlasEntity?.id;
+                      return (
+                        <button
+                          key={`visible-${entity.id}`}
+                          type="button"
+                          className={`world-history-shelf-card ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => setSelectedAtlasEntityId(entity.id)}
+                        >
+                          <div className="world-history-shelf-card__head">
+                            <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
+                            {entity.referenceEntityId ? (
+                              <span className="world-history-linked-chip">Linked</span>
+                            ) : null}
                           </div>
                           <strong>{entity.title}</strong>
                           <span>{formatTimespan(entity)}</span>

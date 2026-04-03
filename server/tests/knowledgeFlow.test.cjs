@@ -1403,7 +1403,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     }
   });
 
-  await t.test('world history routes search, cache, list, and delete canonical atlas entities', async () => {
+  await t.test('world history routes search, cache, promote, list, and delete canonical atlas entities', async () => {
     const originalFetch = global.fetch;
     let callCount = 0;
 
@@ -1535,6 +1535,33 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       const cached = await listResponse.json();
       assert.equal(cached.length, 1);
       assert.equal(cached[0].authorityId, 'Q2277');
+
+      const promoteResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteResponse.status, 200);
+      const promoted = await promoteResponse.json();
+      assert.equal(promoted.atlasEntity.referenceEntityId > 0, true);
+      assert.equal(promoted.referenceEntity.title, 'Roman Empire');
+      assert.equal(promoted.referenceEntity.kind, 'nation');
+
+      const listAfterPromoteResponse = await requestThroughHttp('/api/world-history/entities?year=100');
+      assert.equal(listAfterPromoteResponse.status, 200);
+      const listAfterPromote = await listAfterPromoteResponse.json();
+      assert.equal(listAfterPromote[0].referenceEntityId, promoted.referenceEntity.id);
+
+      const promoteAgainResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteAgainResponse.status, 200);
+      const promotedAgain = await promoteAgainResponse.json();
+      assert.equal(promotedAgain.referenceEntity.id, promoted.referenceEntity.id);
 
       const deleteResponse = await requestThroughHttp(`/api/world-history/entities/${created.id}`, {
         method: 'DELETE',

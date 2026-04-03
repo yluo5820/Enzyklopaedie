@@ -173,6 +173,18 @@
   min-width: 34px;
 }
 
+.world-history-linked-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  background: rgba(79, 122, 82, 0.14);
+  color: #4b7650;
+}
+
 .world-history-search {
   display: grid;
   gap: 12px;

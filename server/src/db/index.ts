@@ -178,6 +178,7 @@ export async function initializeDatabase() {
       authority TEXT NOT NULL,
       authorityId TEXT NOT NULL,
       kind TEXT NOT NULL,
+      referenceEntityId INTEGER,
       title TEXT NOT NULL,
       summary TEXT,
       description TEXT,
@@ -190,7 +191,8 @@ export async function initializeDatabase() {
       metadata TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
-      UNIQUE(authority, authorityId)
+      UNIQUE(authority, authorityId),
+      FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS exhibits (
@@ -225,6 +227,19 @@ export async function initializeDatabase() {
   `);
 
   const now = new Date().toISOString();
+
+  const canonicalHistoricalColumns = await db.all<{ name: string }[]>(
+    `PRAGMA table_info(canonical_historical_entities)`
+  );
+  if (
+    canonicalHistoricalColumns.length > 0 &&
+    !canonicalHistoricalColumns.some((column) => column.name === 'referenceEntityId')
+  ) {
+    await db.exec(
+      `ALTER TABLE canonical_historical_entities
+       ADD COLUMN referenceEntityId INTEGER REFERENCES reference_entities(id) ON DELETE SET NULL`
+    );
+  }
 
   await db.run(
     `INSERT OR IGNORE INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)

@@ -209,6 +209,7 @@ export interface CanonicalHistoricalEntity {
   authority: CanonicalHistoricalEntityAuthority;
   authorityId: string;
   kind: CanonicalHistoricalEntityKind;
+  referenceEntityId?: number;
   title: string;
   summary?: string;
   description?: string;
