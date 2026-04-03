@@ -6,7 +6,7 @@ import type {
   ReferenceEntityKind,
   UpdateReferenceEntity,
 } from '@enzyklopaedie/shared';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   createReferenceEntityRelation,
   deleteReferenceEntity,
@@ -532,8 +532,16 @@ const getKindPriority = (kindOrder: ReferenceEntityKind[]) =>
 
 const ReferenceEntityPage: React.FC = () => {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const entityId = Number(id);
+  const returnTo =
+    typeof location.state === 'object' &&
+    location.state !== null &&
+    'returnTo' in location.state &&
+    typeof (location.state as { returnTo?: unknown }).returnTo === 'string'
+      ? (location.state as { returnTo: string }).returnTo
+      : '/entities?view=list';
 
   const [entity, setEntity] = useState<ReferenceEntity | null>(null);
   const [allEntities, setAllEntities] = useState<ReferenceEntity[]>([]);
@@ -1452,7 +1460,7 @@ const ReferenceEntityPage: React.FC = () => {
 
   return (
     <div className="reference-entity-page">
-      <Link to="/entities" className="reference-entity-back">
+      <Link to={returnTo} className="reference-entity-back">
         Back to Reference Atlas
       </Link>
 

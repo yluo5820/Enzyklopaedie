@@ -4,7 +4,7 @@ import type {
   ReferenceEntity,
   ReferenceEntityKind,
 } from '@enzyklopaedie/shared';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   createReferenceEntity,
   deleteReferenceEntity,
@@ -117,6 +117,7 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
 };
 
 type EntityFilter = 'all' | ReferenceEntityKind;
+type EntityWorkbenchView = 'create' | 'list';
 
 const createInitialFormState = (kind: ReferenceEntityKind = 'person') => ({
   kind,
@@ -175,12 +176,27 @@ const previewTitles = (entities: ReferenceEntity[], limit = 2) => {
 };
 
 const ReferenceEntitiesPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entities, setEntities] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [filter, setFilter] = useState<EntityFilter>('all');
   const [formState, setFormState] = useState(createInitialFormState());
+  const viewMode: EntityWorkbenchView = searchParams.get('view') === 'list' ? 'list' : 'create';
+
+  const setViewMode = (nextViewMode: EntityWorkbenchView) => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+
+    if (nextViewMode === 'list') {
+      nextSearchParams.set('view', 'list');
+    } else {
+      nextSearchParams.delete('view');
+    }
+
+    setSearchParams(nextSearchParams);
+  };
 
   useEffect(() => {
     const loadEntities = async () => {
@@ -297,21 +313,37 @@ const ReferenceEntitiesPage: React.FC = () => {
 
   return (
     <div className="reference-entities-page">
-      <div className="reference-entities-layout">
-        <aside className="reference-entities-panel reference-entities-form-panel">
-          <div className="reference-entities-header">
-            <span className="reference-entities-eyebrow">Reference Atlas</span>
-            <h1>Create {singularKindLabels[formState.kind]}</h1>
-            <p>{workbenchPreset.lead}</p>
+      {viewMode === 'create' ? (
+        <section className="reference-entities-panel reference-entities-single-panel reference-entities-create-panel">
+          <div className="reference-entities-header reference-entities-header-row">
+            <div>
+              <span className="reference-entities-eyebrow">Reference Atlas</span>
+              <h1>Add {singularKindLabels[formState.kind]}</h1>
+              <p>Capture one atlas record at a time. Keep the browse view out of the way until you need it.</p>
+            </div>
+            <button
+              type="button"
+              className="reference-entities-secondary-button"
+              onClick={() => setViewMode('list')}
+            >
+              Show Atlas Index ({entities.length})
+            </button>
           </div>
 
-          <div className="reference-entities-note">
-            <strong>Next step after creation</strong>
-            <span>{workbenchPreset.nextStep}</span>
+          {error ? <div className="reference-entities-error">{error}</div> : null}
+
+          <div className="reference-entities-create-toolbar">
+            <button
+              type="button"
+              className={`reference-entities-secondary-button${showAdvancedDetails ? ' is-active' : ''}`}
+              onClick={() => setShowAdvancedDetails((current) => !current)}
+            >
+              {showAdvancedDetails ? 'Hide advanced details' : 'Show advanced details'}
+            </button>
           </div>
 
-          <form className="reference-entities-form" onSubmit={handleSubmit}>
-            <div className="reference-entities-field">
+          <form className="reference-entities-form reference-entities-form-grid" onSubmit={handleSubmit}>
+            <div className="reference-entities-field reference-entities-field-span-4 is-primary">
               <label htmlFor="kind">Kind</label>
               <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
                 {kindOptions.map((kind) => (
@@ -322,191 +354,206 @@ const ReferenceEntitiesPage: React.FC = () => {
               </select>
             </div>
 
-            <div className="reference-entities-field">
+            <div className="reference-entities-field reference-entities-field-span-8 is-primary">
               <label htmlFor="title">Title</label>
               <input id="title" name="title" value={formState.title} onChange={handleChange} required />
             </div>
 
-            <div className="reference-entities-grid">
-              <div className="reference-entities-field">
-                <label htmlFor="startYear">{workbenchPreset.startYearLabel}</label>
-                <input
-                  id="startYear"
-                  name="startYear"
-                  type="number"
-                  value={formState.startYear}
-                  onChange={handleChange}
-                  placeholder={workbenchPreset.startYearPlaceholder}
-                />
+            {showAdvancedDetails ? (
+              <>
+                <div className="reference-entities-field reference-entities-field-span-6">
+                  <label htmlFor="startYear">{workbenchPreset.startYearLabel}</label>
+                  <input
+                    id="startYear"
+                    name="startYear"
+                    type="number"
+                    value={formState.startYear}
+                    onChange={handleChange}
+                    placeholder={workbenchPreset.startYearPlaceholder}
+                  />
+                </div>
+
+                <div className="reference-entities-field reference-entities-field-span-6">
+                  <label htmlFor="endYear">{workbenchPreset.endYearLabel}</label>
+                  <input
+                    id="endYear"
+                    name="endYear"
+                    type="number"
+                    value={formState.endYear}
+                    onChange={handleChange}
+                    placeholder={workbenchPreset.endYearPlaceholder}
+                  />
+                </div>
+
+                <div className="reference-entities-inline-note reference-entities-field-span-12">
+                  {workbenchPreset.chronologyHint}
+                </div>
+
+                <div className="reference-entities-field reference-entities-field-span-6">
+                  <label htmlFor="summary">Summary</label>
+                  <textarea
+                    id="summary"
+                    name="summary"
+                    value={formState.summary}
+                    onChange={handleChange}
+                    placeholder={workbenchPreset.summaryPlaceholder}
+                  />
+                </div>
+
+                <div className="reference-entities-field reference-entities-field-span-6">
+                  <label htmlFor="description">Description</label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={formState.description}
+                    onChange={handleChange}
+                    placeholder={workbenchPreset.descriptionPlaceholder}
+                  />
+                </div>
+
+                <div className="reference-entities-note reference-entities-field-span-12">
+                  <strong>Next step after creation</strong>
+                  <span>{workbenchPreset.nextStep}</span>
+                </div>
+              </>
+            ) : (
+              <div className="reference-entities-collapsed-note reference-entities-field-span-12">
+                Chronology, summary, description, and next-step guidance are hidden until you open advanced details.
               </div>
+            )}
 
-              <div className="reference-entities-field">
-                <label htmlFor="endYear">{workbenchPreset.endYearLabel}</label>
-                <input
-                  id="endYear"
-                  name="endYear"
-                  type="number"
-                  value={formState.endYear}
-                  onChange={handleChange}
-                  placeholder={workbenchPreset.endYearPlaceholder}
-                />
-              </div>
+            <div className="reference-entities-form-actions">
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Saving...' : workbenchPreset.submitLabel}
+              </button>
             </div>
-
-            <div className="reference-entities-field-hint">{workbenchPreset.chronologyHint}</div>
-
-            <div className="reference-entities-field">
-              <label htmlFor="summary">Summary</label>
-              <textarea
-                id="summary"
-                name="summary"
-                value={formState.summary}
-                onChange={handleChange}
-                placeholder={workbenchPreset.summaryPlaceholder}
-              />
-            </div>
-
-            <div className="reference-entities-field">
-              <label htmlFor="description">Description</label>
-              <textarea
-                id="description"
-                name="description"
-                value={formState.description}
-                onChange={handleChange}
-                placeholder={workbenchPreset.descriptionPlaceholder}
-              />
-            </div>
-
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : workbenchPreset.submitLabel}
-            </button>
           </form>
-        </aside>
-
-        <section className="reference-entities-content">
-          <section className="reference-entities-panel reference-entities-summary">
-            <div className="reference-entities-header">
+        </section>
+      ) : (
+        <section className="reference-entities-panel reference-entities-single-panel reference-entities-list-panel">
+          <div className="reference-entities-header reference-entities-header-row">
+            <div>
               <span className="reference-entities-eyebrow">Atlas Index</span>
               <h1>Reference Atlas</h1>
-              <p>
-                Subjects hold the taxonomy of knowledge. This atlas holds the world around it:
-                people, nations, civilizations, eras, and places.
-              </p>
+              <p>Browse people, nations, civilizations, eras, and places without the create form competing for space.</p>
             </div>
+            <button
+              type="button"
+              className="reference-entities-secondary-button"
+              onClick={() => setViewMode('create')}
+            >
+              Back to Add Entity
+            </button>
+          </div>
 
-            <div className="reference-entities-stats">
-              <div className="reference-entities-stat">
-                <strong>{entities.length}</strong>
-                <span>Total entities</span>
+          {error ? <div className="reference-entities-error">{error}</div> : null}
+
+          <div className="reference-entities-stats">
+            <div className="reference-entities-stat">
+              <strong>{entities.length}</strong>
+              <span>Total entities</span>
+            </div>
+            {groupedEntities.map((group) => (
+              <div key={group.kind} className="reference-entities-stat reference-entities-stat-rich">
+                <strong>{counts[group.kind]}</strong>
+                <span>{group.title}</span>
+                <small>{previewTitles(group.entities)}</small>
               </div>
-              {groupedEntities.map((group) => (
-                <div key={group.kind} className="reference-entities-stat reference-entities-stat-rich">
-                  <strong>{counts[group.kind]}</strong>
-                  <span>{group.title}</span>
-                  <small>{previewTitles(group.entities)}</small>
-                </div>
-              ))}
-            </div>
-          </section>
+            ))}
+          </div>
 
-          <section className="reference-entities-panel reference-entities-list-panel">
-            <div className="reference-entities-list-header">
-              <div>
-                <span className="reference-entities-eyebrow">Atlas</span>
-                <h2>{filter === 'all' ? 'Browse the world structure' : kindLabels[filter]}</h2>
-              </div>
-            </div>
-
-            <div className="reference-entities-filters">
+          <div className="reference-entities-filters">
+            <button
+              type="button"
+              className={filter === 'all' ? 'reference-entities-filter is-active' : 'reference-entities-filter'}
+              onClick={() => setFilter('all')}
+            >
+              All
+            </button>
+            {kindOptions.map((kind) => (
               <button
+                key={kind}
                 type="button"
-                className={filter === 'all' ? 'reference-entities-filter is-active' : 'reference-entities-filter'}
-                onClick={() => setFilter('all')}
+                className={
+                  filter === kind ? 'reference-entities-filter is-active' : 'reference-entities-filter'
+                }
+                onClick={() => setFilter(kind)}
               >
-                All
+                {kindLabels[kind]}
               </button>
-              {kindOptions.map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  className={
-                    filter === kind ? 'reference-entities-filter is-active' : 'reference-entities-filter'
-                  }
-                  onClick={() => setFilter(kind)}
-                >
-                  {kindLabels[kind]}
-                </button>
-              ))}
+            ))}
+          </div>
+
+          {loading ? <div className="reference-entities-empty">Loading reference entities...</div> : null}
+          {!loading && filteredEntities.length === 0 ? (
+            <div className="reference-entities-empty">
+              No entities in this slice yet. Switch back and add the first atlas record.
             </div>
+          ) : null}
 
-            {error ? <div className="reference-entities-error">{error}</div> : null}
-            {loading ? <div className="reference-entities-empty">Loading reference entities...</div> : null}
-            {!loading && filteredEntities.length === 0 ? (
-              <div className="reference-entities-empty">
-                No entities in this slice yet. Add the first one in the atlas workbench.
-              </div>
-            ) : null}
-
-            {!loading && filteredEntities.length > 0 ? (
-              <div className="reference-entities-groups">
-                {visibleGroups.map((group) => (
-                  <section key={group.kind} className="reference-entities-kind-group">
-                    <div className="reference-entities-kind-head">
-                      <div>
-                        <div className="reference-entities-meta">
-                          <span className="reference-entities-badge">{group.kind}</span>
-                          <span className="reference-entities-kind-count">{group.entities.length}</span>
-                        </div>
-                        <h3>{group.title}</h3>
-                        <p>{group.lead}</p>
+          {!loading && filteredEntities.length > 0 ? (
+            <div className="reference-entities-groups">
+              {visibleGroups.map((group) => (
+                <section key={group.kind} className="reference-entities-kind-group">
+                  <div className="reference-entities-kind-head">
+                    <div>
+                      <div className="reference-entities-meta">
+                        <span className="reference-entities-badge">{group.kind}</span>
+                        <span className="reference-entities-kind-count">{group.entities.length}</span>
                       </div>
+                      <h3>{group.title}</h3>
+                      <p>{group.lead}</p>
                     </div>
+                  </div>
 
-                    <div className="reference-entities-items">
-                      {group.entities.map((entity) => {
-                        const legacySource = getLegacySource(entity);
+                  <div className="reference-entities-items">
+                    {group.entities.map((entity) => {
+                      const legacySource = getLegacySource(entity);
 
-                        return (
-                          <article key={entity.id} className="reference-entities-item">
-                            <div className="reference-entities-item-top">
-                              <div>
-                                <div className="reference-entities-meta">
-                                  <span className="reference-entities-badge">{entity.kind}</span>
-                                  {legacySource ? (
-                                    <span className="reference-entities-badge reference-entities-badge-secondary">
-                                      imported from {legacySource}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <h4>{entity.title}</h4>
-                                <div className="reference-entities-meta">
-                                  <span>{formatTimespan(entity)}</span>
-                                  <span>Updated {formatDate(entity.updatedAt)}</span>
-                                </div>
+                      return (
+                        <article key={entity.id} className="reference-entities-item">
+                          <div className="reference-entities-item-top">
+                            <div>
+                              <div className="reference-entities-meta">
+                                <span className="reference-entities-badge">{entity.kind}</span>
+                                {legacySource ? (
+                                  <span className="reference-entities-badge reference-entities-badge-secondary">
+                                    imported from {legacySource}
+                                  </span>
+                                ) : null}
                               </div>
-
-                              <div className="reference-entities-actions">
-                                <Link to={`/entities/${entity.id}`} className="reference-entities-link">
-                                  Open
-                                </Link>
-                                <button type="button" onClick={() => handleDelete(entity)}>
-                                  Remove
-                                </button>
+                              <h4>{entity.title}</h4>
+                              <div className="reference-entities-meta">
+                                <span>{formatTimespan(entity)}</span>
+                                <span>Updated {formatDate(entity.updatedAt)}</span>
                               </div>
                             </div>
 
-                            {entity.summary ? <p>{entity.summary}</p> : null}
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            ) : null}
-          </section>
+                            <div className="reference-entities-actions">
+                              <Link
+                                to={`/entities/${entity.id}`}
+                                state={{ returnTo: '/entities?view=list' }}
+                                className="reference-entities-link"
+                              >
+                                Open
+                              </Link>
+                              <button type="button" onClick={() => handleDelete(entity)}>
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+
+                          {entity.summary ? <p>{entity.summary}</p> : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : null}
         </section>
-      </div>
+      )}
     </div>
   );
 };
