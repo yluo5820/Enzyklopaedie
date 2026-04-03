@@ -18,6 +18,9 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
+const formatStatusLabel = (value: KnowledgeItem['status']) =>
+  value.charAt(0).toUpperCase() + value.slice(1);
+
 const buildActivityHref = (event: ActivityEvent) => {
   if (event.entityType === 'knowledge_item') return `/knowledge/${event.entityId}`;
   if (event.entityType === 'subject') return `/subjects/${event.entityId}`;
@@ -67,6 +70,24 @@ const HomePage: React.FC = () => {
   const recentSubject = useMemo(() => getMostRecent(subjects), [subjects]);
   const recentTopic = useMemo(() => getMostRecent(topics), [topics]);
   const recentEntity = useMemo(() => getMostRecent(referenceEntities), [referenceEntities]);
+  const focusItems = useMemo(() => {
+    const statusPriority: Record<KnowledgeItem['status'], number> = {
+      active: 0,
+      queued: 1,
+      inbox: 2,
+      completed: 3,
+      archived: 4,
+    };
+
+    return [...knowledgeItems]
+      .filter((item) => item.status === 'active' || item.status === 'queued' || item.status === 'inbox')
+      .sort((left, right) => {
+        const statusGap = statusPriority[left.status] - statusPriority[right.status];
+        if (statusGap !== 0) return statusGap;
+        return right.updatedAt.localeCompare(left.updatedAt);
+      })
+      .slice(0, 4);
+  }, [knowledgeItems]);
   const entityCounts = useMemo(
     () =>
       referenceEntities.reduce<Record<ReferenceEntity['kind'], number>>(
@@ -98,6 +119,75 @@ const HomePage: React.FC = () => {
           <Link to="/subjects">Open Subject Tree</Link>
           <Link to="/entities?view=list">Open Atlas Index</Link>
         </div>
+      </section>
+
+      <section className="home-focus-grid">
+        <section className="home-panel">
+          <div className="home-panel-inner">
+            <span className="home-eyebrow">Continue</span>
+            <h2>Study queue</h2>
+            {loading ? <div className="home-empty">Loading current queue...</div> : null}
+            {!loading && focusItems.length === 0 ? (
+              <div className="home-empty">
+                Nothing is waiting right now. Add an item or move something back into the queue.
+              </div>
+            ) : null}
+            {!loading && focusItems.length > 0 ? (
+              <div className="home-focus-list">
+                {focusItems.map((item) => (
+                  <Link key={item.id} to={`/knowledge/${item.id}`} className="home-focus-item">
+                    <div className="home-focus-top">
+                      <strong>{item.title}</strong>
+                      <span className={`home-status-chip is-${item.status}`}>{formatStatusLabel(item.status)}</span>
+                    </div>
+                    <div className="home-focus-meta">
+                      <span>{item.kind}</span>
+                      <span>Updated {formatDate(item.updatedAt)}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="home-panel">
+          <div className="home-panel-inner">
+            <span className="home-eyebrow">Resume</span>
+            <h2>Recent surfaces</h2>
+            <div className="home-resume-grid">
+              <Link to={recentTopic ? `/topics/${recentTopic.id}` : '/subjects'} className="home-resume-card">
+                <strong>Topic</strong>
+                <span>{recentTopic ? recentTopic.name : 'No topic yet'}</span>
+                <small>{recentTopic ? recentTopic.subjectName : 'Start from the subject tree'}</small>
+              </Link>
+              <Link
+                to={recentEntity ? `/entities/${recentEntity.id}` : '/entities?view=list'}
+                className="home-resume-card"
+              >
+                <strong>Entity</strong>
+                <span>{recentEntity ? recentEntity.title : 'No entity yet'}</span>
+                <small>{recentEntity ? recentEntity.kind : 'Open the atlas index'}</small>
+              </Link>
+              <Link
+                to={recentSubject ? `/subjects/${recentSubject.id}` : '/subjects'}
+                className="home-resume-card"
+              >
+                <strong>Subject</strong>
+                <span>{recentSubject ? recentSubject.name : 'No subject yet'}</span>
+                <small>{recentSubject ? `${recentSubject.topicCount} topics` : 'Open the subject tree'}</small>
+              </Link>
+              <Link
+                to={recentItem ? `/knowledge/${recentItem.id}` : '/knowledge?view=list'}
+                className="home-resume-card"
+              >
+                <strong>Item</strong>
+                <span>{recentItem ? recentItem.title : 'No item yet'}</span>
+                <small>{recentItem ? recentItem.status : 'Open the item workbench'}</small>
+              </Link>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section className="home-surface-grid">

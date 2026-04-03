@@ -85,6 +85,13 @@
   margin-top: 22px;
 }
 
+.home-focus-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 22px;
+  margin-top: 22px;
+}
+
 .home-surface-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -174,6 +181,75 @@
   margin: 0;
   line-height: 1.65;
   color: var(--muted);
+}
+
+.home-focus-list,
+.home-resume-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.home-focus-item,
+.home-resume-card {
+  display: grid;
+  gap: 8px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.84);
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.home-focus-top,
+.home-focus-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.home-focus-item strong,
+.home-resume-card strong {
+  color: var(--accent-dark);
+}
+
+.home-focus-meta,
+.home-resume-card small {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.home-resume-card span {
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.home-status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: rgba(141, 93, 53, 0.12);
+  color: var(--accent-dark);
+}
+
+.home-status-chip.is-active {
+  background: rgba(53, 102, 72, 0.14);
+  color: #29503a;
+}
+
+.home-status-chip.is-queued {
+  background: rgba(120, 88, 33, 0.14);
+  color: #6e4d16;
+}
+
+.home-status-chip.is-inbox {
+  background: rgba(73, 89, 122, 0.12);
+  color: #41506c;
 }
 
 .home-pillars {
@@ -278,6 +354,7 @@
 }
 
 @media (max-width: 960px) {
+  .home-focus-grid,
   .home-surface-grid,
   .home-grid {
     grid-template-columns: 1fr;
