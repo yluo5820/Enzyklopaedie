@@ -29,6 +29,14 @@ type ReferenceEntityRow = Omit<ReferenceEntity, 'metadata'> & {
   metadata?: string | null;
 };
 
+type CanonicalHistoricalGeometryRow = {
+  canonicalHistoricalEntityId: number;
+  source: 'wikimedia_commons_map';
+  geojson: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type WikidataSearchPayload = {
   search?: Array<{
     concepturi?: string;
@@ -520,6 +528,24 @@ export const getCanonicalHistoricalEntityGeometry = asyncErrorHandler(async (req
   const geoshapeTitle =
     typeof entity.metadata?.geoshapeTitle === 'string' ? entity.metadata.geoshapeTitle : undefined;
 
+  const cachedGeometryRow = await db.get<CanonicalHistoricalGeometryRow>(
+    `SELECT * FROM canonical_historical_entity_geometries
+     WHERE canonicalHistoricalEntityId = ?`,
+    entity.id
+  );
+
+  if (cachedGeometryRow) {
+    res.json({
+      entityId: entity.id,
+      title: entity.title,
+      source: cachedGeometryRow.source,
+      cached: true,
+      cachedAt: cachedGeometryRow.updatedAt,
+      geojson: JSON.parse(cachedGeometryRow.geojson) as Record<string, unknown>,
+    });
+    return;
+  }
+
   if (!geoshapeTitle) {
     return res.status(404).json({ message: 'No boundary geometry is available for this atlas entity yet.' });
   }
@@ -555,10 +581,25 @@ export const getCanonicalHistoricalEntityGeometry = asyncErrorHandler(async (req
     return res.status(502).json({ message: 'Wikimedia Commons returned invalid boundary geometry.' });
   }
 
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT OR REPLACE INTO canonical_historical_entity_geometries
+      (canonicalHistoricalEntityId, source, geojson, createdAt, updatedAt)
+     VALUES (?, ?, ?, COALESCE((SELECT createdAt FROM canonical_historical_entity_geometries WHERE canonicalHistoricalEntityId = ?), ?), ?)`,
+    entity.id,
+    'wikimedia_commons_map',
+    JSON.stringify(geojson),
+    entity.id,
+    now,
+    now
+  );
+
   res.json({
     entityId: entity.id,
     title: entity.title,
     source: 'wikimedia_commons_map',
+    cached: false,
+    cachedAt: now,
     geojson,
   });
 });

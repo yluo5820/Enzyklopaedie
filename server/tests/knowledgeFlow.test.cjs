@@ -1588,7 +1588,19 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(geometryResponse.status, 200);
       const geometry = await geometryResponse.json();
       assert.equal(geometry.source, 'wikimedia_commons_map');
+      assert.equal(geometry.cached, false);
       assert.equal(geometry.geojson.type, 'FeatureCollection');
+      assert.equal(callCount, 3);
+
+      const geometryCachedResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/geometry`
+      );
+      assert.equal(geometryCachedResponse.status, 200);
+      const geometryCached = await geometryCachedResponse.json();
+      assert.equal(geometryCached.source, 'wikimedia_commons_map');
+      assert.equal(geometryCached.cached, true);
+      assert.equal(geometryCached.geojson.type, 'FeatureCollection');
+      assert.equal(callCount, 3);
 
       const promoteResponse = await requestThroughHttp(
         `/api/world-history/entities/${created.id}/promote`,

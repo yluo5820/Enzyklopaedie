@@ -774,6 +774,7 @@ const WorldHistoryPage: React.FC = () => {
                         <div className="world-history-result-card__meta">
                           <span>{formatTimespan(result)}</span>
                           <span>{hasCoordinates(result) ? 'Mapped point available' : 'No coordinates yet'}</span>
+                          <span>{result.metadata?.hasGeoshape ? 'Boundary available' : 'Point only'}</span>
                         </div>
                         <div className="world-history-result-card__actions">
                           <button
@@ -957,7 +958,12 @@ const WorldHistoryPage: React.FC = () => {
                           onClick={() => setSelectedAtlasEntityId(entity.id)}
                         >
                           <div className="world-history-shelf-card__head">
-                            <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
+                            <div className="world-history-shelf-card__chips">
+                              <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
+                              {hasBoundaryGeometry(entity) ? (
+                                <span className="world-history-boundary-chip">Boundary</span>
+                              ) : null}
+                            </div>
                             <span className={`world-history-visibility-dot ${isVisible ? 'is-visible' : ''}`} />
                           </div>
                           <strong>{entity.title}</strong>
@@ -994,10 +1000,15 @@ const WorldHistoryPage: React.FC = () => {
                           onClick={() => setSelectedAtlasEntityId(entity.id)}
                         >
                           <div className="world-history-shelf-card__head">
-                            <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
-                            {entity.referenceEntityId ? (
-                              <span className="world-history-linked-chip">Linked</span>
-                            ) : null}
+                            <div className="world-history-shelf-card__chips">
+                              <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
+                              {hasBoundaryGeometry(entity) ? (
+                                <span className="world-history-boundary-chip">Boundary</span>
+                              ) : null}
+                              {entity.referenceEntityId ? (
+                                <span className="world-history-linked-chip">Linked</span>
+                              ) : null}
+                            </div>
                           </div>
                           <strong>{entity.title}</strong>
                           <span>{formatTimespan(entity)}</span>

@@ -185,6 +185,18 @@
   color: #4b7650;
 }
 
+.world-history-boundary-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  background: rgba(91, 56, 34, 0.12);
+  color: #6a4326;
+}
+
 .world-history-search {
   display: grid;
   gap: 12px;
@@ -503,6 +515,13 @@
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+}
+
+.world-history-shelf-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .world-history-shelf-card strong {

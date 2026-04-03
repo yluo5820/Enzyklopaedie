@@ -183,6 +183,8 @@ export interface CanonicalHistoricalGeometryResponse {
     entityId: number;
     title: string;
     source: 'wikimedia_commons_map';
+    cached: boolean;
+    cachedAt?: string;
     geojson: Record<string, unknown>;
 }
 export interface Exhibit {

@@ -195,6 +195,16 @@ export async function initializeDatabase() {
       FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS canonical_historical_entity_geometries (
+      canonicalHistoricalEntityId INTEGER PRIMARY KEY,
+      source TEXT NOT NULL,
+      geojson TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (canonicalHistoricalEntityId)
+        REFERENCES canonical_historical_entities(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS exhibits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
