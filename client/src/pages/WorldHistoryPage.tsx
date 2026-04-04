@@ -11,6 +11,7 @@ import type {
   CanonicalHistoricalSearchMatch,
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
+  ReferenceEntity,
 } from '@enzyklopaedie/shared';
 import {
   deleteHistoricalAtlasEntity,
@@ -18,6 +19,7 @@ import {
   fetchHistoricalBasemapManifest,
   fetchHistoricalAtlasGeometry,
   fetchHistoricalAtlasEntities,
+  fetchReferenceEntities,
   promoteHistoricalAtlasEntity,
   saveHistoricalAtlasEntity,
   searchHistoricalAtlas,
@@ -49,10 +51,20 @@ const atlasKindOptions: HistoricalAtlasKind[] = [
   'person',
 ];
 
+const referenceEntityKindLabels: Record<ReferenceEntity['kind'], string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  nation: 'Nation',
+  person: 'Person',
+  place: 'Place',
+};
+
 const DEFAULT_YEAR = 1862;
 const DEFAULT_MIN_YEAR = -1200;
 const DEFAULT_MAX_YEAR = 2025;
 const DEFAULT_BASEMAP_CUTOFF_YEAR = -500;
+const MATCHABLE_ATLAS_ENTITY_KINDS = new Set(['nation', 'civilization', 'region', 'place']);
+const MATCHABLE_REFERENCE_ENTITY_KINDS = new Set(['nation', 'civilization', 'place']);
 
 type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
   latitude: number;
@@ -243,6 +255,18 @@ const isGeneratedRegionLabel = (value: string) => /^Region \d+$/.test(value);
 
 const normalizeSearchText = (value?: string | null) => value?.trim().toLowerCase() ?? '';
 
+const normalizeEntityLabel = (value?: string | null) =>
+  value
+    ?.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim() ?? '';
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -263,11 +287,14 @@ const WorldHistoryPage: React.FC = () => {
       : 'all';
   });
   const [searchResults, setSearchResults] = useState<CanonicalHistoricalSearchMatch[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
   const [isLoadingAtlas, setIsLoadingAtlas] = useState(true);
+  const [isLoadingReferenceEntities, setIsLoadingReferenceEntities] = useState(true);
   const [isLoadingBasemapManifest, setIsLoadingBasemapManifest] = useState(true);
   const [isLoadingBasemapLayer, setIsLoadingBasemapLayer] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [atlasError, setAtlasError] = useState<string | null>(null);
+  const [referenceEntitiesError, setReferenceEntitiesError] = useState<string | null>(null);
   const [basemapError, setBasemapError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -491,6 +518,55 @@ const WorldHistoryPage: React.FC = () => {
       .map((entry) => entry.feature);
   }, [basemapQuery, searchableBasemapFeatures]);
 
+  const selectedBasemapLabel = useMemo(
+    () => normalizeEntityLabel(getBasemapLabel(selectedBasemapFeature)),
+    [selectedBasemapFeature]
+  );
+
+  const matchedAtlasEntities = useMemo(() => {
+    if (!selectedBasemapFeature || !selectedBasemapLabel) {
+      return [];
+    }
+
+    return atlasEntities
+      .filter(
+        (entity) =>
+          MATCHABLE_ATLAS_ENTITY_KINDS.has(entity.kind) &&
+          normalizeEntityLabel(entity.title) === selectedBasemapLabel
+      )
+      .sort((left, right) => left.title.localeCompare(right.title));
+  }, [atlasEntities, selectedBasemapFeature, selectedBasemapLabel]);
+
+  const matchedAtlasReferenceEntityIds = useMemo(
+    () =>
+      new Set(
+        matchedAtlasEntities
+          .map((entity) => entity.referenceEntityId)
+          .filter((value): value is number => typeof value === 'number')
+      ),
+    [matchedAtlasEntities]
+  );
+
+  const matchedReferenceEntities = useMemo(() => {
+    if (!selectedBasemapFeature || !selectedBasemapLabel) {
+      return [];
+    }
+
+    return referenceEntities
+      .filter(
+        (entity) =>
+          MATCHABLE_REFERENCE_ENTITY_KINDS.has(entity.kind) &&
+          normalizeEntityLabel(entity.title) === selectedBasemapLabel &&
+          !matchedAtlasReferenceEntityIds.has(entity.id)
+      )
+      .sort((left, right) => left.title.localeCompare(right.title));
+  }, [
+    matchedAtlasReferenceEntityIds,
+    referenceEntities,
+    selectedBasemapFeature,
+    selectedBasemapLabel,
+  ]);
+
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
 
@@ -549,6 +625,27 @@ const WorldHistoryPage: React.FC = () => {
     };
 
     void loadAtlas();
+  }, []);
+
+  useEffect(() => {
+    const loadReferenceEntities = async () => {
+      setIsLoadingReferenceEntities(true);
+      setReferenceEntitiesError(null);
+
+      try {
+        const entities = await fetchReferenceEntities();
+        setReferenceEntities(entities);
+      } catch (error) {
+        setReferenceEntities([]);
+        setReferenceEntitiesError(
+          error instanceof Error ? error.message : 'Failed to load local encyclopedia entities.'
+        );
+      } finally {
+        setIsLoadingReferenceEntities(false);
+      }
+    };
+
+    void loadReferenceEntities();
   }, []);
 
   useEffect(() => {
@@ -1426,6 +1523,129 @@ const WorldHistoryPage: React.FC = () => {
                           {selectedBasemapFeature.properties?.atlasBorderPrecision ?? 'Unknown'}
                         </strong>
                       </div>
+                    </div>
+                    <div className="world-history-reconciliation">
+                      <div className="world-history-reconciliation__header">
+                        <div>
+                          <span className="world-history-panel__eyebrow">Reconciliation</span>
+                          <strong>Known matches for this region</strong>
+                        </div>
+                        <span className="world-history-count-chip">
+                          {matchedAtlasEntities.length + matchedReferenceEntities.length}
+                        </span>
+                      </div>
+
+                      {isLoadingReferenceEntities ? (
+                        <div className="world-history-empty">
+                          Checking the local encyclopedia for matching region records…
+                        </div>
+                      ) : referenceEntitiesError ? (
+                        <div className="world-history-feedback is-error">{referenceEntitiesError}</div>
+                      ) : matchedAtlasEntities.length === 0 && matchedReferenceEntities.length === 0 ? (
+                        <div className="world-history-empty">
+                          No pinned atlas record or local encyclopedia entity matches this region name yet.
+                        </div>
+                      ) : (
+                        <div className="world-history-reconciliation__groups">
+                          {matchedAtlasEntities.length > 0 ? (
+                            <div className="world-history-reconciliation__group">
+                              <div className="world-history-reconciliation__group-header">
+                                <span className="world-history-panel__eyebrow">Atlas shelf</span>
+                                <span className="world-history-count-chip">{matchedAtlasEntities.length}</span>
+                              </div>
+                              <div className="world-history-reconciliation__list">
+                                {matchedAtlasEntities.map((entity) => (
+                                  <article
+                                    key={`atlas-match-${entity.id}`}
+                                    className="world-history-reconciliation-card"
+                                  >
+                                    <div className="world-history-reconciliation-card__head">
+                                      <div className="world-history-shelf-card__chips">
+                                        <span className="world-history-kind-chip">
+                                          {kindLabels[entity.kind]}
+                                        </span>
+                                        {entity.referenceEntityId ? (
+                                          <span className="world-history-linked-chip">Linked</span>
+                                        ) : null}
+                                        {hasBoundaryGeometry(entity) ? (
+                                          <span className="world-history-boundary-chip">Boundary</span>
+                                        ) : null}
+                                      </div>
+                                      <strong>{entity.title}</strong>
+                                    </div>
+                                    <span className="world-history-hint">{formatTimespan(entity)}</span>
+                                    <div className="world-history-reconciliation-card__actions">
+                                      <button
+                                        type="button"
+                                        className="is-primary"
+                                        onClick={() => setSelectedAtlasEntityId(entity.id)}
+                                      >
+                                        Focus atlas record
+                                      </button>
+                                      {entity.referenceEntityId ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => navigate(`/entities/${entity.referenceEntityId}`)}
+                                        >
+                                          Open linked entity
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handlePromoteToEntity(entity)}
+                                          disabled={pendingPromoteId === entity.id}
+                                        >
+                                          {pendingPromoteId === entity.id ? 'Creating…' : 'Create local entity'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {matchedReferenceEntities.length > 0 ? (
+                            <div className="world-history-reconciliation__group">
+                              <div className="world-history-reconciliation__group-header">
+                                <span className="world-history-panel__eyebrow">Local encyclopedia</span>
+                                <span className="world-history-count-chip">{matchedReferenceEntities.length}</span>
+                              </div>
+                              <div className="world-history-reconciliation__list">
+                                {matchedReferenceEntities.map((entity) => (
+                                  <article
+                                    key={`reference-match-${entity.id}`}
+                                    className="world-history-reconciliation-card"
+                                  >
+                                    <div className="world-history-reconciliation-card__head">
+                                      <div className="world-history-shelf-card__chips">
+                                        <span className="world-history-kind-chip">
+                                          {referenceEntityKindLabels[entity.kind]}
+                                        </span>
+                                      </div>
+                                      <strong>{entity.title}</strong>
+                                    </div>
+                                    <span className="world-history-hint">
+                                      {entity.startYear !== undefined || entity.endYear !== undefined
+                                        ? formatTimespan(entity)
+                                        : 'No local date range recorded'}
+                                    </span>
+                                    <div className="world-history-reconciliation-card__actions">
+                                      <button
+                                        type="button"
+                                        className="is-primary"
+                                        onClick={() => navigate(`/entities/${entity.id}`)}
+                                      >
+                                        Open local entity
+                                      </button>
+                                    </div>
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                     <p>
                       This region comes from the local historical-basemaps snapshot, not from your pinned authority
