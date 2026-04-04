@@ -205,6 +205,23 @@ export async function initializeDatabase() {
         REFERENCES canonical_historical_entities(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS polity_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referenceEntityId INTEGER NOT NULL,
+      snapshotYear INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      titleAtSnapshot TEXT NOT NULL,
+      parentLabel TEXT,
+      subjectLabel TEXT,
+      borderPrecision INTEGER,
+      geometry TEXT NOT NULL,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(referenceEntityId, snapshotYear, source),
+      FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS exhibits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -221,6 +238,10 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
     CREATE INDEX IF NOT EXISTS idx_reference_entities_kind ON reference_entities(kind);
     CREATE INDEX IF NOT EXISTS idx_reference_entities_title ON reference_entities(lower(title));
+    CREATE INDEX IF NOT EXISTS idx_polity_snapshots_reference_year
+      ON polity_snapshots(referenceEntityId, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_polity_snapshots_source_year
+      ON polity_snapshots(source, snapshotYear DESC);
     CREATE INDEX IF NOT EXISTS idx_study_topics_subject ON study_topics(subjectId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_study_topics_parent ON study_topics(parentTopicId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_knowledge_item_study_topics_item

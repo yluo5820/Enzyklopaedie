@@ -12,9 +12,11 @@ import {
 } from '../api';
 import './ReferenceEntitiesPage.css';
 
-const kindOptions: ReferenceEntityKind[] = ['person', 'nation', 'civilization', 'era', 'place'];
+const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'nation', 'civilization', 'era', 'place'];
+const creatableKindOptions: ReferenceEntityKind[] = ['person', 'nation', 'civilization', 'era', 'place'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'People',
+  polity: 'Polities',
   nation: 'Nations',
   civilization: 'Civilizations',
   era: 'Eras',
@@ -22,6 +24,7 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
 };
 const singularKindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
+  polity: 'Polity',
   nation: 'Nation',
   civilization: 'Civilization',
   era: 'Era',
@@ -29,6 +32,7 @@ const singularKindLabels: Record<ReferenceEntityKind, string> = {
 };
 const kindAtlasLeads: Record<ReferenceEntityKind, string> = {
   person: 'Writers, thinkers, speakers, and other individual figures.',
+  polity: 'Built-in historical-geographical units imported from the world-history basemap.',
   nation: 'Polities and historical nations that ground political context.',
   civilization: 'Broad civilizational horizons spanning nations and eras.',
   era: 'Chronological containers for historical understanding.',
@@ -61,6 +65,19 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
     descriptionPlaceholder: 'Biographical notes, role, major works, and why this person matters.',
     submitLabel: 'Add Person',
     nextStep: 'After saving, connect this person to items through created_by and to entities like nation or era.',
+  },
+  polity: {
+    lead:
+      'Polities are atlas-backed records imported from historical basemaps. They should normally come from the world-history importer, not be typed in here.',
+    startYearLabel: 'Begin Year',
+    endYearLabel: 'End Year',
+    startYearPlaceholder: '-27',
+    endYearPlaceholder: '476',
+    chronologyHint: 'Polity chronology should normally be driven by imported atlas snapshots.',
+    summaryPlaceholder: 'Built-in polity record',
+    descriptionPlaceholder: 'Atlas-backed polity notes belong on the detail page once the importer has created the record.',
+    submitLabel: 'Add Polity',
+    nextStep: 'Use the world-history importer to seed polities from historical basemaps.',
   },
   nation: {
     lead:
@@ -216,7 +233,7 @@ const ReferenceEntitiesPage: React.FC = () => {
   const workbenchPreset = entityWorkbenchPresets[formState.kind];
 
   const counts = useMemo(() => {
-    const byKind = Object.fromEntries(kindOptions.map((kind) => [kind, 0])) as Record<
+    const byKind = Object.fromEntries(browseKindOptions.map((kind) => [kind, 0])) as Record<
       ReferenceEntityKind,
       number
     >;
@@ -234,7 +251,7 @@ const ReferenceEntitiesPage: React.FC = () => {
   }, [entities, filter]);
   const groupedEntities = useMemo(
     () =>
-      kindOptions.map((kind) => ({
+      browseKindOptions.map((kind) => ({
         kind,
         title: kindLabels[kind],
         lead: kindAtlasLeads[kind],
@@ -346,7 +363,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             <div className="reference-entities-field reference-entities-field-span-4 is-primary">
               <label htmlFor="kind">Kind</label>
               <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
-                {kindOptions.map((kind) => (
+                {creatableKindOptions.map((kind) => (
                   <option key={kind} value={kind}>
                     {singularKindLabels[kind]}
                   </option>
@@ -435,7 +452,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             <div>
               <span className="reference-entities-eyebrow">Atlas Index</span>
               <h1>Reference Atlas</h1>
-              <p>Browse people, nations, civilizations, eras, and places without the create form competing for space.</p>
+              <p>Browse people, polities, nations, civilizations, eras, and places without the create form competing for space.</p>
             </div>
             <button
               type="button"
@@ -470,7 +487,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             >
               All
             </button>
-            {kindOptions.map((kind) => (
+            {browseKindOptions.map((kind) => (
               <button
                 key={kind}
                 type="button"

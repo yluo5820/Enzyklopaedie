@@ -96,7 +96,7 @@ const HomePage: React.FC = () => {
           accumulator[entity.kind] += 1;
           return accumulator;
         },
-        { person: 0, nation: 0, civilization: 0, era: 0, place: 0 }
+        { person: 0, polity: 0, nation: 0, civilization: 0, era: 0, place: 0 }
       ),
     [referenceEntities]
   );
@@ -242,8 +242,8 @@ const HomePage: React.FC = () => {
           <h2>{loading ? '...' : referenceEntities.length} atlas records</h2>
           <div className="home-surface-meta">
             <span>{loading ? '...' : entityCounts.person} people</span>
-            <span>{loading ? '...' : entityCounts.nation + entityCounts.civilization} historical bodies</span>
-            <span>{loading ? '...' : entityCounts.era + entityCounts.place} eras & places</span>
+            <span>{loading ? '...' : entityCounts.polity + entityCounts.nation} polities & nations</span>
+            <span>{loading ? '...' : entityCounts.civilization + entityCounts.era + entityCounts.place} formations & places</span>
           </div>
           <p>Build the world around the knowledge tree: people, polities, periods, and places.</p>
           <div className="home-surface-actions">
@@ -270,7 +270,7 @@ const HomePage: React.FC = () => {
               </div>
               <div className="home-pillar">
                 <strong>Entity atlas</strong>
-                <p>Differentiate people, nations, civilizations, eras, and places more strongly.</p>
+                <p>Differentiate people, polities, formations, and places more strongly.</p>
               </div>
               <div className="home-pillar">
                 <strong>Historical framing</strong>

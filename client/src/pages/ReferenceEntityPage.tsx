@@ -19,9 +19,10 @@ import {
 } from '../api';
 import './ReferenceEntityPage.css';
 
-const kindOptions: ReferenceEntityKind[] = ['person', 'nation', 'civilization', 'era', 'place'];
+const kindOptions: ReferenceEntityKind[] = ['person', 'polity', 'nation', 'civilization', 'era', 'place'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
+  polity: 'Polity',
   nation: 'Nation',
   civilization: 'Civilization',
   era: 'Era',
@@ -97,12 +98,12 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
       {
         id: 'homeland',
         label: 'Homeland',
-        description: 'Place the person in a nation or place.',
+        description: 'Place the person in a polity, nation, or place.',
         allowedRelationTypes: ['located_in'],
         defaultRelationType: 'located_in',
         notePlaceholder: 'Optional note about this homeland or place',
-        targetPrompt: 'Choose a nation or place',
-        targetKinds: ['nation', 'place'],
+        targetPrompt: 'Choose a polity, nation, or place',
+        targetKinds: ['polity', 'nation', 'place'],
       },
       {
         id: 'era',
@@ -133,6 +134,62 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         notePlaceholder: 'Optional note about this influence',
         targetPrompt: 'Choose another person',
         targetKinds: ['person'],
+      },
+    ],
+  },
+  polity: {
+    helperText:
+      'Polities are atlas-backed historical-geographical units. Use structure modes here to place the polity in formations, eras, or broader geography.',
+    modes: [
+      {
+        id: 'formation',
+        label: 'Formation',
+        description: 'Place the polity inside a broader civilization or formation.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this broader formation',
+        targetPrompt: 'Choose a civilization',
+        targetKinds: ['civilization'],
+      },
+      {
+        id: 'era',
+        label: 'Era',
+        description: 'Attach the period in which this polity belongs.',
+        allowedRelationTypes: ['during'],
+        defaultRelationType: 'during',
+        notePlaceholder: 'Optional note about this historical period',
+        targetPrompt: 'Choose an era',
+        targetKinds: ['era'],
+      },
+      {
+        id: 'geography',
+        label: 'Geography',
+        description: 'Place the polity inside a larger geographic container.',
+        allowedRelationTypes: ['located_in'],
+        defaultRelationType: 'located_in',
+        notePlaceholder: 'Optional note about this geography',
+        targetPrompt: 'Choose a place',
+        targetKinds: ['place'],
+      },
+      {
+        id: 'sub-polity',
+        label: 'Sub-polity',
+        description: 'Record a contained polity or political subdivision.',
+        allowedRelationTypes: ['contains'],
+        defaultRelationType: 'contains',
+        notePlaceholder: 'Optional note about this contained polity',
+        targetPrompt: 'Choose another polity',
+        targetKinds: ['polity', 'nation'],
+      },
+      {
+        id: 'peer-link',
+        label: 'Peer Link',
+        description: 'Record influence or affinity with another polity.',
+        allowedRelationTypes: ['influenced_by', 'related_to'],
+        defaultRelationType: 'related_to',
+        notePlaceholder: 'Optional note about this peer relation',
+        targetPrompt: 'Choose another polity or civilization',
+        targetKinds: ['polity', 'nation', 'civilization'],
       },
     ],
   },
@@ -177,8 +234,8 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         allowedRelationTypes: ['contains'],
         defaultRelationType: 'contains',
         notePlaceholder: 'Optional note about this contained polity',
-        targetPrompt: 'Choose another nation',
-        targetKinds: ['nation'],
+        targetPrompt: 'Choose another polity or nation',
+        targetKinds: ['polity', 'nation'],
       },
       {
         id: 'peer-link',
@@ -187,8 +244,8 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         allowedRelationTypes: ['influenced_by', 'related_to'],
         defaultRelationType: 'related_to',
         notePlaceholder: 'Optional note about this peer relation',
-        targetPrompt: 'Choose another nation or civilization',
-        targetKinds: ['nation', 'civilization'],
+        targetPrompt: 'Choose another polity, nation, or civilization',
+        targetKinds: ['polity', 'nation', 'civilization'],
       },
     ],
   },
@@ -199,12 +256,12 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
       {
         id: 'member-nation',
         label: 'Member Nation',
-        description: 'Add a nation contained within this civilization.',
+        description: 'Add a polity or nation contained within this civilization.',
         allowedRelationTypes: ['contains'],
         defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this member nation',
-        targetPrompt: 'Choose a nation',
-        targetKinds: ['nation'],
+        notePlaceholder: 'Optional note about this member polity',
+        targetPrompt: 'Choose a polity or nation',
+        targetKinds: ['polity', 'nation'],
       },
       {
         id: 'era-span',
@@ -276,7 +333,7 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
   },
   place: {
     helperText:
-      'Places usually nest inside other places, and they can also host nations or civilizations when geography matters.',
+      'Places usually nest inside other places, and they can also host polities, nations, or civilizations when geography matters.',
     modes: [
       {
         id: 'contained-place',
@@ -301,12 +358,12 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
       {
         id: 'hosted-polity',
         label: 'Hosted Polity',
-        description: 'Attach a nation or civilization hosted by this geography.',
+        description: 'Attach a polity, nation, or civilization hosted by this geography.',
         allowedRelationTypes: ['contains'],
         defaultRelationType: 'contains',
         notePlaceholder: 'Optional note about this hosted polity',
-        targetPrompt: 'Choose a nation or civilization',
-        targetKinds: ['nation', 'civilization'],
+        targetPrompt: 'Choose a polity, nation, or civilization',
+        targetKinds: ['polity', 'nation', 'civilization'],
       },
     ],
   },
@@ -363,6 +420,8 @@ const formatMetadataValue = (value: unknown) => {
   }
   return JSON.stringify(value);
 };
+
+const isPolityLikeKind = (kind: ReferenceEntityKind) => kind === 'nation' || kind === 'polity';
 
 const EntityHint = ({ text }: { text: string }) => (
   <span className="reference-entity-help" tabIndex={0} aria-label={text}>
@@ -511,6 +570,7 @@ const getItemSectionLabel = (kind: ReferenceEntityKind) => {
 const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'person') return 'Biographical coverage';
   if (kind === 'era') return 'Historical framing';
+  if (kind === 'polity') return 'Polity framing';
   if (kind === 'nation') return 'National framing';
   if (kind === 'civilization') return 'Civilizational framing';
   return 'Geographic framing';
@@ -518,6 +578,7 @@ const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
 
 const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'civilization') return 'Civilizational structure';
+  if (kind === 'polity') return 'Polity structure';
   if (kind === 'nation') return 'National structure';
   if (kind === 'era') return 'Era structure';
   if (kind === 'place') return 'Place structure';
@@ -528,7 +589,7 @@ const getKindPriority = (kindOrder: ReferenceEntityKind[]) =>
   kindOrder.reduce<Record<ReferenceEntityKind, number>>((accumulator, kind, index) => {
     accumulator[kind] = index;
     return accumulator;
-  }, { person: 99, nation: 99, civilization: 99, era: 99, place: 99 });
+  }, { person: 99, polity: 99, nation: 99, civilization: 99, era: 99, place: 99 });
 
 const ReferenceEntityPage: React.FC = () => {
   const { id } = useParams();
@@ -909,33 +970,33 @@ const ReferenceEntityPage: React.FC = () => {
       ]);
     }
 
-    if (entity?.kind === 'nation') {
+    if (entity?.kind && isPolityLikeKind(entity.kind)) {
       return finalizeGroups([
         buildStructureGroup(
           'contained-scope',
           'Contained scope',
-          'Sub-polities or member entities that sit inside this nation.',
+          `Sub-polities or member entities that sit inside this ${entity.kind}.`,
           'No contained scope recorded yet.',
           containedScope
         ),
         buildStructureGroup(
           'placed-in',
           'Placed in',
-          'Civilization, era, and larger geography links for this nation.',
+          `Civilization, era, and larger geography links for this ${entity.kind}.`,
           'No broader civilization, geography, or era links yet.',
           [...broaderContainers, ...locationWithin, ...periodPlacement]
         ),
         buildStructureGroup(
           'located-here',
           'Located here',
-          'People or other entities that are placed inside this nation.',
+          `People or other entities that are placed inside this ${entity.kind}.`,
           'Nothing is located here yet.',
           hostedHere
         ),
         buildStructureGroup(
           'peer-links',
           'Peer links',
-          'Peer nations or civilizations linked through influence or affinity.',
+          `Peer ${entity.kind === 'polity' ? 'polities' : 'nations'} or civilizations linked through influence or affinity.`,
           'No peer links recorded yet.',
           [...peerLinks, ...influencedBy, ...influences]
         ),
@@ -1091,7 +1152,7 @@ const ReferenceEntityPage: React.FC = () => {
       ];
     }
 
-    if (entity.kind === 'nation') {
+    if (isPolityLikeKind(entity.kind)) {
       const containedScope = getGroupByKey(structureGroups, 'contained-scope');
       const placedIn = getGroupByKey(structureGroups, 'placed-in');
 
@@ -1102,21 +1163,21 @@ const ReferenceEntityPage: React.FC = () => {
           eyebrow: 'Contained Scope',
           value: `${containedScope?.entries.length ?? 0} links`,
           meta: getGroupPreview(containedScope, 'No contained scope recorded yet.'),
-          hint: 'Sub-polities or member entities recorded inside this nation.',
+          hint: `Sub-polities or member entities recorded inside this ${entity.kind}.`,
         },
         {
           key: 'placed-in',
           eyebrow: 'Placed In',
           value: `${placedIn?.entries.length ?? 0} links`,
           meta: getGroupPreview(placedIn, 'No broader geography, civilization, or era links yet.'),
-          hint: 'Broader civilization, geography, and era links for this nation.',
+          hint: `Broader civilization, geography, and era links for this ${entity.kind}.`,
         },
         {
           key: 'coverage',
           eyebrow: 'Coverage',
           value: `${topicContextCount} topics`,
           meta: `${itemRelations.length} linked items`,
-          hint: 'How many topics and items currently use this nation in the atlas.',
+          hint: `How many topics and items currently use this ${entity.kind} in the atlas.`,
         },
       ];
     }
@@ -1470,7 +1531,7 @@ const ReferenceEntityPage: React.FC = () => {
           <h1>{entity.title}</h1>
           <p>
             {entity.summary ||
-              'This page holds the encyclopedic record for one person, nation, civilization, era, or place.'}
+              'This page holds the encyclopedic record for one person, polity, nation, civilization, era, or place.'}
           </p>
           <div className="reference-entity-hero-meta">
             <span>{formatTimespan(entity)}</span>

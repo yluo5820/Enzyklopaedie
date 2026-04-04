@@ -57,6 +57,12 @@ World History currently uses:
 If the basemap dataset is not present, the world-history page still loads but the local polygon basemap
 layer will be unavailable.
 
+To seed built-in `polity` entities and yearly snapshots from that dataset, run:
+
+```bash
+npm run import:historical-polities --prefix server
+```
+
 ## Testing
 
 Run the baseline verification suite from the repo root:

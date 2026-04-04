@@ -73,7 +73,7 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
       return relationTypeSet('during', 'about', 'related_to');
     }
 
-    if (toEntityKind === 'nation' || toEntityKind === 'place') {
+    if (toEntityKind === 'nation' || toEntityKind === 'place' || toEntityKind === 'polity') {
       return relationTypeSet('located_in', 'about', 'related_to');
     }
 
@@ -97,7 +97,7 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
       return relationTypeSet('during', 'about', 'related_to');
     }
 
-    if (toEntityKind === 'nation' || toEntityKind === 'place') {
+    if (toEntityKind === 'nation' || toEntityKind === 'place' || toEntityKind === 'polity') {
       return relationTypeSet('located_in', 'about', 'related_to');
     }
 
@@ -116,12 +116,17 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
     switch (fromEntityKind as ReferenceEntityKind | undefined) {
       case 'person':
         if (toEntityKind === 'person') return relationTypeSet('influenced_by', 'related_to');
-        if (toEntityKind === 'nation' || toEntityKind === 'place') return relationTypeSet('located_in');
+        if (toEntityKind === 'nation' || toEntityKind === 'place' || toEntityKind === 'polity') {
+          return relationTypeSet('located_in');
+        }
         if (toEntityKind === 'era') return relationTypeSet('during');
         if (toEntityKind === 'civilization') return relationTypeSet('part_of');
         return relationTypeSet();
+      case 'polity':
       case 'nation':
-        if (toEntityKind === 'nation') return relationTypeSet('contains', 'influenced_by', 'related_to');
+        if (toEntityKind === 'nation' || toEntityKind === 'polity') {
+          return relationTypeSet('contains', 'influenced_by', 'related_to');
+        }
         if (toEntityKind === 'civilization') return relationTypeSet('part_of', 'influenced_by', 'related_to');
         if (toEntityKind === 'era') return relationTypeSet('during');
         if (toEntityKind === 'place') return relationTypeSet('located_in');
@@ -138,7 +143,9 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
         return relationTypeSet();
       case 'place':
         if (toEntityKind === 'place') return relationTypeSet('contains', 'part_of');
-        if (toEntityKind === 'nation' || toEntityKind === 'civilization') return relationTypeSet('contains');
+        if (toEntityKind === 'nation' || toEntityKind === 'polity' || toEntityKind === 'civilization') {
+          return relationTypeSet('contains');
+        }
         return relationTypeSet();
       default:
         return relationTypeSet();

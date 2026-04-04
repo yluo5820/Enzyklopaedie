@@ -77,6 +77,25 @@ const mapIndexYearsToManifest = (
     countryCount: Array.isArray(entry.countries) ? entry.countries.length : 0,
   }));
 
+const getMeaningfulHistoricalBasemapLabel = (properties?: Record<string, unknown>) => {
+  if (!properties) return null;
+
+  const candidates = [properties.NAME, properties.SUBJECTO, properties.PARTOF];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+};
+
+export const getHistoricalBasemapFeatureLabel = (feature: GeoJsonFeature) =>
+  getMeaningfulHistoricalBasemapLabel(feature.properties);
+
+export const isHistoricalBasemapFeatureNamed = (feature: GeoJsonFeature) =>
+  Boolean(getHistoricalBasemapFeatureLabel(feature));
+
 const normalizeHistoricalBasemapGeojson = (
   year: number,
   geojson: Record<string, unknown>
@@ -90,18 +109,15 @@ const normalizeHistoricalBasemapGeojson = (
     ...featureCollection,
     features: (featureCollection.features ?? []).map((feature, index) => {
       const properties = feature.properties ?? {};
-      const atlasLabel =
-        (typeof properties.NAME === 'string' && properties.NAME.trim()) ||
-        (typeof properties.SUBJECTO === 'string' && properties.SUBJECTO.trim()) ||
-        (typeof properties.PARTOF === 'string' && properties.PARTOF.trim()) ||
-        `Region ${index + 1}`;
+      const atlasLabel = getMeaningfulHistoricalBasemapLabel(properties);
 
       return {
         ...feature,
         properties: {
           ...properties,
           atlasFeatureId: `${year}-${index}`,
-          atlasLabel,
+          atlasLabel: atlasLabel ?? `Region ${index + 1}`,
+          atlasIsNamed: Boolean(atlasLabel),
           atlasParent:
             typeof properties.PARTOF === 'string' && properties.PARTOF.trim()
               ? properties.PARTOF.trim()

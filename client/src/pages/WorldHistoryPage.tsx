@@ -57,6 +57,7 @@ const referenceEntityKindLabels: Record<ReferenceEntity['kind'], string> = {
   nation: 'Nation',
   person: 'Person',
   place: 'Place',
+  polity: 'Polity',
 };
 
 const DEFAULT_YEAR = 1862;
@@ -64,7 +65,7 @@ const DEFAULT_MIN_YEAR = -1200;
 const DEFAULT_MAX_YEAR = 2025;
 const DEFAULT_BASEMAP_CUTOFF_YEAR = -500;
 const MATCHABLE_ATLAS_ENTITY_KINDS = new Set(['nation', 'civilization', 'region', 'place']);
-const MATCHABLE_REFERENCE_ENTITY_KINDS = new Set(['nation', 'civilization', 'place']);
+const MATCHABLE_REFERENCE_ENTITY_KINDS = new Set(['nation', 'civilization', 'place', 'polity']);
 
 type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
   latitude: number;
@@ -79,6 +80,7 @@ type FeatureCollectionLike = {
 type BasemapFeatureProperties = {
   atlasFeatureId: string;
   atlasLabel: string;
+  atlasIsNamed?: boolean;
   atlasParent?: string | null;
   atlasSubject?: string | null;
   atlasBorderPrecision?: number | null;
@@ -252,6 +254,9 @@ const getBasemapLabel = (feature?: BasemapFeature | null) =>
   'Unnamed region';
 
 const isGeneratedRegionLabel = (value: string) => /^Region \d+$/.test(value);
+
+const isNamedBasemapFeature = (feature?: BasemapFeature | null) =>
+  Boolean(feature?.properties?.atlasIsNamed);
 
 const normalizeSearchText = (value?: string | null) => value?.trim().toLowerCase() ?? '';
 
@@ -464,6 +469,10 @@ const WorldHistoryPage: React.FC = () => {
 
     return activeBasemapFeatures
       .filter((feature) => {
+        if (!isNamedBasemapFeature(feature)) {
+          return false;
+        }
+
         const label = getBasemapLabel(feature);
         if (!label || isGeneratedRegionLabel(label)) {
           return false;
@@ -1013,6 +1022,9 @@ const WorldHistoryPage: React.FC = () => {
 
         map.on('click', 'atlas-historical-basemap-fill', (event) => {
           const feature = event.features?.[0] as BasemapFeature | undefined;
+          if (!isNamedBasemapFeature(feature)) {
+            return;
+          }
           const featureId = feature?.properties?.atlasFeatureId;
           if (typeof featureId === 'string' && featureId) {
             setSelectedBasemapFeatureId(featureId);
@@ -1025,6 +1037,12 @@ const WorldHistoryPage: React.FC = () => {
 
         map.on('mousemove', 'atlas-historical-basemap-fill', (event) => {
           const feature = event.features?.[0] as BasemapFeature | undefined;
+          if (!isNamedBasemapFeature(feature)) {
+            setHoveredBasemapFeatureId(null);
+            basemapPopupRef.current?.remove();
+            map.getCanvas().style.cursor = '';
+            return;
+          }
           const featureId = feature?.properties?.atlasFeatureId;
           if (typeof featureId === 'string' && featureId) {
             setHoveredBasemapFeatureId(featureId);
@@ -1033,6 +1051,7 @@ const WorldHistoryPage: React.FC = () => {
           }
 
           if (!feature) return;
+          map.getCanvas().style.cursor = 'pointer';
 
           const label = getBasemapLabel(feature);
           const parent = feature.properties?.atlasParent;

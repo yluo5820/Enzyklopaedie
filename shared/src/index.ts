@@ -59,7 +59,13 @@ export interface TopicSummary extends Topic {
   subjectSlug: string;
 }
 
-export type ReferenceEntityKind = 'person' | 'nation' | 'civilization' | 'era' | 'place';
+export type ReferenceEntityKind =
+  | 'person'
+  | 'nation'
+  | 'civilization'
+  | 'era'
+  | 'place'
+  | 'polity';
 
 export interface ReferenceEntity {
   id: number;
@@ -188,6 +194,21 @@ export interface TimelineEvent {
   endYear?: number;
   placeId?: number;
   description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PolitySnapshot {
+  id: number;
+  referenceEntityId: number;
+  snapshotYear: number;
+  source: 'historical-basemaps';
+  titleAtSnapshot: string;
+  parentLabel?: string;
+  subjectLabel?: string;
+  borderPrecision?: number;
+  geometry: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -368,6 +389,11 @@ export type UpdatePlace = Partial<Omit<Place, 'id' | 'createdAt' | 'updatedAt'>>
 
 export type NewTimelineEvent = Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateTimelineEvent = Partial<Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>>;
+
+export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdatePolitySnapshot = Partial<
+  Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>
+>;
 
 export type NewCanonicalHistoricalEntity = Omit<
   CanonicalHistoricalEntity,

@@ -113,6 +113,14 @@ before(async () => {
             coordinates: [[[95, 20], [120, 20], [120, 40], [95, 40], [95, 20]]],
           },
         },
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[130, 20], [138, 20], [138, 28], [130, 28], [130, 20]]],
+          },
+        },
       ],
     },
     'world_1945.geojson': {
@@ -1701,7 +1709,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       const promoted = await promoteResponse.json();
       assert.equal(promoted.atlasEntity.referenceEntityId > 0, true);
       assert.equal(promoted.referenceEntity.title, 'Roman Empire');
-      assert.equal(promoted.referenceEntity.kind, 'nation');
+      assert.equal(promoted.referenceEntity.kind, 'polity');
 
       const listAfterPromoteResponse = await requestThroughHttp('/api/world-history/entities?year=100');
       assert.equal(listAfterPromoteResponse.status, 200);
@@ -1753,8 +1761,48 @@ test('world history basemap routes resolve local historical boundary layers', as
   assert.equal(layer.requestedYear, 1862);
   assert.equal(layer.resolvedYear, 100);
   assert.equal(layer.filename, 'world_100.geojson');
-  assert.equal(layer.featureCount, 2);
+  assert.equal(layer.featureCount, 3);
   assert.equal(layer.geojson.type, 'FeatureCollection');
   assert.equal(layer.geojson.features[0].properties.atlasFeatureId, '100-0');
   assert.equal(layer.geojson.features[0].properties.atlasLabel, 'Roman Empire');
+  assert.equal(layer.geojson.features[2].properties.atlasLabel, 'Region 3');
+  assert.equal(layer.geojson.features[2].properties.atlasIsNamed, false);
+});
+
+test('historical polity import seeds built-in polity entities and snapshots from named basemap regions', async () => {
+  const { getDb } = require('../dist/db');
+  const { importHistoricalPolities } = require('../dist/lib/importHistoricalPolities');
+  const db = await getDb();
+
+  const result = await importHistoricalPolities(db, -500);
+  assert.equal(result.datasetPresent, true);
+  assert.equal(result.importedPolityCount, 4);
+  assert.equal(result.createdPolityCount + result.updatedPolityCount, 4);
+  assert.equal(result.importedSnapshotCount, 4);
+  assert.equal(result.skippedAnonymousFeatureCount, 1);
+
+  const polityRows = await db.all(
+    `SELECT * FROM reference_entities WHERE kind = 'polity' ORDER BY lower(title) ASC`
+  );
+  const polityTitles = polityRows.map((row) => row.title);
+  assert.deepEqual(polityTitles, ['Achaemenid Empire', 'Han China', 'Roman Empire', 'United States']);
+
+  const romanPolity = polityRows.find((row) => row.title === 'Roman Empire');
+  assert.ok(romanPolity);
+  assert.equal(romanPolity.startYear, 100);
+  assert.equal(romanPolity.endYear, 100);
+
+  const snapshotRows = await db.all(
+    `SELECT referenceEntityId, snapshotYear, source, titleAtSnapshot, metadata
+     FROM polity_snapshots
+     ORDER BY snapshotYear ASC, titleAtSnapshot ASC`
+  );
+  assert.equal(snapshotRows.length, 4);
+  assert.equal(snapshotRows[1].titleAtSnapshot, 'Han China');
+
+  const romanSnapshot = snapshotRows.find((row) => row.titleAtSnapshot === 'Roman Empire');
+  assert.ok(romanSnapshot);
+  const snapshotMetadata = JSON.parse(romanSnapshot.metadata);
+  assert.equal(snapshotMetadata.featureCount, 1);
+  assert.deepEqual(snapshotMetadata.sourceFeatureIds, ['100-0']);
 });

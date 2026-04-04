@@ -29,7 +29,8 @@ const isReferenceEntityKind = (value: unknown): value is ReferenceEntityKind =>
   value === 'nation' ||
   value === 'civilization' ||
   value === 'era' ||
-  value === 'place';
+  value === 'place' ||
+  value === 'polity';
 
 const parseId = (value: unknown) => {
   const parsed = Number(value);
