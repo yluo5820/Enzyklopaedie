@@ -48,6 +48,94 @@ const requestThroughHttp = (pathname, options = {}) =>
 before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enzyklopaedie-server-test-'));
   process.env.DB_PATH = path.join(tempDir, 'knowledge-flow.db');
+  process.env.HISTORICAL_BASEMAPS_PATH = path.join(tempDir, 'historical-basemaps-fixture');
+
+  fs.mkdirSync(path.join(process.env.HISTORICAL_BASEMAPS_PATH, 'geojson'), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(process.env.HISTORICAL_BASEMAPS_PATH, 'index.json'),
+    JSON.stringify(
+      {
+        years: [
+          {
+            year: -500,
+            filename: 'world_bc500.geojson',
+            countries: ['Achaemenid Empire', 'Carthage'],
+          },
+          {
+            year: 100,
+            filename: 'world_100.geojson',
+            countries: ['Roman Empire'],
+          },
+          {
+            year: 1945,
+            filename: 'world_1945.geojson',
+            countries: ['United States', 'USSR', 'China'],
+          },
+        ],
+      },
+      null,
+      2
+    )
+  );
+
+  const fixtureLayers = {
+    'world_bc500.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { NAME: 'Achaemenid Empire' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[40, 20], [65, 20], [65, 40], [40, 40], [40, 20]]],
+          },
+        },
+      ],
+    },
+    'world_100.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { NAME: 'Roman Empire' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[10, 35], [25, 35], [25, 48], [10, 48], [10, 35]]],
+          },
+        },
+        {
+          type: 'Feature',
+          properties: { NAME: 'Han China' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[95, 20], [120, 20], [120, 40], [95, 40], [95, 20]]],
+          },
+        },
+      ],
+    },
+    'world_1945.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { NAME: 'United States' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-125, 25], [-65, 25], [-65, 49], [-125, 49], [-125, 25]]],
+          },
+        },
+      ],
+    },
+  };
+
+  for (const [filename, geojson] of Object.entries(fixtureLayers)) {
+    fs.writeFileSync(
+      path.join(process.env.HISTORICAL_BASEMAPS_PATH, 'geojson', filename),
+      JSON.stringify(geojson)
+    );
+  }
 
   const dbModule = require('../dist/db');
   const app = require('../dist/app').default;
@@ -81,6 +169,7 @@ after(async () => {
   }
 
   delete process.env.DB_PATH;
+  delete process.env.HISTORICAL_BASEMAPS_PATH;
 
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1642,4 +1731,28 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       global.fetch = originalFetch;
     }
   });
+});
+
+test('world history basemap routes resolve local historical boundary layers', async () => {
+  const manifestResponse = await request('/api/world-history/basemaps/manifest?cutoffYear=-500');
+  assert.equal(manifestResponse.status, 200);
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.source, 'historical-basemaps');
+  assert.equal(manifest.datasetPresent, true);
+  assert.equal(manifest.minYear, -500);
+  assert.equal(manifest.maxYear, 1945);
+  assert.deepEqual(
+    manifest.availableYears.map((entry) => entry.year),
+    [-500, 100, 1945]
+  );
+
+  const layerResponse = await request('/api/world-history/basemaps/layer?year=1862&cutoffYear=-500');
+  assert.equal(layerResponse.status, 200);
+  const layer = await layerResponse.json();
+  assert.equal(layer.source, 'historical-basemaps');
+  assert.equal(layer.requestedYear, 1862);
+  assert.equal(layer.resolvedYear, 100);
+  assert.equal(layer.filename, 'world_100.geojson');
+  assert.equal(layer.featureCount, 2);
+  assert.equal(layer.geojson.type, 'FeatureCollection');
 });

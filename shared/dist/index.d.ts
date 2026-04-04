@@ -187,6 +187,29 @@ export interface CanonicalHistoricalGeometryResponse {
     cachedAt?: string;
     geojson: Record<string, unknown>;
 }
+export interface HistoricalBasemapYear {
+    year: number;
+    filename: string;
+    countryCount: number;
+}
+export interface HistoricalBasemapManifestResponse {
+    source: 'historical-basemaps';
+    title: string;
+    license: 'GPL-3.0';
+    cutoffYear: number;
+    minYear: number;
+    maxYear: number;
+    datasetPresent: boolean;
+    availableYears: HistoricalBasemapYear[];
+}
+export interface HistoricalBasemapLayerResponse {
+    source: 'historical-basemaps';
+    requestedYear: number;
+    resolvedYear: number;
+    filename: string;
+    featureCount: number;
+    geojson: Record<string, unknown>;
+}
 export interface Exhibit {
     id: number;
     title: string;

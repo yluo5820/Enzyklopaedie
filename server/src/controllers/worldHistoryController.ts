@@ -15,6 +15,11 @@ import {
   upsertCanonicalHistoricalEntity,
 } from '../lib/canonicalHistoricalEntities';
 import {
+  DEFAULT_HISTORICAL_BASEMAPS_CUTOFF_YEAR,
+  getHistoricalBasemapLayer,
+  getHistoricalBasemapManifest,
+} from '../lib/historicalBasemaps';
+import {
   generateUniqueReferenceEntitySlug,
   hydrateReferenceEntity,
 } from '../lib/referenceEntities';
@@ -355,6 +360,43 @@ export const getCanonicalHistoricalEntities = asyncErrorHandler(async (req: Requ
 
   res.json(filtered);
 });
+
+export const getHistoricalBasemapManifestResponse = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    const cutoffYear = parseYear(req.query.cutoffYear) ?? DEFAULT_HISTORICAL_BASEMAPS_CUTOFF_YEAR;
+    const manifest = await getHistoricalBasemapManifest(cutoffYear);
+
+    if (!manifest.datasetPresent) {
+      return res.status(404).json({
+        message:
+          'Historical basemaps were not found. Clone the dataset into data/historical-basemaps or set HISTORICAL_BASEMAPS_PATH.',
+      });
+    }
+
+    res.json(manifest);
+  }
+);
+
+export const getHistoricalBasemapLayerResponse = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    const requestedYear = parseYear(req.query.year);
+    if (requestedYear === null) {
+      return res.status(400).json({ message: 'A numeric year is required.' });
+    }
+
+    const cutoffYear = parseYear(req.query.cutoffYear) ?? DEFAULT_HISTORICAL_BASEMAPS_CUTOFF_YEAR;
+    const layer = await getHistoricalBasemapLayer(requestedYear, cutoffYear);
+
+    if (!layer) {
+      return res.status(404).json({
+        message:
+          'Historical basemaps were not found. Clone the dataset into data/historical-basemaps or set HISTORICAL_BASEMAPS_PATH.',
+      });
+    }
+
+    res.json(layer);
+  }
+);
 
 export const searchCanonicalHistoricalEntities = asyncErrorHandler(async (req: Request, res: Response) => {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';

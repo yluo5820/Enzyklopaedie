@@ -3,9 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalSearchMatch,
+  HistoricalBasemapLayerResponse,
+  HistoricalBasemapManifestResponse,
 } from '@enzyklopaedie/shared';
 import {
   deleteHistoricalAtlasEntity,
+  fetchHistoricalBasemapLayer,
+  fetchHistoricalBasemapManifest,
   fetchHistoricalAtlasGeometry,
   fetchHistoricalAtlasEntities,
   promoteHistoricalAtlasEntity,
@@ -42,6 +46,7 @@ const atlasKindOptions: HistoricalAtlasKind[] = [
 const DEFAULT_YEAR = 1862;
 const DEFAULT_MIN_YEAR = -1200;
 const DEFAULT_MAX_YEAR = 2025;
+const DEFAULT_BASEMAP_CUTOFF_YEAR = -500;
 
 type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
   latitude: number;
@@ -49,6 +54,15 @@ type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
 };
 
 type GeoJsonLike = Record<string, any>;
+type FeatureCollectionLike = {
+  type: 'FeatureCollection';
+  features: Array<Record<string, unknown>>;
+};
+
+const EMPTY_FEATURE_COLLECTION: FeatureCollectionLike = {
+  type: 'FeatureCollection',
+  features: [],
+};
 
 const formatYear = (year?: number) => {
   if (year === undefined) return 'Undated';
@@ -167,21 +181,18 @@ const buildAtlasGeoJson = (entities: CanonicalHistoricalEntity[]) => ({
     })),
 });
 
-const getYearBounds = (entities: CanonicalHistoricalEntity[]) => {
+const getAtlasYearBounds = (entities: CanonicalHistoricalEntity[]) => {
   const years = entities.flatMap((entity) =>
     [entity.startYear, entity.endYear].filter((value): value is number => value !== undefined)
   );
 
   if (years.length === 0) {
-    return {
-      minYear: DEFAULT_MIN_YEAR,
-      maxYear: DEFAULT_MAX_YEAR,
-    };
+    return null;
   }
 
   return {
-    minYear: Math.min(...years, DEFAULT_MIN_YEAR),
-    maxYear: Math.max(...years, DEFAULT_MAX_YEAR),
+    minYear: Math.min(...years),
+    maxYear: Math.max(...years),
   };
 };
 
@@ -198,13 +209,20 @@ const WorldHistoryPage: React.FC = () => {
   });
   const [searchResults, setSearchResults] = useState<CanonicalHistoricalSearchMatch[]>([]);
   const [isLoadingAtlas, setIsLoadingAtlas] = useState(true);
+  const [isLoadingBasemapManifest, setIsLoadingBasemapManifest] = useState(true);
+  const [isLoadingBasemapLayer, setIsLoadingBasemapLayer] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [atlasError, setAtlasError] = useState<string | null>(null);
+  const [basemapError, setBasemapError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [pendingSaveAuthorityId, setPendingSaveAuthorityId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [pendingPromoteId, setPendingPromoteId] = useState<number | null>(null);
+  const [historicalBasemapManifest, setHistoricalBasemapManifest] =
+    useState<HistoricalBasemapManifestResponse | null>(null);
+  const [historicalBasemapLayer, setHistoricalBasemapLayer] =
+    useState<HistoricalBasemapLayerResponse | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<GeoJsonLike | null>(null);
   const [geometryError, setGeometryError] = useState<string | null>(null);
   const [selectedAtlasEntityId, setSelectedAtlasEntityId] = useState<number | null>(() => {
@@ -218,12 +236,34 @@ const WorldHistoryPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import('@maptiler/sdk').Map | null>(null);
   const mapLoadedRef = useRef(false);
-  const yearRef = useRef(year);
 
   const maptilerApiKey = (import.meta.env as { VITE_MAPTILER_API_KEY?: string })
     .VITE_MAPTILER_API_KEY;
 
-  const yearBounds = useMemo(() => getYearBounds(atlasEntities), [atlasEntities]);
+  const atlasYearBounds = useMemo(() => getAtlasYearBounds(atlasEntities), [atlasEntities]);
+  const yearBounds = useMemo(() => {
+    if (historicalBasemapManifest?.datasetPresent && historicalBasemapManifest.availableYears.length > 0) {
+      return {
+        minYear: historicalBasemapManifest.minYear,
+        maxYear: Math.max(
+          historicalBasemapManifest.maxYear,
+          atlasYearBounds?.maxYear ?? historicalBasemapManifest.maxYear
+        ),
+      };
+    }
+
+    if (atlasYearBounds) {
+      return {
+        minYear: Math.min(atlasYearBounds.minYear, DEFAULT_MIN_YEAR),
+        maxYear: Math.max(atlasYearBounds.maxYear, DEFAULT_MAX_YEAR),
+      };
+    }
+
+    return {
+      minYear: DEFAULT_MIN_YEAR,
+      maxYear: DEFAULT_MAX_YEAR,
+    };
+  }, [atlasYearBounds, historicalBasemapManifest]);
 
   useEffect(() => {
     setYear((currentYear) =>
@@ -293,6 +333,24 @@ const WorldHistoryPage: React.FC = () => {
     [visibleAtlasEntities]
   );
 
+  const activeBasemapYear = useMemo(() => {
+    const availableYears = historicalBasemapManifest?.availableYears ?? [];
+    if (availableYears.length === 0) {
+      return null;
+    }
+
+    let resolved = availableYears[0];
+    for (const entry of availableYears) {
+      if (entry.year <= year) {
+        resolved = entry;
+        continue;
+      }
+      break;
+    }
+
+    return resolved;
+  }, [historicalBasemapManifest, year]);
+
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
 
@@ -313,6 +371,27 @@ const WorldHistoryPage: React.FC = () => {
   }, [query, searchKind, year, selectedAtlasEntityId, searchParams, setSearchParams]);
 
   useEffect(() => {
+    const loadHistoricalBasemapManifest = async () => {
+      setIsLoadingBasemapManifest(true);
+      setBasemapError(null);
+
+      try {
+        const manifest = await fetchHistoricalBasemapManifest(DEFAULT_BASEMAP_CUTOFF_YEAR);
+        setHistoricalBasemapManifest(manifest);
+      } catch (error) {
+        setHistoricalBasemapManifest(null);
+        setBasemapError(
+          error instanceof Error ? error.message : 'Failed to load the historical basemap index.'
+        );
+      } finally {
+        setIsLoadingBasemapManifest(false);
+      }
+    };
+
+    void loadHistoricalBasemapManifest();
+  }, []);
+
+  useEffect(() => {
     const loadAtlas = async () => {
       setIsLoadingAtlas(true);
       setAtlasError(null);
@@ -331,6 +410,34 @@ const WorldHistoryPage: React.FC = () => {
 
     void loadAtlas();
   }, []);
+
+  useEffect(() => {
+    const loadHistoricalBasemapLayer = async () => {
+      if (!activeBasemapYear) {
+        setHistoricalBasemapLayer(null);
+        return;
+      }
+
+      setIsLoadingBasemapLayer(true);
+      setBasemapError(null);
+      try {
+        const layer = await fetchHistoricalBasemapLayer(
+          activeBasemapYear.year,
+          DEFAULT_BASEMAP_CUTOFF_YEAR
+        );
+        setHistoricalBasemapLayer(layer);
+      } catch (error) {
+        setHistoricalBasemapLayer(null);
+        setBasemapError(
+          error instanceof Error ? error.message : 'Failed to load the historical basemap layer.'
+        );
+      } finally {
+        setIsLoadingBasemapLayer(false);
+      }
+    };
+
+    void loadHistoricalBasemapLayer();
+  }, [activeBasemapYear]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -474,6 +581,11 @@ const WorldHistoryPage: React.FC = () => {
       map.on('load', () => {
         mapLoadedRef.current = true;
 
+        map.addSource('atlas-historical-basemap', {
+          type: 'geojson',
+          data: EMPTY_FEATURE_COLLECTION as any,
+        });
+
         map.addSource('atlas-entities', {
           type: 'geojson',
           data: buildAtlasGeoJson([]) as any,
@@ -481,10 +593,28 @@ const WorldHistoryPage: React.FC = () => {
 
         map.addSource('atlas-selected-geometry', {
           type: 'geojson',
-          data: {
-            type: 'FeatureCollection',
-            features: [],
-          } as any,
+          data: EMPTY_FEATURE_COLLECTION as any,
+        });
+
+        map.addLayer({
+          id: 'atlas-historical-basemap-fill',
+          type: 'fill',
+          source: 'atlas-historical-basemap',
+          paint: {
+            'fill-color': '#c8af88',
+            'fill-opacity': 0.14,
+          },
+        });
+
+        map.addLayer({
+          id: 'atlas-historical-basemap-outline',
+          type: 'line',
+          source: 'atlas-historical-basemap',
+          paint: {
+            'line-color': '#7d654d',
+            'line-width': 0.85,
+            'line-opacity': 0.72,
+          },
         });
 
         map.addLayer({
@@ -600,23 +730,18 @@ const WorldHistoryPage: React.FC = () => {
   }, [maptilerApiKey]);
 
   useEffect(() => {
-    yearRef.current = year;
-  }, [year]);
-
-  useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
 
+    const basemapSource = map.getSource('atlas-historical-basemap') as import('@maptiler/sdk').GeoJSONSource | undefined;
     const source = map.getSource('atlas-entities') as import('@maptiler/sdk').GeoJSONSource | undefined;
     const geometrySource = map.getSource('atlas-selected-geometry') as import('@maptiler/sdk').GeoJSONSource | undefined;
-    if (!source || !geometrySource) return;
+    if (!basemapSource || !source || !geometrySource) return;
 
+    basemapSource.setData((historicalBasemapLayer?.geojson ?? EMPTY_FEATURE_COLLECTION) as any);
     source.setData(buildAtlasGeoJson(visibleAtlasEntities) as any);
     geometrySource.setData(
-      (selectedGeometry ?? {
-        type: 'FeatureCollection',
-        features: [],
-      }) as any
+      (selectedGeometry ?? EMPTY_FEATURE_COLLECTION) as any
     );
 
     const selectedId =
@@ -672,7 +797,13 @@ const WorldHistoryPage: React.FC = () => {
         { padding: 80, duration: 900, maxZoom: 4.8 }
       );
     }
-  }, [mappableAtlasEntities, selectedGeometry, selectedVisibleAtlasEntity, visibleAtlasEntities]);
+  }, [
+    historicalBasemapLayer,
+    mappableAtlasEntities,
+    selectedGeometry,
+    selectedVisibleAtlasEntity,
+    visibleAtlasEntities,
+  ]);
 
   return (
     <div className="world-history-page">
@@ -682,8 +813,8 @@ const WorldHistoryPage: React.FC = () => {
             <span className="world-history-eyebrow">World History</span>
             <h1>Canonical Atlas</h1>
             <p>
-              Search authoritative historical records, pin the ones that matter, and let the map/timeline
-              respond to your own atlas shelf instead of a fake demo layer.
+              Read local historical boundaries as the base layer, then pin canonical records on top so the
+              map starts behaving like an atlas instead of a static demo.
             </p>
           </div>
 
@@ -693,6 +824,17 @@ const WorldHistoryPage: React.FC = () => {
               <span className="world-history-meta-value">{formatYear(year)}</span>
             </div>
             <div className="world-history-meta-card">
+              <span className="world-history-meta-label">Boundary snapshot</span>
+              <span className="world-history-meta-value">
+                {activeBasemapYear ? formatYear(activeBasemapYear.year) : 'Unavailable'}
+              </span>
+              <span className="world-history-hint">
+                {historicalBasemapManifest?.datasetPresent
+                  ? `${activeBasemapYear?.countryCount ?? 0} regions from historical-basemaps`
+                  : 'Clone the local historical-basemaps dataset to enable polygon layers.'}
+              </span>
+            </div>
+            <div className="world-history-meta-card">
               <span className="world-history-meta-label">Visible atlas entities</span>
               <span className="world-history-meta-value">{visibleAtlasEntities.length}</span>
               {topVisibleKinds[0] && <span className="world-history-hint">{topVisibleKinds.join(' · ')}</span>}
@@ -700,7 +842,7 @@ const WorldHistoryPage: React.FC = () => {
             <div className="world-history-meta-card">
               <span className="world-history-meta-label">Mapped right now</span>
               <span className="world-history-meta-value">{mappableAtlasEntities.length}</span>
-              <span className="world-history-hint">Current source: Wikidata authority records.</span>
+              <span className="world-history-hint">Overlay source: pinned authority records from Wikidata.</span>
             </div>
           </div>
         </header>
@@ -816,6 +958,10 @@ const WorldHistoryPage: React.FC = () => {
               )}
             </section>
 
+            {basemapError ? (
+              <div className="world-history-feedback is-error">{basemapError}</div>
+            ) : null}
+
             <section className="world-history-timeline">
               <div className="world-history-range">
                 <input
@@ -831,6 +977,18 @@ const WorldHistoryPage: React.FC = () => {
                     <span key={tick}>{formatYear(tick)}</span>
                   ))}
                 </div>
+              </div>
+              <div className="world-history-timeline__meta">
+                <span>
+                  Basemap snaps to the nearest available year from {formatYear(DEFAULT_BASEMAP_CUTOFF_YEAR)} onward.
+                </span>
+                <strong>
+                  {isLoadingBasemapManifest || isLoadingBasemapLayer
+                    ? 'Loading boundary snapshot…'
+                    : activeBasemapYear
+                      ? `Showing ${formatYear(activeBasemapYear.year)}`
+                      : 'No basemap snapshot loaded'}
+                </strong>
               </div>
             </section>
 

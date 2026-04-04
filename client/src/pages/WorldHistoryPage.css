@@ -461,6 +461,21 @@
   color: var(--ink-muted);
 }
 
+.world-history-timeline__meta {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.world-history-timeline__meta strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .world-history-details-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
@@ -592,6 +607,11 @@
   .world-history-selected-card__thumb {
     width: 60px;
     height: 80px;
+  }
+
+  .world-history-timeline__meta {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

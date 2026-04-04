@@ -4,6 +4,8 @@ import {
   CanonicalHistoricalGeometryResponse,
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
+  HistoricalBasemapLayerResponse,
+  HistoricalBasemapManifestResponse,
   KnowledgeItem,
   KnowledgeRelationEntityType,
   KnowledgeNote,
@@ -180,6 +182,45 @@ export const fetchHistoricalAtlasEntities = async (
   if (!response.ok) {
     throw new Error('Failed to fetch world history atlas entities');
   }
+  return response.json();
+};
+
+export const fetchHistoricalBasemapManifest = async (
+  cutoffYear?: number
+): Promise<HistoricalBasemapManifestResponse> => {
+  const params = new URLSearchParams();
+  if (cutoffYear !== undefined) {
+    params.set('cutoffYear', String(cutoffYear));
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/world-history/basemaps/manifest${params.toString() ? `?${params.toString()}` : ''}`
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to fetch historical basemap manifest');
+  }
+
+  return response.json();
+};
+
+export const fetchHistoricalBasemapLayer = async (
+  year: number,
+  cutoffYear?: number
+): Promise<HistoricalBasemapLayerResponse> => {
+  const params = new URLSearchParams({
+    year: String(year),
+  });
+  if (cutoffYear !== undefined) {
+    params.set('cutoffYear', String(cutoffYear));
+  }
+
+  const response = await fetch(`${API_BASE_URL}/world-history/basemaps/layer?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to fetch historical basemap layer');
+  }
+
   return response.json();
 };
 
