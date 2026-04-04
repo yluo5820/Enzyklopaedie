@@ -12,8 +12,10 @@ import {
 } from '../api';
 import './ReferenceEntitiesPage.css';
 
-const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation', 'nation', 'civilization', 'era', 'place'];
-const creatableKindOptions: ReferenceEntityKind[] = ['person', 'formation', 'nation', 'civilization', 'era', 'place'];
+const primaryKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
+const legacyKindOptions: ReferenceEntityKind[] = ['nation', 'civilization', 'era', 'place'];
+const browseKindOptions: ReferenceEntityKind[] = [...primaryKindOptions, ...legacyKindOptions];
+const creatableKindOptions: ReferenceEntityKind[] = ['person', 'formation'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'People',
   polity: 'Polities',
@@ -54,6 +56,9 @@ type EntityWorkbenchPreset = {
   submitLabel: string;
   nextStep: string;
 };
+
+const legacyAtlasLead =
+  'Older atlas kinds are still readable during migration, but new historical modeling should prefer person, polity, and formation.';
 
 const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset> = {
   person: {
@@ -149,7 +154,7 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
   },
 };
 
-type EntityFilter = 'all' | ReferenceEntityKind;
+type EntityFilter = 'all' | 'legacy' | ReferenceEntityKind;
 type EntityWorkbenchView = 'create' | 'list';
 
 const createInitialFormState = (kind: ReferenceEntityKind = 'person') => ({
@@ -213,6 +218,8 @@ const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | '
   entity.metadata?.atlasSource === 'historical-basemaps' &&
   entity.metadata?.builtIn === true;
 
+const isLegacyEntityKind = (kind: ReferenceEntityKind) => legacyKindOptions.includes(kind);
+
 const ReferenceEntitiesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [entities, setEntities] = useState<ReferenceEntity[]>([]);
@@ -268,17 +275,36 @@ const ReferenceEntitiesPage: React.FC = () => {
 
   const filteredEntities = useMemo(() => {
     if (filter === 'all') return sortEntities(entities);
+    if (filter === 'legacy') {
+      return sortEntities(entities.filter((entity) => isLegacyEntityKind(entity.kind)));
+    }
     return sortEntities(entities.filter((entity) => entity.kind === filter));
   }, [entities, filter]);
-  const groupedEntities = useMemo(
+  const primaryGroups = useMemo(
     () =>
-      browseKindOptions.map((kind) => ({
+      primaryKindOptions.map((kind) => ({
         kind,
         title: kindLabels[kind],
         lead: kindAtlasLeads[kind],
         entities: sortEntities(entities.filter((entity) => entity.kind === kind)),
       })),
     [entities]
+  );
+  const legacyEntities = useMemo(
+    () => sortEntities(entities.filter((entity) => isLegacyEntityKind(entity.kind))),
+    [entities]
+  );
+  const groupedEntities = useMemo(
+    () => [
+      ...primaryGroups,
+      {
+        kind: 'legacy' as const,
+        title: 'Legacy Atlas Records',
+        lead: legacyAtlasLead,
+        entities: legacyEntities,
+      },
+    ],
+    [legacyEntities, primaryGroups]
   );
   const visibleGroups = useMemo(() => {
     if (filter === 'all') return groupedEntities.filter((group) => group.entities.length > 0);
@@ -357,7 +383,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             <div>
               <span className="reference-entities-eyebrow">Reference Atlas</span>
               <h1>Add {singularKindLabels[formState.kind]}</h1>
-              <p>Capture one atlas record at a time. Keep the browse view out of the way until you need it.</p>
+              <p>Capture one primary atlas record at a time. New history work should start with people or formations.</p>
             </div>
             <button
               type="button"
@@ -473,7 +499,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             <div>
               <span className="reference-entities-eyebrow">Atlas Index</span>
               <h1>Reference Atlas</h1>
-              <p>Browse people, polities, formations, and older atlas records without the create form competing for space.</p>
+              <p>Browse the primary atlas model first: people, built-in polities, and formations. Older kinds stay in a legacy shelf during migration.</p>
             </div>
             <button
               type="button"
@@ -491,13 +517,18 @@ const ReferenceEntitiesPage: React.FC = () => {
               <strong>{entities.length}</strong>
               <span>Total entities</span>
             </div>
-            {groupedEntities.map((group) => (
+            {primaryGroups.map((group) => (
               <div key={group.kind} className="reference-entities-stat reference-entities-stat-rich">
                 <strong>{counts[group.kind]}</strong>
                 <span>{group.title}</span>
                 <small>{previewTitles(group.entities)}</small>
               </div>
             ))}
+            <div className="reference-entities-stat reference-entities-stat-rich">
+              <strong>{legacyEntities.length}</strong>
+              <span>Legacy records</span>
+              <small>{legacyEntities.length > 0 ? previewTitles(legacyEntities) : 'No legacy atlas records'}</small>
+            </div>
           </div>
 
           <div className="reference-entities-filters">
@@ -508,7 +539,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             >
               All
             </button>
-            {browseKindOptions.map((kind) => (
+            {primaryKindOptions.map((kind) => (
               <button
                 key={kind}
                 type="button"
@@ -520,6 +551,13 @@ const ReferenceEntitiesPage: React.FC = () => {
                 {kindLabels[kind]}
               </button>
             ))}
+            <button
+              type="button"
+              className={filter === 'legacy' ? 'reference-entities-filter is-active' : 'reference-entities-filter'}
+              onClick={() => setFilter('legacy')}
+            >
+              Legacy
+            </button>
           </div>
 
           {loading ? <div className="reference-entities-empty">Loading reference entities...</div> : null}
@@ -548,6 +586,7 @@ const ReferenceEntitiesPage: React.FC = () => {
                     {group.entities.map((entity) => {
                       const legacySource = getLegacySource(entity);
                       const isBuiltInPolity = isBuiltInPolityReferenceEntity(entity);
+                      const isLegacyEntity = isLegacyEntityKind(entity.kind);
 
                       return (
                         <article key={entity.id} className="reference-entities-item">
@@ -563,6 +602,11 @@ const ReferenceEntitiesPage: React.FC = () => {
                                 {legacySource ? (
                                   <span className="reference-entities-badge reference-entities-badge-secondary">
                                     imported from {legacySource}
+                                  </span>
+                                ) : null}
+                                {isLegacyEntity ? (
+                                  <span className="reference-entities-badge reference-entities-badge-secondary">
+                                    legacy kind
                                   </span>
                                 ) : null}
                               </div>

@@ -372,6 +372,12 @@
   background: rgba(255, 255, 255, 0.82);
 }
 
+.reference-entity-migration-note {
+  margin-top: 2px;
+  background: rgba(145, 95, 54, 0.1);
+  border-color: rgba(145, 95, 54, 0.18);
+}
+
 .reference-entity-mode {
   color: var(--ink);
   font: inherit;

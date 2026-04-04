@@ -25,7 +25,8 @@ import {
 } from '../api';
 import './ReferenceEntityPage.css';
 
-const kindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation', 'nation', 'civilization', 'era', 'place'];
+const primaryKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
+const legacyKindOptions: ReferenceEntityKind[] = ['nation', 'civilization', 'era', 'place'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
   polity: 'Polity',
@@ -34,6 +35,36 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
   civilization: 'Civilization',
   era: 'Era',
   place: 'Place',
+};
+
+const isLegacyEntityKind = (kind: ReferenceEntityKind) => legacyKindOptions.includes(kind);
+
+const getLegacyMigrationCopy = (kind: ReferenceEntityKind) => {
+  if (kind === 'nation') {
+    return {
+      title: 'Legacy polity record',
+      body: 'New atlas work should usually use built-in polities instead of hand-made nation records. Keep this record for continuity or convert it into a polity when the basemap-backed equivalent exists.',
+    };
+  }
+
+  if (kind === 'civilization') {
+    return {
+      title: 'Legacy civilization record',
+      body: 'New atlas work should usually use formations for civilizational spans and historical continuities. Keep this record for compatibility or migrate it into a formation.',
+    };
+  }
+
+  if (kind === 'era') {
+    return {
+      title: 'Legacy era record',
+      body: 'New atlas work should usually express geographically bounded periods as formations. Keep this record for compatibility or migrate it into a formation when the polity membership is clear.',
+    };
+  }
+
+  return {
+    title: 'Legacy place record',
+    body: 'Places remain readable, but the atlas backbone is shifting toward people, polities, and formations. Keep this record when geography itself is the subject.',
+  };
 };
 
 type EntityStructurePreset = {
@@ -123,14 +154,14 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         targetKinds: ['era'],
       },
       {
-        id: 'civilization',
-        label: 'Civilization',
-        description: 'Place the person inside a broader civilizational horizon.',
+        id: 'formation',
+        label: 'Formation',
+        description: 'Place the person inside a broader historical formation.',
         allowedRelationTypes: ['part_of'],
         defaultRelationType: 'part_of',
-        notePlaceholder: 'Optional note about this civilizational frame',
-        targetPrompt: 'Choose a civilization',
-        targetKinds: ['civilization'],
+        notePlaceholder: 'Optional note about this broader formation',
+        targetPrompt: 'Choose a formation',
+        targetKinds: ['formation'],
       },
       {
         id: 'influence',
@@ -151,12 +182,12 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
       {
         id: 'formation',
         label: 'Formation',
-        description: 'Place the polity inside a broader civilization or formation.',
+        description: 'Place the polity inside a broader historical formation.',
         allowedRelationTypes: ['part_of'],
         defaultRelationType: 'part_of',
         notePlaceholder: 'Optional note about this broader formation',
-        targetPrompt: 'Choose a civilization',
-        targetKinds: ['civilization'],
+        targetPrompt: 'Choose a formation',
+        targetKinds: ['formation'],
       },
       {
         id: 'era',
@@ -195,8 +226,8 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         allowedRelationTypes: ['influenced_by', 'related_to'],
         defaultRelationType: 'related_to',
         notePlaceholder: 'Optional note about this peer relation',
-        targetPrompt: 'Choose another polity or civilization',
-        targetKinds: ['polity', 'nation', 'civilization'],
+        targetPrompt: 'Choose another polity or formation',
+        targetKinds: ['polity', 'formation'],
       },
     ],
   },
@@ -742,6 +773,16 @@ const ReferenceEntityPage: React.FC = () => {
 
   const legacySource = typeof entity?.metadata?.legacySource === 'string' ? entity.metadata.legacySource : null;
   const isBuiltInPolity = entity ? isBuiltInPolityReferenceEntity(entity) : false;
+  const isLegacyEntity = entity ? isLegacyEntityKind(entity.kind) : false;
+  const legacyMigrationCopy = entity && isLegacyEntity ? getLegacyMigrationCopy(entity.kind) : null;
+  const editableKindOptions = useMemo(() => {
+    if (!entity) return primaryKindOptions;
+    if (isBuiltInPolity) return ['polity'] as ReferenceEntityKind[];
+
+    return isLegacyEntity
+      ? [...primaryKindOptions, entity.kind]
+      : primaryKindOptions;
+  }, [entity, isBuiltInPolity, isLegacyEntity]);
   const metadataEntries = useMemo(
     () => (entity?.metadata ? Object.entries(entity.metadata) : []),
     [entity?.metadata]
@@ -1268,7 +1309,7 @@ const ReferenceEntityPage: React.FC = () => {
           eyebrow: 'Belongs In',
           value: `${belongsIn?.entries.length ?? 0} links`,
           meta: getGroupPreview(belongsIn, 'No homeland, era, or civilization links yet.'),
-          hint: 'Homeland, era, place, and civilization links that situate this person.',
+          hint: 'Homeland, polity, place, and formation links that situate this person.',
         },
         {
           key: 'works',
@@ -1322,8 +1363,8 @@ const ReferenceEntityPage: React.FC = () => {
           key: 'placed-in',
           eyebrow: 'Placed In',
           value: `${placedIn?.entries.length ?? 0} links`,
-          meta: getGroupPreview(placedIn, 'No broader geography, civilization, or era links yet.'),
-          hint: `Broader civilization, geography, and era links for this ${entity.kind}.`,
+          meta: getGroupPreview(placedIn, 'No broader geography, formation, or era links yet.'),
+          hint: `Broader formation, geography, and era links for this ${entity.kind}.`,
         },
         {
           key: 'coverage',
@@ -1792,7 +1833,7 @@ const ReferenceEntityPage: React.FC = () => {
           <h1>{entity.title}</h1>
           <p>
             {entity.summary ||
-              'This page holds the encyclopedic record for one person, polity, formation, nation, civilization, era, or place.'}
+              'This page holds the encyclopedic record for one person, polity, or formation in the atlas.'}
           </p>
           <div className="reference-entity-hero-meta">
             <span>{formatTimespan(entity)}</span>
@@ -1804,7 +1845,15 @@ const ReferenceEntityPage: React.FC = () => {
             <span>{topicContextCount} topic links</span>
             <span>{structureLinkCount} entity links</span>
             <span>Updated {formatDate(entity.updatedAt)}</span>
-            {legacySource ? <span>Imported from legacy {legacySource}</span> : <span>Native entity record</span>}
+            {legacySource ? (
+              <span>Imported from legacy {legacySource}</span>
+            ) : isBuiltInPolity ? (
+              <span>Built-in atlas record</span>
+            ) : isLegacyEntity ? (
+              <span>Legacy atlas record</span>
+            ) : (
+              <span>Primary atlas record</span>
+            )}
           </div>
           <div className="reference-entity-hero-actions">
             <button
@@ -1837,6 +1886,12 @@ const ReferenceEntityPage: React.FC = () => {
               </article>
             ))}
           </div>
+          {legacyMigrationCopy ? (
+            <div className="reference-entity-note reference-entity-migration-note">
+              <strong>{legacyMigrationCopy.title}</strong>
+              <span>{legacyMigrationCopy.body}</span>
+            </div>
+          ) : null}
           {showEditor ? (
             <section className="reference-entity-inline-panel">
               <form className="reference-entity-form" onSubmit={handleSubmit}>
@@ -1850,7 +1905,7 @@ const ReferenceEntityPage: React.FC = () => {
                       onChange={handleChange}
                       disabled={isBuiltInPolity}
                     >
-                      {kindOptions.map((kind) => (
+                      {editableKindOptions.map((kind) => (
                         <option key={kind} value={kind}>
                           {kindLabels[kind]}
                         </option>
@@ -1905,6 +1960,14 @@ const ReferenceEntityPage: React.FC = () => {
                     <span>
                       This polity keeps its name and chronology from the historical basemap import. Use this page
                       to enrich its summary, description, links, and contextual notes.
+                    </span>
+                  </div>
+                ) : isLegacyEntity ? (
+                  <div className="reference-entity-note">
+                    <strong>Legacy atlas kind</strong>
+                    <span>
+                      This record still works, but new atlas modeling should usually use people, built-in
+                      polities, and formations. You can keep this kind or migrate it here over time.
                     </span>
                   </div>
                 ) : null}

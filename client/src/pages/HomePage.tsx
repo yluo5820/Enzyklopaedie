@@ -100,6 +100,9 @@ const HomePage: React.FC = () => {
       ),
     [referenceEntities]
   );
+  const primaryEntityCount = entityCounts.person + entityCounts.polity + entityCounts.formation;
+  const legacyEntityCount =
+    entityCounts.nation + entityCounts.civilization + entityCounts.era + entityCounts.place;
   const topLevelTopics = useMemo(
     () => topics.filter((topic) => !topic.parentTopicId).length,
     [topics]
@@ -242,10 +245,11 @@ const HomePage: React.FC = () => {
           <h2>{loading ? '...' : referenceEntities.length} atlas records</h2>
           <div className="home-surface-meta">
             <span>{loading ? '...' : entityCounts.person} people</span>
-            <span>{loading ? '...' : entityCounts.polity + entityCounts.nation} polities & nations</span>
-            <span>{loading ? '...' : entityCounts.formation + entityCounts.civilization + entityCounts.era + entityCounts.place} formations & places</span>
+            <span>{loading ? '...' : entityCounts.polity} built-in polities</span>
+            <span>{loading ? '...' : entityCounts.formation} formations</span>
+            <span>{loading ? '...' : legacyEntityCount} legacy atlas records</span>
           </div>
-          <p>Build the world around the knowledge tree: people, polities, periods, and places.</p>
+          <p>Build the historical world around the knowledge tree with people, polities, and formations.</p>
           <div className="home-surface-actions">
             <Link to="/entities">Add entity</Link>
             <Link to="/entities?view=list">Open atlas</Link>
@@ -270,7 +274,7 @@ const HomePage: React.FC = () => {
               </div>
               <div className="home-pillar">
                 <strong>Entity atlas</strong>
-                <p>Differentiate people, polities, formations, and places more strongly.</p>
+                <p>Finish the shift toward people, polities, and formations as the atlas backbone.</p>
               </div>
               <div className="home-pillar">
                 <strong>Historical framing</strong>
@@ -310,8 +314,12 @@ const HomePage: React.FC = () => {
                 <span>Topics</span>
               </div>
               <div className="home-stat">
-                <strong>{loading ? '...' : referenceEntities.length}</strong>
-                <span>Reference entities</span>
+                <strong>{loading ? '...' : primaryEntityCount}</strong>
+                <span>Primary atlas records</span>
+              </div>
+              <div className="home-stat">
+                <strong>{loading ? '...' : legacyEntityCount}</strong>
+                <span>Legacy atlas records</span>
               </div>
               <div className="home-stat">
                 <strong>Prototype</strong>
