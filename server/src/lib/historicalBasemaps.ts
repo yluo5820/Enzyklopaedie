@@ -16,7 +16,7 @@ type HistoricalBasemapIndex = {
   years: HistoricalBasemapIndexYear[];
 };
 
-const DEFAULT_HISTORICAL_BASEMAPS_PATH = path.join(__dirname, '../../data/historical-basemaps');
+const DEFAULT_HISTORICAL_BASEMAPS_PATH = path.join(__dirname, '../../../data/historical-basemaps');
 export const DEFAULT_HISTORICAL_BASEMAPS_CUTOFF_YEAR = -500;
 
 const historicalBasemapsRoot =
