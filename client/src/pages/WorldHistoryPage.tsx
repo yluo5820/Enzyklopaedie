@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import maplibregl, {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  NavigationControl,
+} from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
@@ -58,20 +64,12 @@ type FeatureCollectionLike = {
   type: 'FeatureCollection';
   features: Array<Record<string, unknown>>;
 };
-type LocalMapStyle = {
-  version: 8;
-  name: string;
-  sources: Record<string, never>;
-  glyphs?: string;
-  layers: Array<Record<string, unknown>>;
-};
-
 const EMPTY_FEATURE_COLLECTION: FeatureCollectionLike = {
   type: 'FeatureCollection',
   features: [],
 };
 
-const LOCAL_ATLAS_MAP_STYLE: LocalMapStyle = {
+const LOCAL_ATLAS_MAP_STYLE = {
   version: 8,
   name: 'Local Historical Atlas',
   sources: {},
@@ -257,7 +255,7 @@ const WorldHistoryPage: React.FC = () => {
     return Number.isInteger(parsed) ? parsed : DEFAULT_YEAR;
   });
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<import('@maptiler/sdk').Map | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
   const mapLoadedRef = useRef(false);
 
   const atlasYearBounds = useMemo(() => getAtlasYearBounds(atlasEntities), [atlasEntities]);
@@ -574,16 +572,13 @@ const WorldHistoryPage: React.FC = () => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     let disposed = false;
-    let localMap: import('@maptiler/sdk').Map | null = null;
+    let localMap: MapLibreMap | null = null;
 
     const loadMap = async () => {
       try {
-        const maptilersdk = await import('@maptiler/sdk');
-        await import('@maptiler/sdk/dist/maptiler-sdk.css');
-
         if (disposed || !mapContainerRef.current) return;
 
-        const map = new maptilersdk.Map({
+        const map = new maplibregl.Map({
           container: mapContainerRef.current,
           style: LOCAL_ATLAS_MAP_STYLE as any,
           center: [10, 28],
@@ -596,7 +591,7 @@ const WorldHistoryPage: React.FC = () => {
         mapRef.current = map;
         setMapError(null);
 
-        map.addControl(new maptilersdk.NavigationControl({ visualizePitch: false }), 'top-right');
+        map.addControl(new NavigationControl({ visualizePitch: false }), 'top-right');
 
         map.on('error', () => {
           setMapError('The local atlas map failed to render.');
@@ -686,24 +681,6 @@ const WorldHistoryPage: React.FC = () => {
           });
 
           map.addLayer({
-            id: 'atlas-entities-labels',
-            type: 'symbol',
-            source: 'atlas-entities',
-            layout: {
-              'text-field': ['get', 'title'],
-              'text-size': 11,
-              'text-offset': [0, 1.1],
-              'text-anchor': 'top',
-              'text-allow-overlap': false,
-            },
-            paint: {
-              'text-color': '#352417',
-              'text-halo-color': '#fdf7eb',
-              'text-halo-width': 1.2,
-            },
-          });
-
-          map.addLayer({
             id: 'atlas-selected-geometry-fill',
             type: 'fill',
             source: 'atlas-selected-geometry',
@@ -760,9 +737,9 @@ const WorldHistoryPage: React.FC = () => {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
 
-    const basemapSource = map.getSource('atlas-historical-basemap') as import('@maptiler/sdk').GeoJSONSource | undefined;
-    const source = map.getSource('atlas-entities') as import('@maptiler/sdk').GeoJSONSource | undefined;
-    const geometrySource = map.getSource('atlas-selected-geometry') as import('@maptiler/sdk').GeoJSONSource | undefined;
+    const basemapSource = map.getSource('atlas-historical-basemap') as GeoJSONSource | undefined;
+    const source = map.getSource('atlas-entities') as GeoJSONSource | undefined;
+    const geometrySource = map.getSource('atlas-selected-geometry') as GeoJSONSource | undefined;
     if (!basemapSource || !source || !geometrySource) return;
 
     basemapSource.setData((historicalBasemapLayer?.geojson ?? EMPTY_FEATURE_COLLECTION) as any);
