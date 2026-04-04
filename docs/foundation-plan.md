@@ -42,6 +42,20 @@ Status:
 2. Rebuild the world-history surface on real temporal-spatial data.
 3. Add exhibition and publishing layers.
 
+### Phase 5
+
+1. Refactor atlas-facing entities from `nation / civilization / era / place` toward:
+   - `person`
+   - `polity`
+   - `formation`
+2. Treat imported historical basemap regions as built-in `polity` seeds.
+3. Add dated `polity_snapshots` and membership tables for:
+   - `formation -> polity`
+   - `person -> polity`
+4. Move the world-history map from loose overlays to first-class polity records.
+
+Detailed atlas refactor notes live in [world-history-polity-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/world-history-polity-plan.md).
+
 ## Architectural Notes
 
 - Keep storage local with SQLite.

@@ -44,10 +44,18 @@ Open:
 Optional client env vars:
 
 - `client/.env.local`
-- `VITE_MAPTILER_API_KEY=...` for the world history page
 - Book search in the item workbench uses Open Library and the Library of Congress and does not require a user API key
 
 `client/.env.local` is ignored by git.
+
+World History currently uses:
+
+- `maplibre-gl` in the client
+- local canonical atlas routes from the server
+- a locally cloned `historical-basemaps` dataset if present at `data/historical-basemaps`
+
+If the basemap dataset is not present, the world-history page still loads but the local polygon basemap
+layer will be unavailable.
 
 ## Testing
 
@@ -94,10 +102,12 @@ After `npm start`, use this path:
 11. Add an entity-to-entity structural link such as a civilization containing an era or nation
 12. Add a note, a task, and a review on the item page
 13. Return to `Home` and confirm recent activity entries appear
-14. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+14. Open `World History` and confirm the map and timeline render
+15. If `data/historical-basemaps` is present, confirm local boundary snapshots load too
 
 ## Working Notes
 
 - Domain model: [docs/domain-model.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/domain-model.md)
 - Foundation plan: [docs/foundation-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/foundation-plan.md)
+- World history polity plan: [docs/world-history-polity-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/world-history-polity-plan.md)
 - Local testing guide: [docs/local-testing.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/local-testing.md)
