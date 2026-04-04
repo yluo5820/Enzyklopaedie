@@ -58,10 +58,32 @@ type FeatureCollectionLike = {
   type: 'FeatureCollection';
   features: Array<Record<string, unknown>>;
 };
+type LocalMapStyle = {
+  version: 8;
+  name: string;
+  sources: Record<string, never>;
+  glyphs?: string;
+  layers: Array<Record<string, unknown>>;
+};
 
 const EMPTY_FEATURE_COLLECTION: FeatureCollectionLike = {
   type: 'FeatureCollection',
   features: [],
+};
+
+const LOCAL_ATLAS_MAP_STYLE: LocalMapStyle = {
+  version: 8,
+  name: 'Local Historical Atlas',
+  sources: {},
+  layers: [
+    {
+      id: 'atlas-ocean',
+      type: 'background',
+      paint: {
+        'background-color': '#e4d4b8',
+      },
+    },
+  ],
 };
 
 const formatYear = (year?: number) => {
@@ -214,6 +236,7 @@ const WorldHistoryPage: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [atlasError, setAtlasError] = useState<string | null>(null);
   const [basemapError, setBasemapError] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [pendingSaveAuthorityId, setPendingSaveAuthorityId] = useState<string | null>(null);
@@ -236,9 +259,6 @@ const WorldHistoryPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import('@maptiler/sdk').Map | null>(null);
   const mapLoadedRef = useRef(false);
-
-  const maptilerApiKey = (import.meta.env as { VITE_MAPTILER_API_KEY?: string })
-    .VITE_MAPTILER_API_KEY;
 
   const atlasYearBounds = useMemo(() => getAtlasYearBounds(atlasEntities), [atlasEntities]);
   const yearBounds = useMemo(() => {
@@ -551,172 +571,179 @@ const WorldHistoryPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current || !maptilerApiKey) return;
+    if (!mapContainerRef.current || mapRef.current) return;
 
     let disposed = false;
     let localMap: import('@maptiler/sdk').Map | null = null;
 
     const loadMap = async () => {
-      const maptilersdk = await import('@maptiler/sdk');
-      await import('@maptiler/sdk/dist/maptiler-sdk.css');
+      try {
+        const maptilersdk = await import('@maptiler/sdk');
+        await import('@maptiler/sdk/dist/maptiler-sdk.css');
 
-      if (disposed || !mapContainerRef.current) return;
+        if (disposed || !mapContainerRef.current) return;
 
-      maptilersdk.config.apiKey = maptilerApiKey;
-
-      const map = new maptilersdk.Map({
-        container: mapContainerRef.current,
-        style: maptilersdk.MapStyle.BACKDROP,
-        center: [10, 28],
-        zoom: 1.9,
-        minZoom: 1,
-        maxZoom: 8,
-      });
-
-      localMap = map;
-      mapRef.current = map;
-
-      map.addControl(new maptilersdk.NavigationControl({ visualizePitch: false }), 'top-right');
-
-      map.on('load', () => {
-        mapLoadedRef.current = true;
-
-        map.addSource('atlas-historical-basemap', {
-          type: 'geojson',
-          data: EMPTY_FEATURE_COLLECTION as any,
+        const map = new maptilersdk.Map({
+          container: mapContainerRef.current,
+          style: LOCAL_ATLAS_MAP_STYLE as any,
+          center: [10, 28],
+          zoom: 1.9,
+          minZoom: 1,
+          maxZoom: 8,
         });
 
-        map.addSource('atlas-entities', {
-          type: 'geojson',
-          data: buildAtlasGeoJson([]) as any,
+        localMap = map;
+        mapRef.current = map;
+        setMapError(null);
+
+        map.addControl(new maptilersdk.NavigationControl({ visualizePitch: false }), 'top-right');
+
+        map.on('error', () => {
+          setMapError('The local atlas map failed to render.');
         });
 
-        map.addSource('atlas-selected-geometry', {
-          type: 'geojson',
-          data: EMPTY_FEATURE_COLLECTION as any,
-        });
+        map.on('load', () => {
+          mapLoadedRef.current = true;
 
-        map.addLayer({
-          id: 'atlas-historical-basemap-fill',
-          type: 'fill',
-          source: 'atlas-historical-basemap',
-          paint: {
-            'fill-color': '#c8af88',
-            'fill-opacity': 0.14,
-          },
-        });
+          map.addSource('atlas-historical-basemap', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
 
-        map.addLayer({
-          id: 'atlas-historical-basemap-outline',
-          type: 'line',
-          source: 'atlas-historical-basemap',
-          paint: {
-            'line-color': '#7d654d',
-            'line-width': 0.85,
-            'line-opacity': 0.72,
-          },
-        });
+          map.addSource('atlas-entities', {
+            type: 'geojson',
+            data: buildAtlasGeoJson([]) as any,
+          });
 
-        map.addLayer({
-          id: 'atlas-entities-points',
-          type: 'circle',
-          source: 'atlas-entities',
-          paint: {
-            'circle-radius': 6,
-            'circle-color': [
-              'match',
-              ['get', 'kind'],
-              'battle',
-              '#a0462d',
-              'ruler',
-              '#8c4f1f',
-              'person',
-              '#a0762b',
-              'nation',
-              '#376b6d',
-              'civilization',
-              '#91593a',
-              'era',
-              '#6d5f88',
-              'region',
-              '#5a6d48',
-              '#2f5b86',
-            ],
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#f9f0df',
-            'circle-opacity': 0.9,
-          },
-        });
+          map.addSource('atlas-selected-geometry', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
 
-        map.addLayer({
-          id: 'atlas-entities-selected',
-          type: 'circle',
-          source: 'atlas-entities',
-          paint: {
-            'circle-radius': 11,
-            'circle-color': 'rgba(255, 255, 255, 0)',
-            'circle-stroke-width': 2.5,
-            'circle-stroke-color': '#3a2a1b',
-          },
-          filter: ['==', ['get', 'id'], -1],
-        });
+          map.addLayer({
+            id: 'atlas-historical-basemap-fill',
+            type: 'fill',
+            source: 'atlas-historical-basemap',
+            paint: {
+              'fill-color': '#a8855c',
+              'fill-opacity': 0.28,
+            },
+          });
 
-        map.addLayer({
-          id: 'atlas-entities-labels',
-          type: 'symbol',
-          source: 'atlas-entities',
-          layout: {
-            'text-field': ['get', 'title'],
-            'text-size': 11,
-            'text-offset': [0, 1.1],
-            'text-anchor': 'top',
-            'text-allow-overlap': false,
-          },
-          paint: {
-            'text-color': '#352417',
-            'text-halo-color': '#fdf7eb',
-            'text-halo-width': 1.2,
-          },
-        });
+          map.addLayer({
+            id: 'atlas-historical-basemap-outline',
+            type: 'line',
+            source: 'atlas-historical-basemap',
+            paint: {
+              'line-color': '#54381f',
+              'line-width': 1.25,
+              'line-opacity': 0.9,
+            },
+          });
 
-        map.addLayer({
-          id: 'atlas-selected-geometry-fill',
-          type: 'fill',
-          source: 'atlas-selected-geometry',
-          paint: {
-            'fill-color': '#8d5d35',
-            'fill-opacity': 0.16,
-          },
-        });
+          map.addLayer({
+            id: 'atlas-entities-points',
+            type: 'circle',
+            source: 'atlas-entities',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': [
+                'match',
+                ['get', 'kind'],
+                'battle',
+                '#a0462d',
+                'ruler',
+                '#8c4f1f',
+                'person',
+                '#a0762b',
+                'nation',
+                '#376b6d',
+                'civilization',
+                '#91593a',
+                'era',
+                '#6d5f88',
+                'region',
+                '#5a6d48',
+                '#2f5b86',
+              ],
+              'circle-stroke-width': 1.5,
+              'circle-stroke-color': '#f9f0df',
+              'circle-opacity': 0.94,
+            },
+          });
 
-        map.addLayer({
-          id: 'atlas-selected-geometry-outline',
-          type: 'line',
-          source: 'atlas-selected-geometry',
-          paint: {
-            'line-color': '#5b3822',
-            'line-width': 2,
-            'line-opacity': 0.82,
-          },
-        });
+          map.addLayer({
+            id: 'atlas-entities-selected',
+            type: 'circle',
+            source: 'atlas-entities',
+            paint: {
+              'circle-radius': 11,
+              'circle-color': 'rgba(255, 255, 255, 0)',
+              'circle-stroke-width': 2.5,
+              'circle-stroke-color': '#3a2a1b',
+            },
+            filter: ['==', ['get', 'id'], -1],
+          });
 
-        map.on('click', 'atlas-entities-points', (event) => {
-          const feature = event.features?.[0];
-          const id = feature?.properties?.id;
-          const parsedId = typeof id === 'number' ? id : Number(id);
-          if (Number.isInteger(parsedId) && parsedId > 0) {
-            setSelectedAtlasEntityId(parsedId);
-          }
-        });
+          map.addLayer({
+            id: 'atlas-entities-labels',
+            type: 'symbol',
+            source: 'atlas-entities',
+            layout: {
+              'text-field': ['get', 'title'],
+              'text-size': 11,
+              'text-offset': [0, 1.1],
+              'text-anchor': 'top',
+              'text-allow-overlap': false,
+            },
+            paint: {
+              'text-color': '#352417',
+              'text-halo-color': '#fdf7eb',
+              'text-halo-width': 1.2,
+            },
+          });
 
-        map.on('mouseenter', 'atlas-entities-points', () => {
-          map.getCanvas().style.cursor = 'pointer';
-        });
+          map.addLayer({
+            id: 'atlas-selected-geometry-fill',
+            type: 'fill',
+            source: 'atlas-selected-geometry',
+            paint: {
+              'fill-color': '#8d5d35',
+              'fill-opacity': 0.18,
+            },
+          });
 
-        map.on('mouseleave', 'atlas-entities-points', () => {
-          map.getCanvas().style.cursor = '';
+          map.addLayer({
+            id: 'atlas-selected-geometry-outline',
+            type: 'line',
+            source: 'atlas-selected-geometry',
+            paint: {
+              'line-color': '#5b3822',
+              'line-width': 2,
+              'line-opacity': 0.82,
+            },
+          });
+
+          map.on('click', 'atlas-entities-points', (event) => {
+            const feature = event.features?.[0];
+            const id = feature?.properties?.id;
+            const parsedId = typeof id === 'number' ? id : Number(id);
+            if (Number.isInteger(parsedId) && parsedId > 0) {
+              setSelectedAtlasEntityId(parsedId);
+            }
+          });
+
+          map.on('mouseenter', 'atlas-entities-points', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mouseleave', 'atlas-entities-points', () => {
+            map.getCanvas().style.cursor = '';
+          });
         });
-      });
+      } catch (error) {
+        setMapError(error instanceof Error ? error.message : 'Failed to initialize the atlas map.');
+      }
     };
 
     void loadMap();
@@ -727,7 +754,7 @@ const WorldHistoryPage: React.FC = () => {
       localMap?.remove();
       mapRef.current = null;
     };
-  }, [maptilerApiKey]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -948,11 +975,11 @@ const WorldHistoryPage: React.FC = () => {
           <section className="world-history-main">
             <section className="world-history-map">
               <div ref={mapContainerRef} className="world-history-map__canvas" />
-              {!maptilerApiKey && (
+              {mapError && (
                 <div className="world-history-map__overlay">
-                  <strong>MapTiler API key required</strong>
+                  <strong>Map unavailable</strong>
                   <span>
-                    Add <code>VITE_MAPTILER_API_KEY</code> in <code>client/.env.local</code> to load the map.
+                    {mapError}
                   </span>
                 </div>
               )}
