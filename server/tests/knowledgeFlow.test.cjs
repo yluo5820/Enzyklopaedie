@@ -1935,3 +1935,35 @@ test('historical polity import seeds built-in polity entities and snapshots from
   });
   assert.equal(builtInPolityDeleteResponse.status, 400);
 });
+
+test('development reset clears app data and re-seeds the core roots', async () => {
+  const resetResponse = await request('/api/dev/reset', {
+    method: 'POST',
+  });
+  assert.equal(resetResponse.status, 200);
+  const resetPayload = await resetResponse.json();
+  assert.equal(resetPayload.reset, true);
+
+  const subjectsResponse = await request('/api/subjects');
+  assert.equal(subjectsResponse.status, 200);
+  const subjects = await subjectsResponse.json();
+  assert.equal(subjects.length, 1);
+  assert.equal(subjects[0].name, 'Ontology');
+
+  const entitiesResponse = await request('/api/reference-entities');
+  assert.equal(entitiesResponse.status, 200);
+  const entities = await entitiesResponse.json();
+  assert.equal(entities.length, 1);
+  assert.equal(entities[0].title, 'Unknown Author');
+  assert.equal(entities[0].kind, 'person');
+
+  const itemsResponse = await request('/api/knowledge-items');
+  assert.equal(itemsResponse.status, 200);
+  const items = await itemsResponse.json();
+  assert.equal(items.length, 0);
+
+  const atlasEntitiesResponse = await request('/api/world-history/entities');
+  assert.equal(atlasEntitiesResponse.status, 200);
+  const atlasEntities = await atlasEntitiesResponse.json();
+  assert.equal(atlasEntities.length, 0);
+});

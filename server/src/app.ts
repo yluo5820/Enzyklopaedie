@@ -9,6 +9,7 @@ import knowledgeReviewRoutes from './routes/knowledgeReviewRoutes';
 import topicRoutes from './routes/topicRoutes';
 import subjectRoutes from './routes/subjectRoutes';
 import referenceEntityRoutes from './routes/referenceEntityRoutes';
+import devRoutes from './routes/devRoutes';
 import openLibraryRoutes from './routes/openLibraryRoutes';
 import libraryOfCongressRoutes from './routes/libraryOfCongressRoutes';
 import worldHistoryRoutes from './routes/worldHistoryRoutes';
@@ -23,6 +24,7 @@ app.use(express.json()); // Enable JSON body parsing
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/topics', topicRoutes);
 app.use('/api/reference-entities', referenceEntityRoutes);
+app.use('/api/dev', devRoutes);
 app.use('/api/open-library', openLibraryRoutes);
 app.use('/api/library-of-congress', libraryOfCongressRoutes);
 app.use('/api/world-history', worldHistoryRoutes);

@@ -71,6 +71,19 @@ export type BookSearchPage = {
   total?: number;
 };
 
+export const resetDevelopmentData = async (): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/dev/reset`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to reset development data');
+  }
+
+  return response.json();
+};
+
 // Knowledge item API functions
 export const fetchKnowledgeItems = async (): Promise<KnowledgeItem[]> => {
   const response = await fetch(`${API_BASE_URL}/knowledge-items`);

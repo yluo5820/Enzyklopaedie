@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ActivityEvent, KnowledgeItem, ReferenceEntity, SubjectSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
 import {
@@ -7,6 +7,7 @@ import {
   fetchReferenceEntities,
   fetchSubjects,
   fetchTopics,
+  resetDevelopmentData,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './HomePage.css';
@@ -39,31 +40,34 @@ const HomePage: React.FC = () => {
   const [topics, setTopics] = useState<TopicSummary[]>([]);
   const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+  const [dashboardNotice, setDashboardNotice] = useState<string | null>(null);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const [items, events, fetchedSubjects, fetchedTopics, fetchedReferenceEntities] = await Promise.all([
+        fetchKnowledgeItems(),
+        fetchActivityEvents(5),
+        fetchSubjects(),
+        fetchTopics(),
+        fetchReferenceEntities(),
+      ]);
+      setKnowledgeItems(items);
+      setActivityEvents(events);
+      setSubjects(fetchedSubjects);
+      setTopics(fetchedTopics);
+      setReferenceEntities(fetchedReferenceEntities);
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      setDashboardNotice('Failed to refresh the dashboard.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        const [items, events, fetchedSubjects, fetchedTopics, fetchedReferenceEntities] = await Promise.all([
-          fetchKnowledgeItems(),
-          fetchActivityEvents(5),
-          fetchSubjects(),
-          fetchTopics(),
-          fetchReferenceEntities(),
-        ]);
-        setKnowledgeItems(items);
-        setActivityEvents(events);
-        setSubjects(fetchedSubjects);
-        setTopics(fetchedTopics);
-        setReferenceEntities(fetchedReferenceEntities);
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadDashboard();
-  }, []);
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const stats = useMemo(() => summarizeKnowledgeProgress(knowledgeItems), [knowledgeItems]);
   const recentItem = useMemo(() => getMostRecent(knowledgeItems), [knowledgeItems]);
@@ -107,6 +111,30 @@ const HomePage: React.FC = () => {
     () => topics.filter((topic) => !topic.parentTopicId).length,
     [topics]
   );
+
+  const handleResetDevelopmentData = async () => {
+    if (
+      !window.confirm(
+        'Reset development data? This clears items, topics, entities, atlas cache, and activity. Only Ontology and Unknown Author will remain.'
+      )
+    ) {
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const result = await resetDevelopmentData();
+      await loadDashboard();
+      setDashboardNotice(
+        `${result.message} Re-run the historical polity importer if you want the atlas backbone back immediately.`
+      );
+    } catch (error) {
+      console.error(error);
+      setDashboardNotice(error instanceof Error ? error.message : 'Failed to reset development data.');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <div className="home-page">
@@ -292,7 +320,7 @@ const HomePage: React.FC = () => {
           <div className="home-panel-inner">
             <span className="home-eyebrow">Current State</span>
             <h3>At a glance</h3>
-            <div className="home-stats">
+          <div className="home-stats">
               <div className="home-stat">
                 <strong>{loading ? '...' : stats.total}</strong>
                 <span>Items</span>
@@ -326,6 +354,26 @@ const HomePage: React.FC = () => {
                 <span>World history</span>
               </div>
             </div>
+            {import.meta.env.DEV ? (
+              <div className="home-dev-tools">
+                <strong>Development reset</strong>
+                <p>
+                  Clear the local database back to a clean skeleton so we can remove old atlas
+                  structure more aggressively during development.
+                </p>
+                <div className="home-dev-actions">
+                  <button
+                    type="button"
+                    className="home-danger-button"
+                    onClick={handleResetDevelopmentData}
+                    disabled={resetting}
+                  >
+                    {resetting ? 'Resetting…' : 'Reset development data'}
+                  </button>
+                </div>
+                {dashboardNotice ? <div className="home-dev-note">{dashboardNotice}</div> : null}
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>

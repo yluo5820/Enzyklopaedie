@@ -19,6 +19,53 @@ const openDatabase = () => {
   return dbPromise;
 };
 
+const seedCoreRecords = async (db: Database<sqlite3.Database, sqlite3.Statement>) => {
+  const now = new Date().toISOString();
+
+  await db.run(
+    `INSERT OR IGNORE INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    'Ontology',
+    'ontology',
+    'The root of the encyclopedia taxonomy.',
+    null,
+    '#8d5d35',
+    now,
+    now
+  );
+
+  await db.run(
+    `UPDATE topics
+     SET parentTopicId = NULL, updatedAt = ?
+     WHERE slug = 'ontology' AND parentTopicId IS NOT NULL`,
+    now
+  );
+
+  await db.run(
+    `UPDATE topics
+     SET parentTopicId = (SELECT id FROM topics WHERE slug = 'ontology'),
+         updatedAt = ?
+     WHERE slug != 'ontology' AND parentTopicId IS NULL`,
+    now
+  );
+
+  await db.run(
+    `INSERT OR IGNORE INTO reference_entities
+      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    'person',
+    'Unknown Author',
+    'person-unknown-author',
+    'Fallback person record for items without a resolved creator entity.',
+    null,
+    null,
+    null,
+    null,
+    now,
+    now
+  );
+};
+
 export async function initializeDatabase() {
   const db = await openDatabase();
 
@@ -274,8 +321,6 @@ export async function initializeDatabase() {
       ON canonical_historical_entities(startYear, endYear);
   `);
 
-  const now = new Date().toISOString();
-
   const canonicalHistoricalColumns = await db.all<{ name: string }[]>(
     `PRAGMA table_info(canonical_historical_entities)`
   );
@@ -289,32 +334,7 @@ export async function initializeDatabase() {
     );
   }
 
-  await db.run(
-    `INSERT OR IGNORE INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    'Ontology',
-    'ontology',
-    'The root of the encyclopedia taxonomy.',
-    null,
-    '#8d5d35',
-    now,
-    now
-  );
-
-  await db.run(
-    `UPDATE topics
-     SET parentTopicId = NULL, updatedAt = ?
-     WHERE slug = 'ontology' AND parentTopicId IS NOT NULL`,
-    now
-  );
-
-  await db.run(
-    `UPDATE topics
-     SET parentTopicId = (SELECT id FROM topics WHERE slug = 'ontology'),
-         updatedAt = ?
-     WHERE slug != 'ontology' AND parentTopicId IS NULL`,
-    now
-  );
+  const now = new Date().toISOString();
 
   await db.run(
     `UPDATE knowledge_items
@@ -356,21 +376,7 @@ export async function initializeDatabase() {
      WHERE entityType IN ('topic', 'study_topic')`
   );
 
-  await db.run(
-    `INSERT OR IGNORE INTO reference_entities
-      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    'person',
-    'Unknown Author',
-    'person-unknown-author',
-    'Fallback person record for items without a resolved creator entity.',
-    null,
-    null,
-    null,
-    null,
-    now,
-    now
-  );
+  await seedCoreRecords(db);
 
   console.log('Database initialized successfully with new schema.');
   return db;
@@ -378,6 +384,48 @@ export async function initializeDatabase() {
 
 export const getDb = async () => {
   return openDatabase();
+};
+
+export const resetDatabase = async () => {
+  const db = await openDatabase();
+
+  await db.exec('BEGIN');
+  try {
+    await db.exec(`
+      DELETE FROM canonical_historical_entity_geometries;
+      DELETE FROM canonical_historical_entities;
+      DELETE FROM formation_memberships;
+      DELETE FROM polity_snapshots;
+      DELETE FROM knowledge_item_study_topics;
+      DELETE FROM knowledge_notes;
+      DELETE FROM knowledge_tasks;
+      DELETE FROM knowledge_reviews;
+      DELETE FROM knowledge_relations;
+      DELETE FROM activity_events;
+      DELETE FROM study_topics;
+      DELETE FROM exhibits;
+      DELETE FROM timeline_events;
+      DELETE FROM places;
+      DELETE FROM knowledge_items;
+      DELETE FROM reference_entities;
+      DELETE FROM topics;
+      DELETE FROM sqlite_sequence;
+    `);
+
+    await seedCoreRecords(db);
+    await db.exec('COMMIT');
+  } catch (error) {
+    await db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return {
+    reset: true,
+    seededRoots: {
+      subjects: 1,
+      referenceEntities: 1,
+    },
+  };
 };
 
 export const closeDb = async () => {
