@@ -1755,4 +1755,6 @@ test('world history basemap routes resolve local historical boundary layers', as
   assert.equal(layer.filename, 'world_100.geojson');
   assert.equal(layer.featureCount, 2);
   assert.equal(layer.geojson.type, 'FeatureCollection');
+  assert.equal(layer.geojson.features[0].properties.atlasFeatureId, '100-0');
+  assert.equal(layer.geojson.features[0].properties.atlasLabel, 'Roman Empire');
 });

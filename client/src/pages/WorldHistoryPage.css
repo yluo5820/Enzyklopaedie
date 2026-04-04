@@ -169,6 +169,16 @@
   color: var(--accent-strong);
 }
 
+.world-history-clear-button {
+  border: 1px solid rgba(123, 77, 42, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--accent-strong);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
 .world-history-count-chip {
   min-width: 34px;
 }

@@ -16,6 +16,17 @@ type HistoricalBasemapIndex = {
   years: HistoricalBasemapIndexYear[];
 };
 
+type GeoJsonFeature = {
+  type: 'Feature';
+  properties?: Record<string, unknown>;
+  geometry?: Record<string, unknown> | null;
+};
+
+type GeoJsonFeatureCollection = {
+  type: 'FeatureCollection';
+  features?: GeoJsonFeature[];
+};
+
 const DEFAULT_HISTORICAL_BASEMAPS_PATH = path.join(__dirname, '../../../data/historical-basemaps');
 export const DEFAULT_HISTORICAL_BASEMAPS_CUTOFF_YEAR = -500;
 
@@ -65,6 +76,47 @@ const mapIndexYearsToManifest = (
     filename: entry.filename,
     countryCount: Array.isArray(entry.countries) ? entry.countries.length : 0,
   }));
+
+const normalizeHistoricalBasemapGeojson = (
+  year: number,
+  geojson: Record<string, unknown>
+): Record<string, unknown> => {
+  if (geojson.type !== 'FeatureCollection' || !Array.isArray((geojson as GeoJsonFeatureCollection).features)) {
+    return geojson;
+  }
+
+  const featureCollection = geojson as GeoJsonFeatureCollection;
+  return {
+    ...featureCollection,
+    features: (featureCollection.features ?? []).map((feature, index) => {
+      const properties = feature.properties ?? {};
+      const atlasLabel =
+        (typeof properties.NAME === 'string' && properties.NAME.trim()) ||
+        (typeof properties.SUBJECTO === 'string' && properties.SUBJECTO.trim()) ||
+        (typeof properties.PARTOF === 'string' && properties.PARTOF.trim()) ||
+        `Region ${index + 1}`;
+
+      return {
+        ...feature,
+        properties: {
+          ...properties,
+          atlasFeatureId: `${year}-${index}`,
+          atlasLabel,
+          atlasParent:
+            typeof properties.PARTOF === 'string' && properties.PARTOF.trim()
+              ? properties.PARTOF.trim()
+              : null,
+          atlasSubject:
+            typeof properties.SUBJECTO === 'string' && properties.SUBJECTO.trim()
+              ? properties.SUBJECTO.trim()
+              : null,
+          atlasBorderPrecision:
+            typeof properties.BORDERPRECISION === 'number' ? properties.BORDERPRECISION : null,
+        },
+      };
+    }),
+  };
+};
 
 const resolveHistoricalBasemapEntry = (
   years: HistoricalBasemapYear[],
@@ -142,7 +194,10 @@ export const getHistoricalBasemapLayer = async (
       path.join(historicalBasemapsGeojsonDir, resolved.filename),
       'utf8'
     );
-    geojson = JSON.parse(raw) as Record<string, unknown>;
+    geojson = normalizeHistoricalBasemapGeojson(
+      resolved.year,
+      JSON.parse(raw) as Record<string, unknown>
+    );
     cachedLayers.set(resolved.year, geojson);
   }
 

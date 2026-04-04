@@ -64,6 +64,22 @@ type FeatureCollectionLike = {
   type: 'FeatureCollection';
   features: Array<Record<string, unknown>>;
 };
+type BasemapFeatureProperties = {
+  atlasFeatureId: string;
+  atlasLabel: string;
+  atlasParent?: string | null;
+  atlasSubject?: string | null;
+  atlasBorderPrecision?: number | null;
+  NAME?: string | null;
+  SUBJECTO?: string | null;
+  PARTOF?: string | null;
+  BORDERPRECISION?: number | null;
+};
+type BasemapFeature = {
+  type: 'Feature';
+  properties?: BasemapFeatureProperties;
+  geometry?: Record<string, unknown> | null;
+};
 const EMPTY_FEATURE_COLLECTION: FeatureCollectionLike = {
   type: 'FeatureCollection',
   features: [],
@@ -216,6 +232,13 @@ const getAtlasYearBounds = (entities: CanonicalHistoricalEntity[]) => {
   };
 };
 
+const getBasemapLabel = (feature?: BasemapFeature | null) =>
+  feature?.properties?.atlasLabel ??
+  feature?.properties?.NAME ??
+  feature?.properties?.SUBJECTO ??
+  feature?.properties?.PARTOF ??
+  'Unnamed region';
+
 const WorldHistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -250,6 +273,7 @@ const WorldHistoryPage: React.FC = () => {
     const parsed = Number(searchParams.get('selected'));
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
+  const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
   const [year, setYear] = useState(() => {
     const parsed = Number(searchParams.get('year'));
     return Number.isInteger(parsed) ? parsed : DEFAULT_YEAR;
@@ -369,6 +393,22 @@ const WorldHistoryPage: React.FC = () => {
     return resolved;
   }, [historicalBasemapManifest, year]);
 
+  const activeBasemapFeatures = useMemo<BasemapFeature[]>(
+    () =>
+      Array.isArray((historicalBasemapLayer?.geojson as { features?: unknown })?.features)
+        ? ((historicalBasemapLayer?.geojson as { features: BasemapFeature[] }).features ?? [])
+        : [],
+    [historicalBasemapLayer]
+  );
+
+  const selectedBasemapFeature = useMemo(
+    () =>
+      activeBasemapFeatures.find(
+        (feature) => feature.properties?.atlasFeatureId === selectedBasemapFeatureId
+      ) ?? null,
+    [activeBasemapFeatures, selectedBasemapFeatureId]
+  );
+
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
 
@@ -456,6 +496,17 @@ const WorldHistoryPage: React.FC = () => {
 
     void loadHistoricalBasemapLayer();
   }, [activeBasemapYear]);
+
+  useEffect(() => {
+    if (!selectedBasemapFeatureId) return;
+
+    const stillPresent = activeBasemapFeatures.some(
+      (feature) => feature.properties?.atlasFeatureId === selectedBasemapFeatureId
+    );
+    if (!stillPresent) {
+      setSelectedBasemapFeatureId(null);
+    }
+  }, [activeBasemapFeatures, selectedBasemapFeatureId]);
 
   useEffect(() => {
     if (!query.trim()) return;
@@ -615,6 +666,11 @@ const WorldHistoryPage: React.FC = () => {
             data: EMPTY_FEATURE_COLLECTION as any,
           });
 
+          map.addSource('atlas-selected-basemap-feature', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
           map.addLayer({
             id: 'atlas-historical-basemap-fill',
             type: 'fill',
@@ -633,6 +689,27 @@ const WorldHistoryPage: React.FC = () => {
               'line-color': '#54381f',
               'line-width': 1.25,
               'line-opacity': 0.9,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-basemap-feature-fill',
+            type: 'fill',
+            source: 'atlas-selected-basemap-feature',
+            paint: {
+              'fill-color': '#b64b2f',
+              'fill-opacity': 0.18,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-basemap-feature-outline',
+            type: 'line',
+            source: 'atlas-selected-basemap-feature',
+            paint: {
+              'line-color': '#8d3118',
+              'line-width': 2.2,
+              'line-opacity': 0.96,
             },
           });
 
@@ -717,6 +794,22 @@ const WorldHistoryPage: React.FC = () => {
           map.on('mouseleave', 'atlas-entities-points', () => {
             map.getCanvas().style.cursor = '';
           });
+
+          map.on('click', 'atlas-historical-basemap-fill', (event) => {
+            const feature = event.features?.[0] as BasemapFeature | undefined;
+            const featureId = feature?.properties?.atlasFeatureId;
+            if (typeof featureId === 'string' && featureId) {
+              setSelectedBasemapFeatureId(featureId);
+            }
+          });
+
+          map.on('mouseenter', 'atlas-historical-basemap-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mouseleave', 'atlas-historical-basemap-fill', () => {
+            map.getCanvas().style.cursor = '';
+          });
         });
       } catch (error) {
         setMapError(error instanceof Error ? error.message : 'Failed to initialize the atlas map.');
@@ -738,11 +831,20 @@ const WorldHistoryPage: React.FC = () => {
     if (!map || !mapLoadedRef.current) return;
 
     const basemapSource = map.getSource('atlas-historical-basemap') as GeoJSONSource | undefined;
+    const selectedBasemapSource = map.getSource('atlas-selected-basemap-feature') as GeoJSONSource | undefined;
     const source = map.getSource('atlas-entities') as GeoJSONSource | undefined;
     const geometrySource = map.getSource('atlas-selected-geometry') as GeoJSONSource | undefined;
-    if (!basemapSource || !source || !geometrySource) return;
+    if (!basemapSource || !selectedBasemapSource || !source || !geometrySource) return;
 
     basemapSource.setData((historicalBasemapLayer?.geojson ?? EMPTY_FEATURE_COLLECTION) as any);
+    selectedBasemapSource.setData(
+      selectedBasemapFeature
+        ? ({
+            type: 'FeatureCollection',
+            features: [selectedBasemapFeature],
+          } as any)
+        : (EMPTY_FEATURE_COLLECTION as any)
+    );
     source.setData(buildAtlasGeoJson(visibleAtlasEntities) as any);
     geometrySource.setData(
       (selectedGeometry ?? EMPTY_FEATURE_COLLECTION) as any
@@ -758,6 +860,23 @@ const WorldHistoryPage: React.FC = () => {
 
     if (selectedGeometry) {
       const bounds = getGeoJsonBounds(selectedGeometry);
+      if (bounds) {
+        map.fitBounds(
+          [
+            [bounds.west, bounds.south],
+            [bounds.east, bounds.north],
+          ],
+          { padding: 70, duration: 900, maxZoom: 5.2 }
+        );
+        return;
+      }
+    }
+
+    if (selectedBasemapFeature) {
+      const bounds = getGeoJsonBounds({
+        type: 'FeatureCollection',
+        features: [selectedBasemapFeature],
+      });
       if (bounds) {
         map.fitBounds(
           [
@@ -804,6 +923,7 @@ const WorldHistoryPage: React.FC = () => {
   }, [
     historicalBasemapLayer,
     mappableAtlasEntities,
+    selectedBasemapFeature,
     selectedGeometry,
     selectedVisibleAtlasEntity,
     visibleAtlasEntities,
@@ -846,7 +966,10 @@ const WorldHistoryPage: React.FC = () => {
             <div className="world-history-meta-card">
               <span className="world-history-meta-label">Mapped right now</span>
               <span className="world-history-meta-value">{mappableAtlasEntities.length}</span>
-              <span className="world-history-hint">Overlay source: pinned authority records from Wikidata.</span>
+              <span className="world-history-hint">
+                Overlay source: pinned authority records from Wikidata.
+                {historicalBasemapLayer ? ` Snapshot regions: ${historicalBasemapLayer.featureCount}.` : ''}
+              </span>
             </div>
           </div>
         </header>
@@ -1086,6 +1209,57 @@ const WorldHistoryPage: React.FC = () => {
                     {geometryError ? (
                       <div className="world-history-feedback is-error">{geometryError}</div>
                     ) : null}
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Snapshot</span>
+                    <h2>{selectedBasemapFeature ? getBasemapLabel(selectedBasemapFeature) : 'Select a region'}</h2>
+                  </div>
+                  {selectedBasemapFeature ? (
+                    <button
+                      type="button"
+                      className="world-history-clear-button"
+                      onClick={() => setSelectedBasemapFeatureId(null)}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+
+                {!selectedBasemapFeature ? (
+                  <div className="world-history-empty">
+                    Click a boundary on the active historical basemap to inspect the region for this snapshot year.
+                  </div>
+                ) : (
+                  <div className="world-history-selected-card">
+                    <div className="world-history-selected-card__facts">
+                      <div>
+                        <span className="world-history-panel__eyebrow">Snapshot year</span>
+                        <strong>{activeBasemapYear ? formatYear(activeBasemapYear.year) : 'Unavailable'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Part of</span>
+                        <strong>{selectedBasemapFeature.properties?.atlasParent || 'Standalone region'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Subject</span>
+                        <strong>{selectedBasemapFeature.properties?.atlasSubject || 'No subject note'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Border precision</span>
+                        <strong>
+                          {selectedBasemapFeature.properties?.atlasBorderPrecision ?? 'Unknown'}
+                        </strong>
+                      </div>
+                    </div>
+                    <p>
+                      This region comes from the local historical-basemaps snapshot, not from your pinned authority
+                      shelf. Use it as the geographic frame for the current year.
+                    </p>
                   </div>
                 )}
               </section>
