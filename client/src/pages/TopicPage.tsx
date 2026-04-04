@@ -36,6 +36,8 @@ type StudyTopicRelationPreset = {
 
 const relationKindOrder: ReferenceEntityKind[] = [
   'person',
+  'polity',
+  'formation',
   'era',
   'nation',
   'civilization',
@@ -67,25 +69,30 @@ const getStudyTopicRelationPreset = (
     };
   }
 
-  if (targetEntityKind === 'nation' || targetEntityKind === 'place') {
+  if (targetEntityKind === 'nation' || targetEntityKind === 'place' || targetEntityKind === 'polity') {
     return {
       allowedRelationTypes: ['located_in', 'about', 'related_to'],
       defaultRelationType: 'located_in',
       helperText:
-        'Use nations and places to localize the topic in geography or political space. Choose about only when the entity is itself the object of study.',
+        'Use polities, nations, and places to localize the topic in geography or political space. Choose about only when the entity is itself the object of study.',
       notePlaceholder: 'Optional note about this place or polity',
-      targetPrompt: targetEntityKind === 'nation' ? 'Choose a nation' : 'Choose a place',
+      targetPrompt:
+        targetEntityKind === 'polity'
+          ? 'Choose a polity'
+          : targetEntityKind === 'nation'
+            ? 'Choose a nation'
+            : 'Choose a place',
     };
   }
 
-  if (targetEntityKind === 'civilization') {
+  if (targetEntityKind === 'civilization' || targetEntityKind === 'formation') {
     return {
       allowedRelationTypes: ['part_of', 'about', 'related_to'],
       defaultRelationType: 'part_of',
       helperText:
-        'Use civilizations as the broad spatial-temporal horizon around the topic, or as the explicit civilizational subject.',
-      notePlaceholder: 'Optional note about this civilizational frame',
-      targetPrompt: 'Choose a civilization',
+        'Use formations and civilizations as the broad spatial-temporal horizon around the topic, or as the explicit object of study.',
+      notePlaceholder: 'Optional note about this formation or civilizational frame',
+      targetPrompt: targetEntityKind === 'formation' ? 'Choose a formation' : 'Choose a civilization',
     };
   }
 
@@ -95,7 +102,7 @@ const getStudyTopicRelationPreset = (
     helperText:
       'Choose the reference entity first. The relation verbs will narrow once the topic’s historical or geographic frame is clear.',
     notePlaceholder: 'Optional note about why this entity matters here',
-    targetPrompt: 'Choose a person, era, nation, civilization, or place',
+    targetPrompt: 'Choose a person, polity, formation, era, nation, civilization, or place',
   };
 };
 

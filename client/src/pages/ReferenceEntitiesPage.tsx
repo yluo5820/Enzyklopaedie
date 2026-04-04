@@ -12,11 +12,12 @@ import {
 } from '../api';
 import './ReferenceEntitiesPage.css';
 
-const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'nation', 'civilization', 'era', 'place'];
-const creatableKindOptions: ReferenceEntityKind[] = ['person', 'nation', 'civilization', 'era', 'place'];
+const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation', 'nation', 'civilization', 'era', 'place'];
+const creatableKindOptions: ReferenceEntityKind[] = ['person', 'formation', 'nation', 'civilization', 'era', 'place'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'People',
   polity: 'Polities',
+  formation: 'Formations',
   nation: 'Nations',
   civilization: 'Civilizations',
   era: 'Eras',
@@ -25,6 +26,7 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
 const singularKindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
   polity: 'Polity',
+  formation: 'Formation',
   nation: 'Nation',
   civilization: 'Civilization',
   era: 'Era',
@@ -33,6 +35,7 @@ const singularKindLabels: Record<ReferenceEntityKind, string> = {
 const kindAtlasLeads: Record<ReferenceEntityKind, string> = {
   person: 'Writers, thinkers, speakers, and other individual figures.',
   polity: 'Built-in historical-geographical units imported from the world-history basemap.',
+  formation: 'User-curated groupings of polities across time and space.',
   nation: 'Polities and historical nations that ground political context.',
   civilization: 'Broad civilizational horizons spanning nations and eras.',
   era: 'Chronological containers for historical understanding.',
@@ -78,6 +81,19 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
     descriptionPlaceholder: 'Atlas-backed polity notes belong on the detail page once the importer has created the record.',
     submitLabel: 'Add Polity',
     nextStep: 'Use the world-history importer to seed polities from historical basemaps.',
+  },
+  formation: {
+    lead:
+      'Formations are user-curated spatiotemporal groupings of polities. Use them for civilizational spans, regional eras, or broader historical continuities.',
+    startYearLabel: 'Begin Year',
+    endYearLabel: 'End Year',
+    startYearPlaceholder: '-323',
+    endYearPlaceholder: '1453',
+    chronologyHint: 'Use the broad span of the formation itself. Specific polity memberships can be dated on the detail page.',
+    summaryPlaceholder: 'What historical formation does this record name?',
+    descriptionPlaceholder: 'Notes on the scope, subtype, membership logic, and why these polities belong together.',
+    submitLabel: 'Add Formation',
+    nextStep: 'After saving, add polity memberships to define the formation directly.',
   },
   nation: {
     lead:
@@ -457,7 +473,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             <div>
               <span className="reference-entities-eyebrow">Atlas Index</span>
               <h1>Reference Atlas</h1>
-              <p>Browse people, polities, nations, civilizations, eras, and places without the create form competing for space.</p>
+              <p>Browse people, polities, formations, and older atlas records without the create form competing for space.</p>
             </div>
             <button
               type="button"

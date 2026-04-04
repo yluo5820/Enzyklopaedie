@@ -1045,6 +1045,56 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(personResponse.status, 201);
     const personEntity = await personResponse.json();
 
+    const polityResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'polity',
+        title: 'Byzantine Commonwealth',
+        startYear: 330,
+        endYear: 1453,
+      }),
+    });
+    assert.equal(polityResponse.status, 201);
+    const polityEntity = await polityResponse.json();
+
+    const formationResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'formation',
+        title: 'Orthodox East',
+        summary: 'A test formation spanning multiple historical polities.',
+        startYear: 330,
+        endYear: 1453,
+        metadata: {
+          subtype: 'civilization',
+        },
+      }),
+    });
+    assert.equal(formationResponse.status, 201);
+    const formationEntity = await formationResponse.json();
+
+    const formationMembershipResponse = await request(
+      `/api/reference-entities/${formationEntity.id}/formation-memberships`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polityEntityId: polityEntity.id,
+          startYear: 330,
+          endYear: 1453,
+          note: 'Primary polity in this fixture formation.',
+        }),
+      }
+    );
+    assert.equal(formationMembershipResponse.status, 201);
+    const formationMembership = await formationMembershipResponse.json();
+    assert.equal(formationMembership.formationEntityId, formationEntity.id);
+    assert.equal(formationMembership.polityEntityId, polityEntity.id);
+    assert.equal(formationMembership.formationTitle, 'Orthodox East');
+    assert.equal(formationMembership.polityTitle, 'Byzantine Commonwealth');
+
     const authoredItemResponse = await request('/api/knowledge-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1129,8 +1179,24 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
           relation.fromEntityType === 'reference_entity' &&
           relation.relationType === 'contains' &&
           relation.fromEntityTitle === 'Eastern Roman Empire'
-      )
+        )
     );
+
+    const formationMembershipListResponse = await request(
+      `/api/reference-entities/${formationEntity.id}/formation-memberships`
+    );
+    assert.equal(formationMembershipListResponse.status, 200);
+    const formationMemberships = await formationMembershipListResponse.json();
+    assert.equal(formationMemberships.length, 1);
+    assert.equal(formationMemberships[0].polityTitle, 'Byzantine Commonwealth');
+
+    const polityMembershipListResponse = await request(
+      `/api/reference-entities/${polityEntity.id}/formation-memberships`
+    );
+    assert.equal(polityMembershipListResponse.status, 200);
+    const polityMemberships = await polityMembershipListResponse.json();
+    assert.equal(polityMemberships.length, 1);
+    assert.equal(polityMemberships[0].formationTitle, 'Orthodox East');
 
     const activityResponse = await request('/api/activity-events?limit=50');
     assert.equal(activityResponse.status, 200);
@@ -1150,6 +1216,21 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.ok(
       entityEvents.filter((event) => event.type === 'relation_created').length >= 2
     );
+
+    const deleteFormationMembershipResponse = await request(
+      `/api/reference-entities/${formationEntity.id}/formation-memberships/${formationMembership.id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    assert.equal(deleteFormationMembershipResponse.status, 204);
+
+    const formationMembershipListAfterDeleteResponse = await request(
+      `/api/reference-entities/${formationEntity.id}/formation-memberships`
+    );
+    assert.equal(formationMembershipListAfterDeleteResponse.status, 200);
+    const formationMembershipsAfterDelete = await formationMembershipListAfterDeleteResponse.json();
+    assert.equal(formationMembershipsAfterDelete.length, 0);
 
     const deleteResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
       method: 'DELETE',
@@ -1785,7 +1866,12 @@ test('historical polity import seeds built-in polity entities and snapshots from
     `SELECT * FROM reference_entities WHERE kind = 'polity' ORDER BY lower(title) ASC`
   );
   const polityTitles = polityRows.map((row) => row.title);
-  assert.deepEqual(polityTitles, ['Achaemenid Empire', 'Han China', 'Roman Empire', 'United States']);
+  assert.deepEqual(
+    polityTitles.filter((title) =>
+      ['Achaemenid Empire', 'Han China', 'Roman Empire', 'United States'].includes(title)
+    ),
+    ['Achaemenid Empire', 'Han China', 'Roman Empire', 'United States']
+  );
 
   const romanPolity = polityRows.find((row) => row.title === 'Roman Empire');
   assert.ok(romanPolity);

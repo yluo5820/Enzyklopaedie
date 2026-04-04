@@ -222,6 +222,19 @@ export async function initializeDatabase() {
       FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS formation_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      formationEntityId INTEGER NOT NULL,
+      polityEntityId INTEGER NOT NULL,
+      startYear INTEGER,
+      endYear INTEGER,
+      note TEXT,
+      createdAt TEXT NOT NULL,
+      UNIQUE(formationEntityId, polityEntityId, startYear, endYear),
+      FOREIGN KEY (formationEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (polityEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS exhibits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -242,6 +255,10 @@ export async function initializeDatabase() {
       ON polity_snapshots(referenceEntityId, snapshotYear DESC);
     CREATE INDEX IF NOT EXISTS idx_polity_snapshots_source_year
       ON polity_snapshots(source, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_formation_memberships_formation
+      ON formation_memberships(formationEntityId, startYear, polityEntityId);
+    CREATE INDEX IF NOT EXISTS idx_formation_memberships_polity
+      ON formation_memberships(polityEntityId, startYear, formationEntityId);
     CREATE INDEX IF NOT EXISTS idx_study_topics_subject ON study_topics(subjectId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_study_topics_parent ON study_topics(parentTopicId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_knowledge_item_study_topics_item

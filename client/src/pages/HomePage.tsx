@@ -96,7 +96,7 @@ const HomePage: React.FC = () => {
           accumulator[entity.kind] += 1;
           return accumulator;
         },
-        { person: 0, polity: 0, nation: 0, civilization: 0, era: 0, place: 0 }
+        { person: 0, polity: 0, formation: 0, nation: 0, civilization: 0, era: 0, place: 0 }
       ),
     [referenceEntities]
   );
@@ -243,7 +243,7 @@ const HomePage: React.FC = () => {
           <div className="home-surface-meta">
             <span>{loading ? '...' : entityCounts.person} people</span>
             <span>{loading ? '...' : entityCounts.polity + entityCounts.nation} polities & nations</span>
-            <span>{loading ? '...' : entityCounts.civilization + entityCounts.era + entityCounts.place} formations & places</span>
+            <span>{loading ? '...' : entityCounts.formation + entityCounts.civilization + entityCounts.era + entityCounts.place} formations & places</span>
           </div>
           <p>Build the world around the knowledge tree: people, polities, periods, and places.</p>
           <div className="home-surface-actions">

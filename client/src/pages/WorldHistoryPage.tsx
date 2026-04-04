@@ -56,6 +56,7 @@ const atlasKindOptions: HistoricalAtlasKind[] = [
 const referenceEntityKindLabels: Record<ReferenceEntity['kind'], string> = {
   civilization: 'Civilization',
   era: 'Era',
+  formation: 'Formation',
   nation: 'Nation',
   person: 'Person',
   place: 'Place',

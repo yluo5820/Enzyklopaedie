@@ -51,7 +51,7 @@ export interface TopicSummary extends Topic {
     subjectName: string;
     subjectSlug: string;
 }
-export type ReferenceEntityKind = 'person' | 'nation' | 'civilization' | 'era' | 'place' | 'polity';
+export type ReferenceEntityKind = 'person' | 'formation' | 'nation' | 'civilization' | 'era' | 'place' | 'polity';
 export interface ReferenceEntity {
     id: number;
     kind: ReferenceEntityKind;
@@ -157,6 +157,21 @@ export interface PolitySnapshot {
     metadata?: Record<string, unknown>;
     createdAt: string;
     updatedAt: string;
+}
+export interface FormationMembership {
+    id: number;
+    formationEntityId: number;
+    polityEntityId: number;
+    startYear?: number;
+    endYear?: number;
+    note?: string;
+    createdAt: string;
+}
+export interface FormationMembershipDetail extends FormationMembership {
+    formationTitle?: string;
+    formationSlug?: string;
+    polityTitle?: string;
+    politySlug?: string;
 }
 export interface HistoricalBasemapPolityMatchResponse {
     referenceEntity: ReferenceEntity;
@@ -281,6 +296,8 @@ export type NewTimelineEvent = Omit<TimelineEvent, 'id' | 'createdAt' | 'updated
 export type UpdateTimelineEvent = Partial<Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdatePolitySnapshot = Partial<Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewFormationMembership = Omit<FormationMembership, 'id' | 'createdAt'>;
+export type UpdateFormationMembership = Partial<Omit<FormationMembership, 'id' | 'createdAt'>>;
 export type NewCanonicalHistoricalEntity = Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateCanonicalHistoricalEntity = Partial<Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewExhibit = Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>;

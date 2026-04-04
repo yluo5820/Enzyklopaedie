@@ -4,6 +4,7 @@ import {
   CanonicalHistoricalGeometryResponse,
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
+  FormationMembershipDetail,
   HistoricalBasemapPolityMatchResponse,
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
@@ -18,6 +19,7 @@ import {
   NewKnowledgeNote,
   NewKnowledgeReview,
   NewKnowledgeTask,
+  NewFormationMembership,
   NewReferenceEntity,
   NewSubject,
   NewTopic,
@@ -388,6 +390,16 @@ export const fetchReferenceEntityPolitySnapshots = async (
   return response.json();
 };
 
+export const fetchReferenceEntityFormationMemberships = async (
+  id: number
+): Promise<FormationMembershipDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/formation-memberships`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch formation memberships');
+  }
+  return response.json();
+};
+
 export const fetchReferenceEntityOutgoingRelations = async (
   id: number
 ): Promise<KnowledgeRelationDetail[]> => {
@@ -419,6 +431,24 @@ export const createReferenceEntityRelation = async (
   return response.json();
 };
 
+export const createFormationMembership = async (
+  id: number,
+  membershipData: Omit<NewFormationMembership, 'formationEntityId'>
+): Promise<FormationMembershipDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/formation-memberships`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(membershipData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create formation membership');
+  }
+  return response.json();
+};
+
 export const deleteReferenceEntityRelation = async (
   id: number,
   relationId: number
@@ -428,6 +458,22 @@ export const deleteReferenceEntityRelation = async (
   });
   if (!response.ok) {
     throw new Error('Failed to delete reference entity relation');
+  }
+};
+
+export const deleteFormationMembership = async (
+  id: number,
+  membershipId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/reference-entities/${id}/formation-memberships/${membershipId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to delete formation membership');
   }
 };
 

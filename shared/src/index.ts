@@ -61,6 +61,7 @@ export interface TopicSummary extends Topic {
 
 export type ReferenceEntityKind =
   | 'person'
+  | 'formation'
   | 'nation'
   | 'civilization'
   | 'era'
@@ -218,6 +219,23 @@ export interface PolitySnapshot {
   metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface FormationMembership {
+  id: number;
+  formationEntityId: number;
+  polityEntityId: number;
+  startYear?: number;
+  endYear?: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface FormationMembershipDetail extends FormationMembership {
+  formationTitle?: string;
+  formationSlug?: string;
+  polityTitle?: string;
+  politySlug?: string;
 }
 
 export interface HistoricalBasemapPolityMatchResponse {
@@ -406,6 +424,8 @@ export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updat
 export type UpdatePolitySnapshot = Partial<
   Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>
 >;
+export type NewFormationMembership = Omit<FormationMembership, 'id' | 'createdAt'>;
+export type UpdateFormationMembership = Partial<Omit<FormationMembership, 'id' | 'createdAt'>>;
 
 export type NewCanonicalHistoricalEntity = Omit<
   CanonicalHistoricalEntity,

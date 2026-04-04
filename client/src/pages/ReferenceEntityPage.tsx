@@ -1,5 +1,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
+  FormationMembershipDetail,
   KnowledgeRelationDetail,
   KnowledgeRelationType,
   PolitySnapshot,
@@ -9,11 +10,14 @@ import type {
 } from '@enzyklopaedie/shared';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  createFormationMembership,
   createReferenceEntityRelation,
+  deleteFormationMembership,
   deleteReferenceEntity,
   deleteReferenceEntityRelation,
   fetchReferenceEntities,
   fetchReferenceEntity,
+  fetchReferenceEntityFormationMemberships,
   fetchReferenceEntityOutgoingRelations,
   fetchReferenceEntityPolitySnapshots,
   fetchReferenceEntityRelations,
@@ -21,10 +25,11 @@ import {
 } from '../api';
 import './ReferenceEntityPage.css';
 
-const kindOptions: ReferenceEntityKind[] = ['person', 'polity', 'nation', 'civilization', 'era', 'place'];
+const kindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation', 'nation', 'civilization', 'era', 'place'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
   polity: 'Polity',
+  formation: 'Formation',
   nation: 'Nation',
   civilization: 'Civilization',
   era: 'Era',
@@ -192,6 +197,42 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         notePlaceholder: 'Optional note about this peer relation',
         targetPrompt: 'Choose another polity or civilization',
         targetKinds: ['polity', 'nation', 'civilization'],
+      },
+    ],
+  },
+  formation: {
+    helperText:
+      'Formations collect polities across time and space. Use explicit polity memberships below, then add broader formation or geographic links here when useful.',
+    modes: [
+      {
+        id: 'broader-formation',
+        label: 'Broader Formation',
+        description: 'Place this formation inside a larger historical formation.',
+        allowedRelationTypes: ['part_of'],
+        defaultRelationType: 'part_of',
+        notePlaceholder: 'Optional note about this broader historical frame',
+        targetPrompt: 'Choose another formation',
+        targetKinds: ['formation'],
+      },
+      {
+        id: 'parallel-formation',
+        label: 'Parallel Formation',
+        description: 'Link a related or influencing formation.',
+        allowedRelationTypes: ['related_to', 'influenced_by'],
+        defaultRelationType: 'related_to',
+        notePlaceholder: 'Optional note about this parallel formation',
+        targetPrompt: 'Choose another formation',
+        targetKinds: ['formation'],
+      },
+      {
+        id: 'geography',
+        label: 'Geography',
+        description: 'Anchor the formation to a place when geography matters.',
+        allowedRelationTypes: ['located_in'],
+        defaultRelationType: 'located_in',
+        notePlaceholder: 'Optional note about this geography',
+        targetPrompt: 'Choose a place',
+        targetKinds: ['place'],
       },
     ],
   },
@@ -575,6 +616,7 @@ const getItemSectionLabel = (kind: ReferenceEntityKind) => {
 
 const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'person') return 'Biographical coverage';
+  if (kind === 'formation') return 'Formation framing';
   if (kind === 'era') return 'Historical framing';
   if (kind === 'polity') return 'Polity framing';
   if (kind === 'nation') return 'National framing';
@@ -583,6 +625,7 @@ const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
 };
 
 const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
+  if (kind === 'formation') return 'Formation structure';
   if (kind === 'civilization') return 'Civilizational structure';
   if (kind === 'polity') return 'Polity structure';
   if (kind === 'nation') return 'National structure';
@@ -595,7 +638,7 @@ const getKindPriority = (kindOrder: ReferenceEntityKind[]) =>
   kindOrder.reduce<Record<ReferenceEntityKind, number>>((accumulator, kind, index) => {
     accumulator[kind] = index;
     return accumulator;
-  }, { person: 99, polity: 99, nation: 99, civilization: 99, era: 99, place: 99 });
+  }, { person: 99, polity: 99, formation: 99, nation: 99, civilization: 99, era: 99, place: 99 });
 
 const ReferenceEntityPage: React.FC = () => {
   const { id } = useParams();
@@ -615,6 +658,7 @@ const ReferenceEntityPage: React.FC = () => {
   const [incomingRelations, setIncomingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [outgoingRelations, setOutgoingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [politySnapshots, setPolitySnapshots] = useState<PolitySnapshot[]>([]);
+  const [formationMemberships, setFormationMemberships] = useState<FormationMembershipDetail[]>([]);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
     title: '',
@@ -628,15 +672,24 @@ const ReferenceEntityPage: React.FC = () => {
     relationType: 'contains' as KnowledgeRelationType,
     note: '',
   });
+  const [formationMembershipForm, setFormationMembershipForm] = useState({
+    polityEntityId: '',
+    startYear: '',
+    endYear: '',
+    note: '',
+  });
   const [structureModeId, setStructureModeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [showStructureComposer, setShowStructureComposer] = useState(false);
+  const [showFormationMembershipComposer, setShowFormationMembershipComposer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
+  const [savingFormationMembership, setSavingFormationMembership] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [politySnapshotsError, setPolitySnapshotsError] = useState<string | null>(null);
+  const [formationMembershipsError, setFormationMembershipsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!Number.isInteger(entityId) || entityId <= 0) {
@@ -658,19 +711,27 @@ const ReferenceEntityPage: React.FC = () => {
           fetchedEntity.kind === 'polity'
             ? await fetchReferenceEntityPolitySnapshots(entityId)
             : [];
+        const fetchedFormationMemberships =
+          fetchedEntity.kind === 'polity' || fetchedEntity.kind === 'formation'
+            ? await fetchReferenceEntityFormationMemberships(entityId)
+            : [];
 
         setEntity(fetchedEntity);
         setAllEntities(fetchedEntities);
         setIncomingRelations(fetchedIncomingRelations);
         setOutgoingRelations(fetchedOutgoingRelations);
         setPolitySnapshots(fetchedPolitySnapshots);
+        setFormationMemberships(fetchedFormationMemberships);
         setPolitySnapshotsError(null);
+        setFormationMembershipsError(null);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load reference entity.');
         setPolitySnapshots([]);
+        setFormationMemberships([]);
         setPolitySnapshotsError('Failed to load atlas snapshots.');
+        setFormationMembershipsError('Failed to load formation memberships.');
       } finally {
         setLoading(false);
       }
@@ -749,6 +810,27 @@ const ReferenceEntityPage: React.FC = () => {
         return left.id - right.id;
       });
   }, [activeStructureMode, allEntities, entity?.id]);
+  const selectablePolities = useMemo(
+    () =>
+      [...allEntities]
+        .filter((candidate) => candidate.id !== entity?.id && candidate.kind === 'polity')
+        .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
+    [allEntities, entity?.id]
+  );
+  const formationMembershipPolityEntries = useMemo(
+    () =>
+      formationMemberships.filter(
+        (membership) => typeof membership.polityEntityId === 'number'
+      ),
+    [formationMemberships]
+  );
+  const polityFormationEntries = useMemo(
+    () =>
+      formationMemberships.filter(
+        (membership) => typeof membership.formationEntityId === 'number'
+      ),
+    [formationMemberships]
+  );
 
   const outgoingStructureRelations = useMemo(
     () => outgoingRelations.filter((relation) => relation.toEntityType === 'reference_entity'),
@@ -1029,6 +1111,32 @@ const ReferenceEntityPage: React.FC = () => {
       ]);
     }
 
+    if (entity?.kind === 'formation') {
+      return finalizeGroups([
+        buildStructureGroup(
+          'broader-formations',
+          'Broader formations',
+          'Larger historical formations that this formation belongs to.',
+          'No broader formations recorded yet.',
+          broaderContainers
+        ),
+        buildStructureGroup(
+          'geography',
+          'Geography',
+          'Places that anchor this formation geographically.',
+          'No geographic anchor recorded yet.',
+          [...locationWithin, ...hostedHere]
+        ),
+        buildStructureGroup(
+          'peer-links',
+          'Peer links',
+          'Related or influencing formations and adjacent atlas links.',
+          'No peer links recorded yet.',
+          [...peerLinks, ...influencedBy, ...influences]
+        ),
+      ]);
+    }
+
     if (entity?.kind === 'civilization') {
       return finalizeGroups([
         buildStructureGroup(
@@ -1227,6 +1335,43 @@ const ReferenceEntityPage: React.FC = () => {
       ];
     }
 
+    if (entity.kind === 'formation') {
+      const broaderFormations = getGroupByKey(structureGroups, 'broader-formations');
+      const geography = getGroupByKey(structureGroups, 'geography');
+
+      return [
+        chronologyCard,
+        {
+          key: 'membership',
+          eyebrow: 'Membership',
+          value: `${formationMembershipPolityEntries.length} polities`,
+          meta: formationMembershipPolityEntries.length
+            ? formationMembershipPolityEntries
+                .slice(0, 2)
+                .map((membership) => membership.polityTitle || 'Untitled polity')
+                .join(' · ')
+            : 'No polity memberships yet.',
+          hint: 'Built-in polities explicitly assigned to this formation.',
+        },
+        {
+          key: 'broader-formations',
+          eyebrow: 'Broader Formations',
+          value: `${broaderFormations?.entries.length ?? 0} links`,
+          meta: getGroupPreview(broaderFormations, 'No broader formation links yet.'),
+          hint: 'How this formation sits inside larger historical groupings.',
+        },
+        {
+          key: 'coverage',
+          eyebrow: 'Coverage',
+          value: `${topicContextCount} topics`,
+          meta: geography?.entries.length
+            ? getGroupPreview(geography, `${itemRelations.length} linked items`)
+            : `${itemRelations.length} linked items`,
+          hint: 'How many topics and items currently use this formation in the atlas.',
+        },
+      ];
+    }
+
     if (entity.kind === 'civilization') {
       const containedScope = getGroupByKey(structureGroups, 'contained-scope');
       const historicalLinks = getGroupByKey(structureGroups, 'historical-links');
@@ -1319,6 +1464,7 @@ const ReferenceEntityPage: React.FC = () => {
     entity,
     itemRelations.length,
     legacySource,
+    formationMembershipPolityEntries,
     politySnapshotYears,
     politySnapshots.length,
     relatedItems.length,
@@ -1445,6 +1591,51 @@ const ReferenceEntityPage: React.FC = () => {
     }
   };
 
+  const handleCreateFormationMembership = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!entity || entity.kind !== 'formation' || !formationMembershipForm.polityEntityId) return;
+
+    setSavingFormationMembership(true);
+    setError(null);
+
+    try {
+      const membership = await createFormationMembership(entity.id, {
+        polityEntityId: Number(formationMembershipForm.polityEntityId),
+        startYear: parseYearInput(formationMembershipForm.startYear) ?? undefined,
+        endYear: parseYearInput(formationMembershipForm.endYear) ?? undefined,
+        note: formationMembershipForm.note.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setFormationMemberships((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === membership.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = membership;
+            return next;
+          }
+          return [...current, membership];
+        });
+      });
+
+      setFormationMembershipForm({
+        polityEntityId: '',
+        startYear: '',
+        endYear: '',
+        note: '',
+      });
+    } catch (membershipError) {
+      console.error(membershipError);
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : 'Failed to create formation membership.'
+      );
+    } finally {
+      setSavingFormationMembership(false);
+    }
+  };
+
   const handleDeleteRelation = async (relationId: number) => {
     if (!entity) return;
 
@@ -1456,6 +1647,26 @@ const ReferenceEntityPage: React.FC = () => {
     } catch (relationError) {
       console.error(relationError);
       setError('Failed to delete entity relation.');
+    }
+  };
+
+  const handleDeleteFormationMembership = async (membershipId: number) => {
+    if (!entity || entity.kind !== 'formation') return;
+
+    try {
+      await deleteFormationMembership(entity.id, membershipId);
+      startTransition(() => {
+        setFormationMemberships((current) =>
+          current.filter((membership) => membership.id !== membershipId)
+        );
+      });
+    } catch (membershipError) {
+      console.error(membershipError);
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : 'Failed to delete formation membership.'
+      );
     }
   };
 
@@ -1581,7 +1792,7 @@ const ReferenceEntityPage: React.FC = () => {
           <h1>{entity.title}</h1>
           <p>
             {entity.summary ||
-              'This page holds the encyclopedic record for one person, polity, nation, civilization, era, or place.'}
+              'This page holds the encyclopedic record for one person, polity, formation, nation, civilization, era, or place.'}
           </p>
           <div className="reference-entity-hero-meta">
             <span>{formatTimespan(entity)}</span>
@@ -1780,6 +1991,202 @@ const ReferenceEntityPage: React.FC = () => {
               </div>
             )}
           </section>
+
+          {entity.kind === 'formation' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Membership</span>
+                  <h2>
+                    Member polities
+                    <EntityHint text="Built-in polities explicitly assigned to this formation." />
+                    <span className="reference-entity-count-badge">{formationMembershipPolityEntries.length}</span>
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="reference-entity-secondary-button"
+                  onClick={() => setShowFormationMembershipComposer((current) => !current)}
+                >
+                  {showFormationMembershipComposer ? 'Close' : 'Manage polities'}
+                </button>
+              </div>
+
+              {showFormationMembershipComposer ? (
+                <section className="reference-entity-inline-panel">
+                  <form className="reference-entity-form" onSubmit={handleCreateFormationMembership}>
+                    <div className="reference-entity-grid-inline">
+                      <div className="reference-entity-field">
+                        <label htmlFor="formation-membership-polity">Polity</label>
+                        <select
+                          id="formation-membership-polity"
+                          value={formationMembershipForm.polityEntityId}
+                          onChange={(event) =>
+                            setFormationMembershipForm((current) => ({
+                              ...current,
+                              polityEntityId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Choose a polity</option>
+                          {selectablePolities.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="reference-entity-field">
+                        <label htmlFor="formation-membership-start">Start Year</label>
+                        <input
+                          id="formation-membership-start"
+                          type="number"
+                          value={formationMembershipForm.startYear}
+                          onChange={(event) =>
+                            setFormationMembershipForm((current) => ({
+                              ...current,
+                              startYear: event.target.value,
+                            }))
+                          }
+                          placeholder="-323"
+                        />
+                      </div>
+                      <div className="reference-entity-field">
+                        <label htmlFor="formation-membership-end">End Year</label>
+                        <input
+                          id="formation-membership-end"
+                          type="number"
+                          value={formationMembershipForm.endYear}
+                          onChange={(event) =>
+                            setFormationMembershipForm((current) => ({
+                              ...current,
+                              endYear: event.target.value,
+                            }))
+                          }
+                          placeholder="1453"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="reference-entity-field">
+                      <label htmlFor="formation-membership-note">Note</label>
+                      <input
+                        id="formation-membership-note"
+                        value={formationMembershipForm.note}
+                        onChange={(event) =>
+                          setFormationMembershipForm((current) => ({
+                            ...current,
+                            note: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional note about this membership"
+                      />
+                    </div>
+
+                    <div className="reference-entity-inline-actions">
+                      <button
+                        type="submit"
+                        disabled={savingFormationMembership || !formationMembershipForm.polityEntityId}
+                      >
+                        {savingFormationMembership ? 'Adding…' : 'Add polity'}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              ) : null}
+
+              {formationMembershipsError ? (
+                <div className="reference-entity-error">{formationMembershipsError}</div>
+              ) : formationMembershipPolityEntries.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No polity memberships have been recorded for this formation yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {formationMembershipPolityEntries.map((membership) => (
+                    <article key={membership.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>Polity</span>
+                            {membership.startYear !== undefined || membership.endYear !== undefined ? (
+                              <span>
+                                {membership.startYear !== undefined || membership.endYear !== undefined
+                                  ? `${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`
+                                  : 'Undated'}
+                              </span>
+                            ) : null}
+                          </div>
+                          {membership.politySlug ? (
+                            <Link to={`/entities/${membership.polityEntityId}`} className="reference-entity-card-link">
+                              <h3>{membership.polityTitle || 'Untitled polity'}</h3>
+                            </Link>
+                          ) : (
+                            <h3>{membership.polityTitle || 'Untitled polity'}</h3>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => handleDeleteFormationMembership(membership.id)}>
+                          Delete
+                        </button>
+                      </div>
+                      {membership.note ? <p>{membership.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {entity.kind === 'polity' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Membership</span>
+                  <h2>
+                    Included in formations
+                    <EntityHint text="Formations that explicitly include this polity." />
+                    <span className="reference-entity-count-badge">{polityFormationEntries.length}</span>
+                  </h2>
+                </div>
+              </div>
+
+              {formationMembershipsError ? (
+                <div className="reference-entity-error">{formationMembershipsError}</div>
+              ) : polityFormationEntries.length === 0 ? (
+                <div className="reference-entity-empty">
+                  This polity is not yet included in any formation.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {polityFormationEntries.map((membership) => (
+                    <article key={membership.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>Formation</span>
+                            {membership.startYear !== undefined || membership.endYear !== undefined ? (
+                              <span>
+                                {`${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`}
+                              </span>
+                            ) : null}
+                          </div>
+                          {membership.formationSlug ? (
+                            <Link to={`/entities/${membership.formationEntityId}`} className="reference-entity-card-link">
+                              <h3>{membership.formationTitle || 'Untitled formation'}</h3>
+                            </Link>
+                          ) : (
+                            <h3>{membership.formationTitle || 'Untitled formation'}</h3>
+                          )}
+                        </div>
+                        <span>{formatDate(membership.createdAt)}</span>
+                      </div>
+                      {membership.note ? <p>{membership.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
 
           <section className="reference-entity-panel">
             <div className="reference-entity-section-head">

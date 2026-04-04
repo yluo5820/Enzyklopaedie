@@ -29,6 +29,7 @@ const asyncErrorHandler = (fn: AsyncRoute) =>
 
 const isReferenceEntityKind = (value: unknown): value is ReferenceEntityKind =>
   value === 'person' ||
+  value === 'formation' ||
   value === 'nation' ||
   value === 'civilization' ||
   value === 'era' ||
@@ -361,6 +362,12 @@ export const deleteReferenceEntity = asyncErrorHandler(async (req: Request, res:
     `DELETE FROM knowledge_relations
      WHERE (fromEntityType = 'reference_entity' AND fromEntityId = ?)
         OR (toEntityType = 'reference_entity' AND toEntityId = ?)`,
+    id,
+    id
+  );
+  await db.run(
+    `DELETE FROM formation_memberships
+     WHERE formationEntityId = ? OR polityEntityId = ?`,
     id,
     id
   );

@@ -314,8 +314,8 @@ const getStringClaim = (
 };
 
 const localEntityKindMap: Partial<Record<CanonicalHistoricalEntityKind, ReferenceEntityKind>> = {
-  civilization: 'civilization',
-  era: 'era',
+  civilization: 'formation',
+  era: 'formation',
   nation: 'polity',
   person: 'person',
   place: 'polity',
