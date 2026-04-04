@@ -243,6 +243,14 @@ const isGeneratedRegionLabel = (value: string) => /^Region \d+$/.test(value);
 
 const normalizeSearchText = (value?: string | null) => value?.trim().toLowerCase() ?? '';
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const WorldHistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -278,6 +286,7 @@ const WorldHistoryPage: React.FC = () => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
   const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
+  const [hoveredBasemapFeatureId, setHoveredBasemapFeatureId] = useState<string | null>(null);
   const [basemapQuery, setBasemapQuery] = useState('');
   const [year, setYear] = useState(() => {
     const parsed = Number(searchParams.get('year'));
@@ -286,6 +295,7 @@ const WorldHistoryPage: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapLoadedRef = useRef(false);
+  const basemapPopupRef = useRef<maplibregl.Popup | null>(null);
 
   const atlasYearBounds = useMemo(() => getAtlasYearBounds(atlasEntities), [atlasEntities]);
   const yearBounds = useMemo(() => {
@@ -412,6 +422,14 @@ const WorldHistoryPage: React.FC = () => {
         (feature) => feature.properties?.atlasFeatureId === selectedBasemapFeatureId
       ) ?? null,
     [activeBasemapFeatures, selectedBasemapFeatureId]
+  );
+
+  const hoveredBasemapFeature = useMemo(
+    () =>
+      activeBasemapFeatures.find(
+        (feature) => feature.properties?.atlasFeatureId === hoveredBasemapFeatureId
+      ) ?? null,
+    [activeBasemapFeatures, hoveredBasemapFeatureId]
   );
 
   const searchableBasemapFeatures = useMemo(() => {
@@ -573,6 +591,17 @@ const WorldHistoryPage: React.FC = () => {
   }, [activeBasemapFeatures, selectedBasemapFeatureId]);
 
   useEffect(() => {
+    if (!hoveredBasemapFeatureId) return;
+
+    const stillPresent = activeBasemapFeatures.some(
+      (feature) => feature.properties?.atlasFeatureId === hoveredBasemapFeatureId
+    );
+    if (!stillPresent) {
+      setHoveredBasemapFeatureId(null);
+    }
+  }, [activeBasemapFeatures, hoveredBasemapFeatureId]);
+
+  useEffect(() => {
     if (!query.trim()) return;
 
     void runSearch();
@@ -730,10 +759,15 @@ const WorldHistoryPage: React.FC = () => {
             data: EMPTY_FEATURE_COLLECTION as any,
           });
 
-          map.addSource('atlas-selected-basemap-feature', {
-            type: 'geojson',
-            data: EMPTY_FEATURE_COLLECTION as any,
-          });
+        map.addSource('atlas-selected-basemap-feature', {
+          type: 'geojson',
+          data: EMPTY_FEATURE_COLLECTION as any,
+        });
+
+        map.addSource('atlas-hovered-basemap-feature', {
+          type: 'geojson',
+          data: EMPTY_FEATURE_COLLECTION as any,
+        });
 
           map.addLayer({
             id: 'atlas-historical-basemap-fill',
@@ -766,16 +800,37 @@ const WorldHistoryPage: React.FC = () => {
             },
           });
 
-          map.addLayer({
-            id: 'atlas-selected-basemap-feature-outline',
-            type: 'line',
-            source: 'atlas-selected-basemap-feature',
+        map.addLayer({
+          id: 'atlas-selected-basemap-feature-outline',
+          type: 'line',
+          source: 'atlas-selected-basemap-feature',
             paint: {
               'line-color': '#8d3118',
               'line-width': 2.2,
               'line-opacity': 0.96,
-            },
-          });
+          },
+        });
+
+        map.addLayer({
+          id: 'atlas-hovered-basemap-feature-fill',
+          type: 'fill',
+          source: 'atlas-hovered-basemap-feature',
+          paint: {
+            'fill-color': '#f5f0dd',
+            'fill-opacity': 0.12,
+          },
+        });
+
+        map.addLayer({
+          id: 'atlas-hovered-basemap-feature-outline',
+          type: 'line',
+          source: 'atlas-hovered-basemap-feature',
+          paint: {
+            'line-color': '#f8f1e5',
+            'line-width': 1.4,
+            'line-opacity': 0.95,
+          },
+        });
 
           map.addLayer({
             id: 'atlas-entities-points',
@@ -859,22 +914,62 @@ const WorldHistoryPage: React.FC = () => {
             map.getCanvas().style.cursor = '';
           });
 
-          map.on('click', 'atlas-historical-basemap-fill', (event) => {
-            const feature = event.features?.[0] as BasemapFeature | undefined;
-            const featureId = feature?.properties?.atlasFeatureId;
-            if (typeof featureId === 'string' && featureId) {
-              setSelectedBasemapFeatureId(featureId);
-            }
-          });
-
-          map.on('mouseenter', 'atlas-historical-basemap-fill', () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-
-          map.on('mouseleave', 'atlas-historical-basemap-fill', () => {
-            map.getCanvas().style.cursor = '';
-          });
+        map.on('click', 'atlas-historical-basemap-fill', (event) => {
+          const feature = event.features?.[0] as BasemapFeature | undefined;
+          const featureId = feature?.properties?.atlasFeatureId;
+          if (typeof featureId === 'string' && featureId) {
+            setSelectedBasemapFeatureId(featureId);
+          }
         });
+
+        map.on('mouseenter', 'atlas-historical-basemap-fill', () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+
+        map.on('mousemove', 'atlas-historical-basemap-fill', (event) => {
+          const feature = event.features?.[0] as BasemapFeature | undefined;
+          const featureId = feature?.properties?.atlasFeatureId;
+          if (typeof featureId === 'string' && featureId) {
+            setHoveredBasemapFeatureId(featureId);
+          } else {
+            setHoveredBasemapFeatureId(null);
+          }
+
+          if (!feature) return;
+
+          const label = getBasemapLabel(feature);
+          const parent = feature.properties?.atlasParent;
+          const subject = feature.properties?.atlasSubject;
+          const precision = feature.properties?.atlasBorderPrecision;
+
+          if (!basemapPopupRef.current) {
+            basemapPopupRef.current = new maplibregl.Popup({
+              closeButton: false,
+              closeOnClick: false,
+              offset: 14,
+              className: 'world-history-map-popup',
+            });
+          }
+
+          const detail = parent || subject || 'Standalone region';
+          basemapPopupRef.current
+            .setLngLat(event.lngLat)
+            .setHTML(
+              `<div class="world-history-map-popup__content">
+                <strong>${escapeHtml(label)}</strong>
+                <span>${escapeHtml(detail)}</span>
+                <span>Border precision: ${escapeHtml(String(precision ?? 'Unknown'))}</span>
+              </div>`
+            )
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'atlas-historical-basemap-fill', () => {
+          map.getCanvas().style.cursor = '';
+          setHoveredBasemapFeatureId(null);
+          basemapPopupRef.current?.remove();
+        });
+      });
       } catch (error) {
         setMapError(error instanceof Error ? error.message : 'Failed to initialize the atlas map.');
       }
@@ -885,6 +980,7 @@ const WorldHistoryPage: React.FC = () => {
     return () => {
       disposed = true;
       mapLoadedRef.current = false;
+      basemapPopupRef.current?.remove();
       localMap?.remove();
       mapRef.current = null;
     };
@@ -896,9 +992,10 @@ const WorldHistoryPage: React.FC = () => {
 
     const basemapSource = map.getSource('atlas-historical-basemap') as GeoJSONSource | undefined;
     const selectedBasemapSource = map.getSource('atlas-selected-basemap-feature') as GeoJSONSource | undefined;
+    const hoveredBasemapSource = map.getSource('atlas-hovered-basemap-feature') as GeoJSONSource | undefined;
     const source = map.getSource('atlas-entities') as GeoJSONSource | undefined;
     const geometrySource = map.getSource('atlas-selected-geometry') as GeoJSONSource | undefined;
-    if (!basemapSource || !selectedBasemapSource || !source || !geometrySource) return;
+    if (!basemapSource || !selectedBasemapSource || !hoveredBasemapSource || !source || !geometrySource) return;
 
     basemapSource.setData((historicalBasemapLayer?.geojson ?? EMPTY_FEATURE_COLLECTION) as any);
     selectedBasemapSource.setData(
@@ -906,6 +1003,14 @@ const WorldHistoryPage: React.FC = () => {
         ? ({
             type: 'FeatureCollection',
             features: [selectedBasemapFeature],
+          } as any)
+        : (EMPTY_FEATURE_COLLECTION as any)
+    );
+    hoveredBasemapSource.setData(
+      hoveredBasemapFeature && hoveredBasemapFeature.properties?.atlasFeatureId !== selectedBasemapFeatureId
+        ? ({
+            type: 'FeatureCollection',
+            features: [hoveredBasemapFeature],
           } as any)
         : (EMPTY_FEATURE_COLLECTION as any)
     );
@@ -986,8 +1091,10 @@ const WorldHistoryPage: React.FC = () => {
     }
   }, [
     historicalBasemapLayer,
+    hoveredBasemapFeature,
     mappableAtlasEntities,
     selectedBasemapFeature,
+    selectedBasemapFeatureId,
     selectedGeometry,
     selectedVisibleAtlasEntity,
     visibleAtlasEntities,

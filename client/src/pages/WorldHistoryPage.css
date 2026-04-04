@@ -430,6 +430,36 @@
   border-radius: 6px;
 }
 
+.world-history-map-popup .maplibregl-popup-content {
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid rgba(215, 195, 171, 0.92);
+  background: rgba(249, 243, 231, 0.96);
+  color: var(--ink);
+  box-shadow: 0 12px 24px rgba(53, 33, 18, 0.18);
+}
+
+.world-history-map-popup .maplibregl-popup-tip {
+  border-top-color: rgba(249, 243, 231, 0.96);
+}
+
+.world-history-map-popup__content {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+  padding: 10px 12px;
+}
+
+.world-history-map-popup__content strong {
+  font-size: 0.98rem;
+}
+
+.world-history-map-popup__content span {
+  color: var(--ink-muted);
+  font-size: 0.83rem;
+  line-height: 1.35;
+}
+
 .world-history-timeline {
   border-radius: 18px;
   border: 1px solid rgba(215, 195, 171, 0.92);
