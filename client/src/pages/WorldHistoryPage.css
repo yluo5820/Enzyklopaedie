@@ -212,8 +212,14 @@
   gap: 12px;
 }
 
+.world-history-region-search {
+  display: grid;
+  gap: 8px;
+}
+
 .world-history-search input,
-.world-history-search select {
+.world-history-search select,
+.world-history-region-search input {
   width: 100%;
   border-radius: 16px;
   border: 1px solid var(--border);
@@ -229,13 +235,19 @@
   font-size: 1.02rem;
 }
 
+.world-history-region-search input {
+  min-height: 46px;
+  padding: 0 14px;
+}
+
 .world-history-search select {
   min-height: 48px;
   padding: 0 14px;
 }
 
 .world-history-search input:focus,
-.world-history-search select:focus {
+.world-history-search select:focus,
+.world-history-region-search input:focus {
   outline: 2px solid rgba(123, 77, 42, 0.28);
   outline-offset: 2px;
 }
@@ -517,6 +529,46 @@
 .world-history-shelf {
   display: grid;
   gap: 10px;
+}
+
+.world-history-region-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.world-history-region-result {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid rgba(215, 195, 171, 0.9);
+  background: rgba(255, 255, 255, 0.68);
+  padding: 12px 13px;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.world-history-region-result:hover {
+  transform: translateY(-1px);
+}
+
+.world-history-region-result.is-selected {
+  border-color: rgba(123, 77, 42, 0.65);
+  box-shadow: 0 12px 24px rgba(53, 33, 18, 0.09);
+}
+
+.world-history-region-result strong {
+  font-size: 0.98rem;
+}
+
+.world-history-region-result span {
+  color: var(--ink-muted);
+  font-size: 0.88rem;
 }
 
 .world-history-shelf-card {

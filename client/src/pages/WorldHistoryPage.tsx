@@ -239,6 +239,10 @@ const getBasemapLabel = (feature?: BasemapFeature | null) =>
   feature?.properties?.PARTOF ??
   'Unnamed region';
 
+const isGeneratedRegionLabel = (value: string) => /^Region \d+$/.test(value);
+
+const normalizeSearchText = (value?: string | null) => value?.trim().toLowerCase() ?? '';
+
 const WorldHistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -274,6 +278,7 @@ const WorldHistoryPage: React.FC = () => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
   const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
+  const [basemapQuery, setBasemapQuery] = useState('');
   const [year, setYear] = useState(() => {
     const parsed = Number(searchParams.get('year'));
     return Number.isInteger(parsed) ? parsed : DEFAULT_YEAR;
@@ -408,6 +413,65 @@ const WorldHistoryPage: React.FC = () => {
       ) ?? null,
     [activeBasemapFeatures, selectedBasemapFeatureId]
   );
+
+  const searchableBasemapFeatures = useMemo(() => {
+    const seen = new Set<string>();
+
+    return activeBasemapFeatures
+      .filter((feature) => {
+        const label = getBasemapLabel(feature);
+        if (!label || isGeneratedRegionLabel(label)) {
+          return false;
+        }
+
+        const key = `${label}::${feature.properties?.atlasParent ?? ''}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .sort((left, right) => {
+        const leftLabel = getBasemapLabel(left);
+        const rightLabel = getBasemapLabel(right);
+        return leftLabel.localeCompare(rightLabel);
+      });
+  }, [activeBasemapFeatures]);
+
+  const filteredBasemapFeatures = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(basemapQuery);
+    if (!normalizedQuery) {
+      return searchableBasemapFeatures.slice(0, 18);
+    }
+
+    return searchableBasemapFeatures
+      .map((feature) => {
+        const label = normalizeSearchText(getBasemapLabel(feature));
+        const parent = normalizeSearchText(feature.properties?.atlasParent);
+        const subject = normalizeSearchText(feature.properties?.atlasSubject);
+        let score = 0;
+
+        if (label === normalizedQuery) score += 100;
+        else if (label.startsWith(normalizedQuery)) score += 60;
+        else if (label.includes(normalizedQuery)) score += 30;
+
+        if (parent.startsWith(normalizedQuery)) score += 16;
+        else if (parent.includes(normalizedQuery)) score += 8;
+
+        if (subject.startsWith(normalizedQuery)) score += 12;
+        else if (subject.includes(normalizedQuery)) score += 6;
+
+        return { feature, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          getBasemapLabel(left.feature).localeCompare(getBasemapLabel(right.feature))
+      )
+      .slice(0, 18)
+      .map((entry) => entry.feature);
+  }, [basemapQuery, searchableBasemapFeatures]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -1260,6 +1324,62 @@ const WorldHistoryPage: React.FC = () => {
                       This region comes from the local historical-basemaps snapshot, not from your pinned authority
                       shelf. Use it as the geographic frame for the current year.
                     </p>
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Jump</span>
+                    <h2>Regions in this snapshot</h2>
+                  </div>
+                  <span className="world-history-count-chip">{searchableBasemapFeatures.length}</span>
+                </div>
+
+                <div className="world-history-region-search">
+                  <input
+                    type="text"
+                    value={basemapQuery}
+                    onChange={(event) => setBasemapQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && filteredBasemapFeatures[0]) {
+                        event.preventDefault();
+                        setSelectedBasemapFeatureId(
+                          filteredBasemapFeatures[0].properties?.atlasFeatureId ?? null
+                        );
+                      }
+                    }}
+                    placeholder={`Search ${activeBasemapYear ? formatYear(activeBasemapYear.year) : 'snapshot'} regions`}
+                  />
+                  <span className="world-history-hint">
+                    Search works against the currently active basemap year only.
+                  </span>
+                </div>
+
+                {filteredBasemapFeatures.length === 0 ? (
+                  <div className="world-history-empty">
+                    No named regions in this snapshot match that search.
+                  </div>
+                ) : (
+                  <div className="world-history-region-results">
+                    {filteredBasemapFeatures.map((feature) => {
+                      const featureId = feature.properties?.atlasFeatureId;
+                      const isSelected = featureId === selectedBasemapFeatureId;
+                      return (
+                        <button
+                          key={featureId}
+                          type="button"
+                          className={`world-history-region-result ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => setSelectedBasemapFeatureId(featureId ?? null)}
+                        >
+                          <strong>{getBasemapLabel(feature)}</strong>
+                          <span>
+                            {feature.properties?.atlasParent || feature.properties?.atlasSubject || 'Standalone region'}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </section>
