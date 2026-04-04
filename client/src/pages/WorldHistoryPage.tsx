@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalSearchMatch,
+  HistoricalBasemapPolityMatchResponse,
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
   ReferenceEntity,
@@ -17,6 +18,7 @@ import {
   deleteHistoricalAtlasEntity,
   fetchHistoricalBasemapLayer,
   fetchHistoricalBasemapManifest,
+  fetchHistoricalBasemapPolityMatch,
   fetchHistoricalAtlasGeometry,
   fetchHistoricalAtlasEntities,
   fetchReferenceEntities,
@@ -258,6 +260,11 @@ const isGeneratedRegionLabel = (value: string) => /^Region \d+$/.test(value);
 const isNamedBasemapFeature = (feature?: BasemapFeature | null) =>
   Boolean(feature?.properties?.atlasIsNamed);
 
+const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | 'metadata'>) =>
+  entity.kind === 'polity' &&
+  entity.metadata?.atlasSource === 'historical-basemaps' &&
+  entity.metadata?.builtIn === true;
+
 const normalizeSearchText = (value?: string | null) => value?.trim().toLowerCase() ?? '';
 
 const normalizeEntityLabel = (value?: string | null) =>
@@ -319,6 +326,9 @@ const WorldHistoryPage: React.FC = () => {
   });
   const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
   const [hoveredBasemapFeatureId, setHoveredBasemapFeatureId] = useState<string | null>(null);
+  const [resolvedPolityMatch, setResolvedPolityMatch] =
+    useState<HistoricalBasemapPolityMatchResponse | null>(null);
+  const [resolvedPolityMatchError, setResolvedPolityMatchError] = useState<string | null>(null);
   const [basemapQuery, setBasemapQuery] = useState('');
   const [year, setYear] = useState(() => {
     const parsed = Number(searchParams.get('year'));
@@ -556,6 +566,8 @@ const WorldHistoryPage: React.FC = () => {
     [matchedAtlasEntities]
   );
 
+  const resolvedPolityReferenceEntityId = resolvedPolityMatch?.referenceEntity.id ?? null;
+
   const matchedReferenceEntities = useMemo(() => {
     if (!selectedBasemapFeature || !selectedBasemapLabel) {
       return [];
@@ -566,12 +578,14 @@ const WorldHistoryPage: React.FC = () => {
         (entity) =>
           MATCHABLE_REFERENCE_ENTITY_KINDS.has(entity.kind) &&
           normalizeEntityLabel(entity.title) === selectedBasemapLabel &&
-          !matchedAtlasReferenceEntityIds.has(entity.id)
+          !matchedAtlasReferenceEntityIds.has(entity.id) &&
+          entity.id !== resolvedPolityReferenceEntityId
       )
       .sort((left, right) => left.title.localeCompare(right.title));
   }, [
     matchedAtlasReferenceEntityIds,
     referenceEntities,
+    resolvedPolityReferenceEntityId,
     selectedBasemapFeature,
     selectedBasemapLabel,
   ]);
@@ -695,6 +709,32 @@ const WorldHistoryPage: React.FC = () => {
       setSelectedBasemapFeatureId(null);
     }
   }, [activeBasemapFeatures, selectedBasemapFeatureId]);
+
+  useEffect(() => {
+    const loadResolvedPolityMatch = async () => {
+      if (!activeBasemapYear || !selectedBasemapFeatureId || !selectedBasemapFeature) {
+        setResolvedPolityMatch(null);
+        setResolvedPolityMatchError(null);
+        return;
+      }
+
+      try {
+        setResolvedPolityMatchError(null);
+        const match = await fetchHistoricalBasemapPolityMatch(
+          activeBasemapYear.year,
+          selectedBasemapFeatureId
+        );
+        setResolvedPolityMatch(match);
+      } catch (error) {
+        setResolvedPolityMatch(null);
+        setResolvedPolityMatchError(
+          error instanceof Error ? error.message : 'Failed to resolve the selected region to a polity.'
+        );
+      }
+    };
+
+    void loadResolvedPolityMatch();
+  }, [activeBasemapYear, selectedBasemapFeature, selectedBasemapFeatureId]);
 
   useEffect(() => {
     if (!hoveredBasemapFeatureId) return;
@@ -1550,7 +1590,9 @@ const WorldHistoryPage: React.FC = () => {
                           <strong>Known matches for this region</strong>
                         </div>
                         <span className="world-history-count-chip">
-                          {matchedAtlasEntities.length + matchedReferenceEntities.length}
+                          {matchedAtlasEntities.length +
+                            matchedReferenceEntities.length +
+                            (resolvedPolityMatch ? 1 : 0)}
                         </span>
                       </div>
 
@@ -1558,14 +1600,57 @@ const WorldHistoryPage: React.FC = () => {
                         <div className="world-history-empty">
                           Checking the local encyclopedia for matching region records…
                         </div>
+                      ) : resolvedPolityMatchError ? (
+                        <div className="world-history-feedback is-error">{resolvedPolityMatchError}</div>
                       ) : referenceEntitiesError ? (
                         <div className="world-history-feedback is-error">{referenceEntitiesError}</div>
-                      ) : matchedAtlasEntities.length === 0 && matchedReferenceEntities.length === 0 ? (
+                      ) : !resolvedPolityMatch &&
+                        matchedAtlasEntities.length === 0 &&
+                        matchedReferenceEntities.length === 0 ? (
                         <div className="world-history-empty">
                           No pinned atlas record or local encyclopedia entity matches this region name yet.
                         </div>
                       ) : (
                         <div className="world-history-reconciliation__groups">
+                          {resolvedPolityMatch ? (
+                            <div className="world-history-reconciliation__group">
+                              <div className="world-history-reconciliation__group-header">
+                                <span className="world-history-panel__eyebrow">Built-in polity</span>
+                                <span className="world-history-count-chip">1</span>
+                              </div>
+                              <div className="world-history-reconciliation__list">
+                                <article className="world-history-reconciliation-card">
+                                  <div className="world-history-reconciliation-card__head">
+                                    <div className="world-history-shelf-card__chips">
+                                      <span className="world-history-kind-chip">
+                                        {referenceEntityKindLabels[resolvedPolityMatch.referenceEntity.kind]}
+                                      </span>
+                                      {isBuiltInPolityReferenceEntity(resolvedPolityMatch.referenceEntity) ? (
+                                        <span className="world-history-linked-chip">Built-in</span>
+                                      ) : null}
+                                    </div>
+                                    <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+                                  </div>
+                                  <span className="world-history-hint">
+                                    Snapshot {formatYear(resolvedPolityMatch.snapshot.snapshotYear)}
+                                    {resolvedPolityMatch.snapshot.parentLabel
+                                      ? ` · ${resolvedPolityMatch.snapshot.parentLabel}`
+                                      : ''}
+                                  </span>
+                                  <div className="world-history-reconciliation-card__actions">
+                                    <button
+                                      type="button"
+                                      className="is-primary"
+                                      onClick={() => navigate(`/entities/${resolvedPolityMatch.referenceEntity.id}`)}
+                                    >
+                                      Open polity
+                                    </button>
+                                  </div>
+                                </article>
+                              </div>
+                            </div>
+                          ) : null}
+
                           {matchedAtlasEntities.length > 0 ? (
                             <div className="world-history-reconciliation__group">
                               <div className="world-history-reconciliation__group-header">

@@ -1791,6 +1791,9 @@ test('historical polity import seeds built-in polity entities and snapshots from
   assert.ok(romanPolity);
   assert.equal(romanPolity.startYear, 100);
   assert.equal(romanPolity.endYear, 100);
+  const romanMetadata = JSON.parse(romanPolity.metadata);
+  assert.equal(romanMetadata.atlasSource, 'historical-basemaps');
+  assert.equal(romanMetadata.builtIn, true);
 
   const snapshotRows = await db.all(
     `SELECT referenceEntityId, snapshotYear, source, titleAtSnapshot, metadata
@@ -1805,4 +1808,44 @@ test('historical polity import seeds built-in polity entities and snapshots from
   const snapshotMetadata = JSON.parse(romanSnapshot.metadata);
   assert.equal(snapshotMetadata.featureCount, 1);
   assert.deepEqual(snapshotMetadata.sourceFeatureIds, ['100-0']);
+
+  const polityMatchResponse = await request('/api/world-history/basemaps/polity-match?year=100&featureId=100-0');
+  assert.equal(polityMatchResponse.status, 200);
+  const polityMatch = await polityMatchResponse.json();
+  assert.equal(polityMatch.referenceEntity.id, romanPolity.id);
+  assert.equal(polityMatch.referenceEntity.kind, 'polity');
+  assert.equal(polityMatch.snapshot.referenceEntityId, romanPolity.id);
+  assert.equal(polityMatch.snapshot.snapshotYear, 100);
+
+  const politySnapshotsResponse = await request(`/api/reference-entities/${romanPolity.id}/polity-snapshots`);
+  assert.equal(politySnapshotsResponse.status, 200);
+  const politySnapshots = await politySnapshotsResponse.json();
+  assert.equal(politySnapshots.length, 1);
+  assert.equal(politySnapshots[0].titleAtSnapshot, 'Roman Empire');
+
+  const builtInPolityUpdateResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary: 'Atlas-backed polity notes.',
+    }),
+  });
+  assert.equal(builtInPolityUpdateResponse.status, 200);
+  const updatedPolity = await builtInPolityUpdateResponse.json();
+  assert.equal(updatedPolity.title, 'Roman Empire');
+  assert.equal(updatedPolity.summary, 'Atlas-backed polity notes.');
+
+  const builtInPolityRenameResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: 'Roman State',
+    }),
+  });
+  assert.equal(builtInPolityRenameResponse.status, 400);
+
+  const builtInPolityDeleteResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
+    method: 'DELETE',
+  });
+  assert.equal(builtInPolityDeleteResponse.status, 400);
 });

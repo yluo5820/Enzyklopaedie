@@ -65,6 +65,7 @@ export interface ReferenceEntity {
     createdAt: string;
     updatedAt: string;
 }
+export declare const isBuiltInPolityEntity: (entity: Pick<ReferenceEntity, "kind" | "metadata">) => boolean;
 export type KnowledgeRelationEntityType = 'knowledge_item' | 'subject' | 'topic' | 'reference_entity';
 export type KnowledgeRelationType = 'about' | 'contains' | 'created_by' | 'related_to' | 'influenced_by' | 'part_of' | 'located_in' | 'during' | 'references';
 export interface KnowledgeRelation {
@@ -156,6 +157,10 @@ export interface PolitySnapshot {
     metadata?: Record<string, unknown>;
     createdAt: string;
     updatedAt: string;
+}
+export interface HistoricalBasemapPolityMatchResponse {
+    referenceEntity: ReferenceEntity;
+    snapshot: PolitySnapshot;
 }
 export type CanonicalHistoricalEntityAuthority = 'wikidata';
 export type CanonicalHistoricalEntityKind = 'person' | 'ruler' | 'battle' | 'nation' | 'civilization' | 'era' | 'place' | 'region';

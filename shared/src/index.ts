@@ -81,6 +81,13 @@ export interface ReferenceEntity {
   updatedAt: string;
 }
 
+export const isBuiltInPolityEntity = (
+  entity: Pick<ReferenceEntity, 'kind' | 'metadata'>
+) =>
+  entity.kind === 'polity' &&
+  entity.metadata?.atlasSource === 'historical-basemaps' &&
+  entity.metadata?.builtIn === true;
+
 export type KnowledgeRelationEntityType =
   | 'knowledge_item'
   | 'subject'
@@ -211,6 +218,11 @@ export interface PolitySnapshot {
   metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HistoricalBasemapPolityMatchResponse {
+  referenceEntity: ReferenceEntity;
+  snapshot: PolitySnapshot;
 }
 
 export type CanonicalHistoricalEntityAuthority = 'wikidata';

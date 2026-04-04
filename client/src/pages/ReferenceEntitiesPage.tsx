@@ -192,6 +192,11 @@ const previewTitles = (entities: ReferenceEntity[], limit = 2) => {
   return preview;
 };
 
+const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | 'metadata'>) =>
+  entity.kind === 'polity' &&
+  entity.metadata?.atlasSource === 'historical-basemaps' &&
+  entity.metadata?.builtIn === true;
+
 const ReferenceEntitiesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [entities, setEntities] = useState<ReferenceEntity[]>([]);
@@ -526,6 +531,7 @@ const ReferenceEntitiesPage: React.FC = () => {
                   <div className="reference-entities-items">
                     {group.entities.map((entity) => {
                       const legacySource = getLegacySource(entity);
+                      const isBuiltInPolity = isBuiltInPolityReferenceEntity(entity);
 
                       return (
                         <article key={entity.id} className="reference-entities-item">
@@ -533,6 +539,11 @@ const ReferenceEntitiesPage: React.FC = () => {
                             <div>
                               <div className="reference-entities-meta">
                                 <span className="reference-entities-badge">{entity.kind}</span>
+                                {isBuiltInPolity ? (
+                                  <span className="reference-entities-badge reference-entities-badge-secondary">
+                                    atlas built-in
+                                  </span>
+                                ) : null}
                                 {legacySource ? (
                                   <span className="reference-entities-badge reference-entities-badge-secondary">
                                     imported from {legacySource}
@@ -554,9 +565,11 @@ const ReferenceEntitiesPage: React.FC = () => {
                               >
                                 Open
                               </Link>
-                              <button type="button" onClick={() => handleDelete(entity)}>
-                                Remove
-                              </button>
+                              {!isBuiltInPolity ? (
+                                <button type="button" onClick={() => handleDelete(entity)}>
+                                  Remove
+                                </button>
+                              ) : null}
                             </div>
                           </div>
 

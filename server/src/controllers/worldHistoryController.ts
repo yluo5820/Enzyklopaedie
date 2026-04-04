@@ -3,6 +3,7 @@ import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
+  HistoricalBasemapPolityMatchResponse,
   NewCanonicalHistoricalEntity,
   ReferenceEntity,
   ReferenceEntityKind,
@@ -23,6 +24,7 @@ import {
   generateUniqueReferenceEntitySlug,
   hydrateReferenceEntity,
 } from '../lib/referenceEntities';
+import { findPolitySnapshotMatch } from '../lib/politySnapshots';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -395,6 +397,31 @@ export const getHistoricalBasemapLayerResponse = asyncErrorHandler(
     }
 
     res.json(layer);
+  }
+);
+
+export const getHistoricalBasemapPolityMatchResponse = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    const snapshotYear = parseYear(req.query.year);
+    const sourceFeatureId = typeof req.query.featureId === 'string' ? req.query.featureId.trim() : '';
+
+    if (snapshotYear === null) {
+      return res.status(400).json({ message: 'A numeric year is required.' });
+    }
+
+    if (!sourceFeatureId) {
+      return res.status(400).json({ message: 'A basemap feature id is required.' });
+    }
+
+    const db = await getDb();
+    const match = await findPolitySnapshotMatch(
+      db,
+      'historical-basemaps',
+      snapshotYear,
+      sourceFeatureId
+    );
+
+    res.json((match ?? null) as HistoricalBasemapPolityMatchResponse | null);
   }
 );
 

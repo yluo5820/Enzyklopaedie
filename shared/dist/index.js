@@ -1,6 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildReferenceEntitySlug = exports.slugifyName = exports.summarizeKnowledgeProgress = void 0;
+exports.buildReferenceEntitySlug = exports.slugifyName = exports.summarizeKnowledgeProgress = exports.isBuiltInPolityEntity = void 0;
+const isBuiltInPolityEntity = (entity) => entity.kind === 'polity' &&
+    entity.metadata?.atlasSource === 'historical-basemaps' &&
+    entity.metadata?.builtIn === true;
+exports.isBuiltInPolityEntity = isBuiltInPolityEntity;
 const summarizeKnowledgeProgress = (items) => {
     const byStatus = {
         inbox: 0,

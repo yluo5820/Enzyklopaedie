@@ -4,6 +4,7 @@ import {
   CanonicalHistoricalGeometryResponse,
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
+  HistoricalBasemapPolityMatchResponse,
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
   KnowledgeItem,
@@ -20,6 +21,7 @@ import {
   NewReferenceEntity,
   NewSubject,
   NewTopic,
+  PolitySnapshot,
   ReferenceEntity,
   Subject,
   SubjectSummary,
@@ -73,6 +75,24 @@ export const fetchKnowledgeItems = async (): Promise<KnowledgeItem[]> => {
   if (!response.ok) {
     throw new Error('Failed to fetch knowledge items');
   }
+  return response.json();
+};
+
+export const fetchHistoricalBasemapPolityMatch = async (
+  year: number,
+  featureId: string
+): Promise<HistoricalBasemapPolityMatchResponse | null> => {
+  const params = new URLSearchParams({
+    year: String(year),
+    featureId,
+  });
+
+  const response = await fetch(`${API_BASE_URL}/world-history/basemaps/polity-match?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to reconcile the selected basemap region');
+  }
+
   return response.json();
 };
 
@@ -354,6 +374,16 @@ export const fetchReferenceEntityRelations = async (
   const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/relations`);
   if (!response.ok) {
     throw new Error('Failed to fetch reference entity relations');
+  }
+  return response.json();
+};
+
+export const fetchReferenceEntityPolitySnapshots = async (
+  id: number
+): Promise<PolitySnapshot[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/polity-snapshots`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch polity snapshots');
   }
   return response.json();
 };

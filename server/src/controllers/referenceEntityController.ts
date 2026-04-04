@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from 'express';
 import {
+  isBuiltInPolityEntity,
   type NewReferenceEntity,
+  type PolitySnapshot,
   type ReferenceEntity,
   type ReferenceEntityKind,
   type UpdateReferenceEntity,
@@ -12,6 +14,7 @@ import {
   generateUniqueReferenceEntitySlug,
   hydrateReferenceEntity,
 } from '../lib/referenceEntities';
+import { listPolitySnapshotsByReferenceEntity } from '../lib/politySnapshots';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -99,6 +102,27 @@ export const getRelationsByReferenceEntity = asyncErrorHandler(async (req: Reque
   }
 
   res.json(await listKnowledgeRelationsByTarget('reference_entity', id));
+});
+
+export const getPolitySnapshotsByReferenceEntity = asyncErrorHandler(async (req: Request, res: Response) => {
+  const id = parseId(req.params.id);
+  if (!id) {
+    return res.status(400).json({ message: 'Invalid reference entity id' });
+  }
+
+  const db = await getDb();
+  const row = await db.get<ReferenceEntityRow>('SELECT * FROM reference_entities WHERE id = ?', id);
+
+  if (!row) {
+    return res.status(404).json({ message: 'Reference entity not found' });
+  }
+
+  const entity = hydrateReferenceEntity(row);
+  if (entity.kind !== 'polity') {
+    return res.json([] satisfies PolitySnapshot[]);
+  }
+
+  res.json(await listPolitySnapshotsByReferenceEntity(db, id));
 });
 
 export const createReferenceEntity = asyncErrorHandler(async (req: Request, res: Response) => {
@@ -192,6 +216,29 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
 
   const existing = hydrateReferenceEntity(existingRow);
   const updatedEntity: UpdateReferenceEntity = req.body;
+  const isLockedBuiltInPolity = isBuiltInPolityEntity(existing);
+
+  if (isLockedBuiltInPolity) {
+    const requestedTitle =
+      typeof updatedEntity.title === 'string' ? updatedEntity.title.trim() : existing.title;
+    const requestedKind = updatedEntity.kind ?? existing.kind;
+    const requestedStartYear =
+      updatedEntity.startYear === undefined ? existing.startYear : updatedEntity.startYear ?? undefined;
+    const requestedEndYear =
+      updatedEntity.endYear === undefined ? existing.endYear : updatedEntity.endYear ?? undefined;
+
+    if (
+      requestedKind !== existing.kind ||
+      requestedTitle !== existing.title ||
+      requestedStartYear !== existing.startYear ||
+      requestedEndYear !== existing.endYear
+    ) {
+      return res.status(400).json({
+        message: 'Built-in polities keep their identity and timeline from the historical atlas.',
+      });
+    }
+  }
+
   const fields: string[] = [];
   const values: Array<string | number | null> = [];
   const startYear = parseOptionalYear(updatedEntity.startYear);
@@ -294,6 +341,22 @@ export const deleteReferenceEntity = asyncErrorHandler(async (req: Request, res:
   }
 
   const db = await getDb();
+  const existingRow = await db.get<ReferenceEntityRow>(
+    'SELECT * FROM reference_entities WHERE id = ?',
+    id
+  );
+
+  if (!existingRow) {
+    return res.status(404).json({ message: 'Reference entity not found' });
+  }
+
+  const existing = hydrateReferenceEntity(existingRow);
+  if (isBuiltInPolityEntity(existing)) {
+    return res.status(400).json({
+      message: 'Built-in polities come from the historical atlas importer and cannot be removed.',
+    });
+  }
+
   await db.run(
     `DELETE FROM knowledge_relations
      WHERE (fromEntityType = 'reference_entity' AND fromEntityId = ?)
@@ -301,6 +364,7 @@ export const deleteReferenceEntity = asyncErrorHandler(async (req: Request, res:
     id,
     id
   );
+  await db.run('DELETE FROM polity_snapshots WHERE referenceEntityId = ?', id);
   const result = await db.run('DELETE FROM reference_entities WHERE id = ?', id);
 
   if (!result.changes) {

@@ -89,7 +89,40 @@ const ensurePolityEntity = async (
 ) => {
   const existing = entityByKey.get(key);
   if (existing) {
-    return { entity: existing, created: false };
+    const nextMetadata = {
+      ...(existing.metadata ?? {}),
+      atlasSource: 'historical-basemaps',
+      builtIn: true,
+      polityImportKey: key,
+    };
+    const now = new Date().toISOString();
+    const nextSummary = existing.summary ?? BUILT_IN_POLITY_SUMMARY;
+    const shouldRefreshExisting =
+      !isBuiltInHistoricalPolity(existing) ||
+      existing.metadata?.polityImportKey !== key ||
+      existing.summary !== nextSummary;
+
+    if (shouldRefreshExisting) {
+      await db.run(
+        `UPDATE reference_entities
+         SET summary = ?, metadata = ?, updatedAt = ?
+         WHERE id = ?`,
+        nextSummary,
+        JSON.stringify(nextMetadata),
+        now,
+        existing.id
+      );
+    }
+
+    const nextEntity: ReferenceEntity = {
+      ...existing,
+      summary: nextSummary,
+      metadata: nextMetadata,
+      updatedAt: shouldRefreshExisting ? now : existing.updatedAt,
+    };
+
+    entityByKey.set(key, nextEntity);
+    return { entity: nextEntity, created: false };
   }
 
   const now = new Date().toISOString();

@@ -3,6 +3,7 @@ import {
   createReferenceEntity,
   deleteReferenceEntity,
   getAllReferenceEntities,
+  getPolitySnapshotsByReferenceEntity,
   getReferenceEntityById,
   getRelationsByReferenceEntity,
   updateReferenceEntity,
@@ -17,6 +18,7 @@ const router = Router();
 
 router.get('/', getAllReferenceEntities);
 router.get('/:id/relations', getRelationsByReferenceEntity);
+router.get('/:id/polity-snapshots', getPolitySnapshotsByReferenceEntity);
 router.get('/:id/outgoing-relations', getOutgoingRelationsByReferenceEntity);
 router.get('/:id', getReferenceEntityById);
 router.post('/', createReferenceEntity);

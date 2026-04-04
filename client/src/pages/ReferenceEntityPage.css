@@ -283,6 +283,29 @@
   line-height: 1.65;
 }
 
+.reference-entity-card-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.reference-entity-card-grid div {
+  display: grid;
+  gap: 4px;
+}
+
+.reference-entity-card-grid strong {
+  font-size: 0.85rem;
+  color: var(--accent-dark);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.reference-entity-card-grid span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .reference-entity-card button {
   border: 1px solid var(--line);
   border-radius: 999px;

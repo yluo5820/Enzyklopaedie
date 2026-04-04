@@ -2,6 +2,7 @@ import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   KnowledgeRelationDetail,
   KnowledgeRelationType,
+  PolitySnapshot,
   ReferenceEntity,
   ReferenceEntityKind,
   UpdateReferenceEntity,
@@ -14,6 +15,7 @@ import {
   fetchReferenceEntities,
   fetchReferenceEntity,
   fetchReferenceEntityOutgoingRelations,
+  fetchReferenceEntityPolitySnapshots,
   fetchReferenceEntityRelations,
   updateReferenceEntity,
 } from '../api';
@@ -422,6 +424,10 @@ const formatMetadataValue = (value: unknown) => {
 };
 
 const isPolityLikeKind = (kind: ReferenceEntityKind) => kind === 'nation' || kind === 'polity';
+const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | 'metadata'>) =>
+  entity.kind === 'polity' &&
+  entity.metadata?.atlasSource === 'historical-basemaps' &&
+  entity.metadata?.builtIn === true;
 
 const EntityHint = ({ text }: { text: string }) => (
   <span className="reference-entity-help" tabIndex={0} aria-label={text}>
@@ -608,6 +614,7 @@ const ReferenceEntityPage: React.FC = () => {
   const [allEntities, setAllEntities] = useState<ReferenceEntity[]>([]);
   const [incomingRelations, setIncomingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [outgoingRelations, setOutgoingRelations] = useState<KnowledgeRelationDetail[]>([]);
+  const [politySnapshots, setPolitySnapshots] = useState<PolitySnapshot[]>([]);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
     title: '',
@@ -629,6 +636,7 @@ const ReferenceEntityPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [politySnapshotsError, setPolitySnapshotsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!Number.isInteger(entityId) || entityId <= 0) {
@@ -646,15 +654,23 @@ const ReferenceEntityPage: React.FC = () => {
             fetchReferenceEntityRelations(entityId),
             fetchReferenceEntityOutgoingRelations(entityId),
           ]);
+        const fetchedPolitySnapshots =
+          fetchedEntity.kind === 'polity'
+            ? await fetchReferenceEntityPolitySnapshots(entityId)
+            : [];
 
         setEntity(fetchedEntity);
         setAllEntities(fetchedEntities);
         setIncomingRelations(fetchedIncomingRelations);
         setOutgoingRelations(fetchedOutgoingRelations);
+        setPolitySnapshots(fetchedPolitySnapshots);
+        setPolitySnapshotsError(null);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load reference entity.');
+        setPolitySnapshots([]);
+        setPolitySnapshotsError('Failed to load atlas snapshots.');
       } finally {
         setLoading(false);
       }
@@ -664,6 +680,7 @@ const ReferenceEntityPage: React.FC = () => {
   }, [entityId]);
 
   const legacySource = typeof entity?.metadata?.legacySource === 'string' ? entity.metadata.legacySource : null;
+  const isBuiltInPolity = entity ? isBuiltInPolityReferenceEntity(entity) : false;
   const metadataEntries = useMemo(
     () => (entity?.metadata ? Object.entries(entity.metadata) : []),
     [entity?.metadata]
@@ -673,7 +690,16 @@ const ReferenceEntityPage: React.FC = () => {
       ? entity.metadata.link
       : null;
   const displayMetadataEntries = useMemo(
-    () => metadataEntries.filter(([key]) => key !== 'legacySource' && key !== 'link'),
+    () =>
+      metadataEntries.filter(
+        ([key]) =>
+          key !== 'legacySource' &&
+          key !== 'link' &&
+          key !== 'builtIn' &&
+          key !== 'atlasSource' &&
+          key !== 'polityImportKey' &&
+          key !== 'importedSnapshotCount'
+      ),
     [metadataEntries]
   );
 
@@ -1102,6 +1128,10 @@ const ReferenceEntityPage: React.FC = () => {
   }, [entity?.kind, incomingEntityRelations, outgoingStructureRelations]);
   const topicContextCount = topicRelations.length + subjectRelations.length;
   const structureLinkCount = outgoingStructureRelations.length + incomingEntityRelations.length;
+  const politySnapshotYears = useMemo(
+    () => politySnapshots.map((snapshot) => snapshot.snapshotYear).sort((left, right) => left - right),
+    [politySnapshots]
+  );
   const overviewCards = useMemo<OverviewCard[]>(() => {
     if (!entity) return [];
 
@@ -1155,9 +1185,24 @@ const ReferenceEntityPage: React.FC = () => {
     if (isPolityLikeKind(entity.kind)) {
       const containedScope = getGroupByKey(structureGroups, 'contained-scope');
       const placedIn = getGroupByKey(structureGroups, 'placed-in');
+      const firstSnapshotYear = politySnapshotYears[0];
+      const lastSnapshotYear = politySnapshotYears[politySnapshotYears.length - 1];
+      const snapshotRange =
+        politySnapshotYears.length === 0
+          ? 'No imported atlas snapshots yet.'
+          : politySnapshotYears.length === 1
+            ? `${formatYear(firstSnapshotYear)}`
+            : `${formatYear(firstSnapshotYear)} - ${formatYear(lastSnapshotYear)}`;
 
       return [
         chronologyCard,
+        {
+          key: 'atlas-snapshots',
+          eyebrow: 'Atlas Snapshots',
+          value: `${politySnapshots.length} snapshots`,
+          meta: snapshotRange,
+          hint: 'Year-specific geometries imported from the historical basemap dataset.',
+        },
         {
           key: 'contained-scope',
           eyebrow: 'Contained Scope',
@@ -1274,6 +1319,8 @@ const ReferenceEntityPage: React.FC = () => {
     entity,
     itemRelations.length,
     legacySource,
+    politySnapshotYears,
+    politySnapshots.length,
     relatedItems.length,
     structureGroups,
     topicContextCount,
@@ -1330,13 +1377,16 @@ const ReferenceEntityPage: React.FC = () => {
     setError(null);
 
     const payload: UpdateReferenceEntity = {
-      kind: formState.kind,
-      title: formState.title.trim(),
       summary: formState.summary.trim(),
       description: formState.description.trim(),
-      startYear: parseYearInput(formState.startYear),
-      endYear: parseYearInput(formState.endYear),
     };
+
+    if (!isBuiltInPolity) {
+      payload.kind = formState.kind;
+      payload.title = formState.title.trim();
+      payload.startYear = parseYearInput(formState.startYear);
+      payload.endYear = parseYearInput(formState.endYear);
+    }
 
     try {
       const updatedEntity = await updateReferenceEntity(entity.id, payload);
@@ -1535,6 +1585,7 @@ const ReferenceEntityPage: React.FC = () => {
           </p>
           <div className="reference-entity-hero-meta">
             <span>{formatTimespan(entity)}</span>
+            {entity.kind === 'polity' ? <span>{politySnapshots.length} atlas snapshots</span> : null}
             <span>
               {authoredWorks.length || itemRelations.length}{' '}
               {entity.kind === 'person' ? 'item links' : 'linked items'}
@@ -1581,7 +1632,13 @@ const ReferenceEntityPage: React.FC = () => {
                 <div className="reference-entity-grid-inline">
                   <div className="reference-entity-field">
                     <label htmlFor="kind">Kind</label>
-                    <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
+                    <select
+                      id="kind"
+                      name="kind"
+                      value={formState.kind}
+                      onChange={handleChange}
+                      disabled={isBuiltInPolity}
+                    >
                       {kindOptions.map((kind) => (
                         <option key={kind} value={kind}>
                           {kindLabels[kind]}
@@ -1592,7 +1649,14 @@ const ReferenceEntityPage: React.FC = () => {
 
                   <div className="reference-entity-field">
                     <label htmlFor="title">Title</label>
-                    <input id="title" name="title" value={formState.title} onChange={handleChange} required />
+                    <input
+                      id="title"
+                      name="title"
+                      value={formState.title}
+                      onChange={handleChange}
+                      required
+                      disabled={isBuiltInPolity}
+                    />
                   </div>
                 </div>
 
@@ -1606,6 +1670,7 @@ const ReferenceEntityPage: React.FC = () => {
                       value={formState.startYear}
                       onChange={handleChange}
                       placeholder="-500 for BCE"
+                      disabled={isBuiltInPolity}
                     />
                   </div>
 
@@ -1618,9 +1683,20 @@ const ReferenceEntityPage: React.FC = () => {
                       value={formState.endYear}
                       onChange={handleChange}
                       placeholder="1453"
+                      disabled={isBuiltInPolity}
                     />
                   </div>
                 </div>
+
+                {isBuiltInPolity ? (
+                  <div className="reference-entity-note">
+                    <strong>Built-in atlas identity</strong>
+                    <span>
+                      This polity keeps its name and chronology from the historical basemap import. Use this page
+                      to enrich its summary, description, links, and contextual notes.
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="reference-entity-field">
                   <label htmlFor="summary">Summary</label>
@@ -1641,14 +1717,16 @@ const ReferenceEntityPage: React.FC = () => {
                   <button type="submit" disabled={saving}>
                     {saving ? 'Saving...' : 'Save changes'}
                   </button>
-                  <button
-                    type="button"
-                    className="reference-entity-danger"
-                    onClick={handleDelete}
-                    disabled={deleting}
-                  >
-                    {deleting ? 'Removing...' : 'Remove entity'}
-                  </button>
+                  {!isBuiltInPolity ? (
+                    <button
+                      type="button"
+                      className="reference-entity-danger"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                    >
+                      {deleting ? 'Removing...' : 'Remove entity'}
+                    </button>
+                  ) : null}
                 </div>
               </form>
             </section>
@@ -1833,6 +1911,59 @@ const ReferenceEntityPage: React.FC = () => {
               <div className="reference-entity-stack">{structureGroups.map(renderStructureGroup)}</div>
             )}
           </section>
+
+          {entity.kind === 'polity' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Snapshots</span>
+                  <h2>
+                    Atlas snapshots
+                    <EntityHint text="Year-specific basemap geometries imported for this built-in polity." />
+                    <span className="reference-entity-count-badge">{politySnapshots.length}</span>
+                  </h2>
+                </div>
+              </div>
+
+              {politySnapshotsError ? (
+                <div className="reference-entity-error">{politySnapshotsError}</div>
+              ) : politySnapshots.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No atlas snapshots have been imported for this polity yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {politySnapshots.map((snapshot) => (
+                    <article key={snapshot.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>{formatYear(snapshot.snapshotYear)}</span>
+                            <span>{snapshot.source}</span>
+                            {snapshot.borderPrecision !== undefined ? (
+                              <span>border {snapshot.borderPrecision}</span>
+                            ) : null}
+                          </div>
+                          <h3>{snapshot.titleAtSnapshot}</h3>
+                        </div>
+                        <span>{formatDate(snapshot.updatedAt)}</span>
+                      </div>
+                      <div className="reference-entity-card-grid">
+                        <div>
+                          <strong>Part of</strong>
+                          <span>{snapshot.parentLabel || 'Standalone polity'}</span>
+                        </div>
+                        <div>
+                          <strong>Subject</strong>
+                          <span>{snapshot.subjectLabel || 'No subject note'}</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
 
           {displayMetadataEntries.length > 0 ? (
             <section className="reference-entity-panel">
