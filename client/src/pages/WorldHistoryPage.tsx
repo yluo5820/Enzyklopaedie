@@ -5,7 +5,7 @@ import maplibregl, {
   NavigationControl,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalSearchMatch,
@@ -13,6 +13,8 @@ import type {
   HistoricalBasemapPolityMatchResponse,
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
+  PersonPolityMembershipDetail,
+  PolitySnapshot,
   ReferenceEntity,
 } from '@enzyklopaedie/shared';
 import {
@@ -27,6 +29,8 @@ import {
   fetchHistoricalAtlasEntities,
   fetchReferenceEntities,
   fetchReferenceEntityFormationMemberships,
+  fetchReferenceEntityPersonPolityMemberships,
+  fetchReferenceEntityPolitySnapshots,
   promoteHistoricalAtlasEntity,
   saveHistoricalAtlasEntity,
   searchHistoricalAtlas,
@@ -143,6 +147,22 @@ const formatTimespan = (entity: Pick<CanonicalHistoricalEntity, 'startYear' | 'e
     return `Until ${formatYear(entity.endYear)}`;
   }
   return 'No date range recorded';
+};
+
+const formatMembershipTimespan = (membership: {
+  startYear?: number;
+  endYear?: number;
+}) => {
+  if (membership.startYear !== undefined && membership.endYear !== undefined) {
+    return `${formatYear(membership.startYear)} - ${formatYear(membership.endYear)}`;
+  }
+  if (membership.startYear !== undefined) {
+    return `From ${formatYear(membership.startYear)}`;
+  }
+  if (membership.endYear !== undefined) {
+    return `Until ${formatYear(membership.endYear)}`;
+  }
+  return 'Undated';
 };
 
 const isVisibleInYear = (entity: Pick<CanonicalHistoricalEntity, 'startYear' | 'endYear'>, year: number) => {
@@ -298,6 +318,7 @@ const escapeHtml = (value: string) =>
     .replace(/'/g, '&#39;');
 
 const WorldHistoryPage: React.FC = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [atlasEntities, setAtlasEntities] = useState<CanonicalHistoricalEntity[]>([]);
@@ -360,8 +381,17 @@ const WorldHistoryPage: React.FC = () => {
   const [atlasMembershipError, setAtlasMembershipError] = useState<string | null>(null);
   const [atlasMembershipMessage, setAtlasMembershipMessage] = useState<string | null>(null);
   const [activeFormationMemberships, setActiveFormationMemberships] = useState<FormationMembershipDetail[]>([]);
+  const [selectedPolitySnapshots, setSelectedPolitySnapshots] = useState<PolitySnapshot[]>([]);
+  const [selectedPolityFormationMemberships, setSelectedPolityFormationMemberships] = useState<
+    FormationMembershipDetail[]
+  >([]);
+  const [selectedPolityPersonMemberships, setSelectedPolityPersonMemberships] = useState<
+    PersonPolityMembershipDetail[]
+  >([]);
   const [formationWorkspaceError, setFormationWorkspaceError] = useState<string | null>(null);
+  const [selectedPolityContextError, setSelectedPolityContextError] = useState<string | null>(null);
   const [isLoadingFormationWorkspace, setIsLoadingFormationWorkspace] = useState(false);
+  const [isLoadingSelectedPolityContext, setIsLoadingSelectedPolityContext] = useState(false);
   const [savingPersonPlacement, setSavingPersonPlacement] = useState(false);
   const [savingFormationPlacement, setSavingFormationPlacement] = useState(false);
   const [removingFormationMembershipId, setRemovingFormationMembershipId] = useState<number | null>(null);
@@ -653,6 +683,53 @@ const WorldHistoryPage: React.FC = () => {
       ) ?? null
     );
   }, [activeFormationMemberships, resolvedPolityMatch]);
+  const selectedPolitySnapshotYears = useMemo(
+    () =>
+      selectedPolitySnapshots
+        .map((snapshot) => snapshot.snapshotYear)
+        .sort((left, right) => left - right),
+    [selectedPolitySnapshots]
+  );
+  const selectedPolitySnapshotRange = useMemo(() => {
+    if (selectedPolitySnapshotYears.length === 0) return 'No imported atlas snapshots yet.';
+
+    const first = selectedPolitySnapshotYears[0];
+    const last = selectedPolitySnapshotYears[selectedPolitySnapshotYears.length - 1];
+    if (first === last) return formatYear(first);
+    return `${formatYear(first)} - ${formatYear(last)}`;
+  }, [selectedPolitySnapshotYears]);
+  const selectedPolityPeoplePreview = useMemo(
+    () =>
+      [...selectedPolityPersonMemberships]
+        .sort(
+          (left, right) =>
+            (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+              sensitivity: 'base',
+            }) || left.id - right.id
+        )
+        .slice(0, 6),
+    [selectedPolityPersonMemberships]
+  );
+  const selectedPolityFormationPreview = useMemo(
+    () =>
+      [...selectedPolityFormationMemberships]
+        .sort(
+          (left, right) =>
+            (left.formationTitle || '').localeCompare(right.formationTitle || '', undefined, {
+              sensitivity: 'base',
+            }) || left.id - right.id
+        )
+        .slice(0, 6),
+    [selectedPolityFormationMemberships]
+  );
+
+  const openEntityPage = (entityId: number) => {
+    navigate(`/entities/${entityId}`, {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+      },
+    });
+  };
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -840,6 +917,44 @@ const WorldHistoryPage: React.FC = () => {
 
     void loadResolvedPolityMatch();
   }, [activeBasemapYear, selectedBasemapFeature, selectedBasemapFeatureId]);
+
+  useEffect(() => {
+    const loadSelectedPolityContext = async () => {
+      if (!resolvedPolityReferenceEntityId) {
+        setSelectedPolitySnapshots([]);
+        setSelectedPolityFormationMemberships([]);
+        setSelectedPolityPersonMemberships([]);
+        setSelectedPolityContextError(null);
+        return;
+      }
+
+      setIsLoadingSelectedPolityContext(true);
+      setSelectedPolityContextError(null);
+      try {
+        const [snapshots, formationMemberships, personMemberships] = await Promise.all([
+          fetchReferenceEntityPolitySnapshots(resolvedPolityReferenceEntityId),
+          fetchReferenceEntityFormationMemberships(resolvedPolityReferenceEntityId),
+          fetchReferenceEntityPersonPolityMemberships(resolvedPolityReferenceEntityId),
+        ]);
+        setSelectedPolitySnapshots(snapshots);
+        setSelectedPolityFormationMemberships(formationMemberships);
+        setSelectedPolityPersonMemberships(personMemberships);
+      } catch (error) {
+        setSelectedPolitySnapshots([]);
+        setSelectedPolityFormationMemberships([]);
+        setSelectedPolityPersonMemberships([]);
+        setSelectedPolityContextError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to load the selected polity context.'
+        );
+      } finally {
+        setIsLoadingSelectedPolityContext(false);
+      }
+    };
+
+    void loadSelectedPolityContext();
+  }, [resolvedPolityReferenceEntityId]);
 
   useEffect(() => {
     setAtlasMembershipError(null);
@@ -1898,7 +2013,7 @@ const WorldHistoryPage: React.FC = () => {
                                     <button
                                       type="button"
                                       className="is-primary"
-                                      onClick={() => navigate(`/entities/${resolvedPolityMatch.referenceEntity.id}`)}
+                                      onClick={() => openEntityPage(resolvedPolityMatch.referenceEntity.id)}
                                     >
                                       Open polity
                                     </button>
@@ -2067,6 +2182,97 @@ const WorldHistoryPage: React.FC = () => {
                                       ) : null}
                                     </form>
                                   ) : null}
+                                  {isLoadingSelectedPolityContext ? (
+                                    <div className="world-history-empty">
+                                      Loading polity context…
+                                    </div>
+                                  ) : selectedPolityContextError ? (
+                                    <div className="world-history-feedback is-error">
+                                      {selectedPolityContextError}
+                                    </div>
+                                  ) : (
+                                    <div className="world-history-context-grid">
+                                      <article className="world-history-context-card">
+                                        <span className="world-history-panel__eyebrow">Atlas history</span>
+                                        <strong>{selectedPolitySnapshots.length} snapshots</strong>
+                                        <span>{selectedPolitySnapshotRange}</span>
+                                        {selectedPolitySnapshotYears.length > 0 ? (
+                                          <div className="world-history-context-card__chips">
+                                            {selectedPolitySnapshotYears
+                                              .slice(
+                                                Math.max(
+                                                  selectedPolitySnapshotYears.length - 5,
+                                                  0
+                                                )
+                                              )
+                                              .map((snapshotYear) => (
+                                                <span key={snapshotYear} className="world-history-count-chip">
+                                                  {formatYear(snapshotYear)}
+                                                </span>
+                                              ))}
+                                          </div>
+                                        ) : null}
+                                      </article>
+
+                                      <article className="world-history-context-card">
+                                        <span className="world-history-panel__eyebrow">People here</span>
+                                        <strong>{selectedPolityPersonMemberships.length}</strong>
+                                        <span>
+                                          {selectedPolityPersonMemberships.length === 0
+                                            ? 'No people are placed in this polity yet.'
+                                            : 'People currently attached to this polity.'}
+                                        </span>
+                                        {selectedPolityPeoplePreview.length > 0 ? (
+                                          <div className="world-history-context-list">
+                                            {selectedPolityPeoplePreview.map((membership) => (
+                                              <button
+                                                key={`polity-person-${membership.id}`}
+                                                type="button"
+                                                className="world-history-context-list__item"
+                                                onClick={() =>
+                                                  membership.personEntityId
+                                                    ? openEntityPage(membership.personEntityId)
+                                                    : undefined
+                                                }
+                                              >
+                                                <strong>{membership.personTitle || 'Untitled person'}</strong>
+                                                <span>{formatMembershipTimespan(membership)}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </article>
+
+                                      <article className="world-history-context-card">
+                                        <span className="world-history-panel__eyebrow">Formations</span>
+                                        <strong>{selectedPolityFormationMemberships.length}</strong>
+                                        <span>
+                                          {selectedPolityFormationMemberships.length === 0
+                                            ? 'No formations include this polity yet.'
+                                            : 'Formations currently built from this polity.'}
+                                        </span>
+                                        {selectedPolityFormationPreview.length > 0 ? (
+                                          <div className="world-history-context-list">
+                                            {selectedPolityFormationPreview.map((membership) => (
+                                              <button
+                                                key={`polity-formation-${membership.id}`}
+                                                type="button"
+                                                className="world-history-context-list__item"
+                                                onClick={() =>
+                                                  membership.formationEntityId
+                                                    ? openEntityPage(membership.formationEntityId)
+                                                    : undefined
+                                                }
+                                              >
+                                                <strong>{membership.formationTitle || 'Untitled formation'}</strong>
+                                                <span>{formatMembershipTimespan(membership)}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </article>
+                                    </div>
+                                  )}
                                 </article>
                               </div>
                             </div>
@@ -2107,10 +2313,10 @@ const WorldHistoryPage: React.FC = () => {
                                       >
                                         Focus atlas record
                                       </button>
-                                      {entity.referenceEntityId ? (
+                                      {typeof entity.referenceEntityId === 'number' ? (
                                         <button
                                           type="button"
-                                          onClick={() => navigate(`/entities/${entity.referenceEntityId}`)}
+                                          onClick={() => openEntityPage(entity.referenceEntityId!)}
                                         >
                                           Open linked entity
                                         </button>
@@ -2159,7 +2365,7 @@ const WorldHistoryPage: React.FC = () => {
                                       <button
                                         type="button"
                                         className="is-primary"
-                                        onClick={() => navigate(`/entities/${entity.id}`)}
+                                        onClick={() => openEntityPage(entity.id)}
                                       >
                                         Open local entity
                                       </button>
@@ -2196,7 +2402,7 @@ const WorldHistoryPage: React.FC = () => {
                     <button
                       type="button"
                       className="world-history-clear-button"
-                      onClick={() => navigate(`/entities/${activeFormation.id}`)}
+                      onClick={() => openEntityPage(activeFormation.id)}
                     >
                       Open formation
                     </button>
@@ -2367,7 +2573,7 @@ const WorldHistoryPage: React.FC = () => {
                             className={`world-history-shelf-card ${
                               membership.polityEntityId === resolvedPolityMatch?.referenceEntity.id ? 'is-selected' : ''
                             }`}
-                            onClick={() => navigate(`/entities/${membership.polityEntityId}`)}
+                            onClick={() => openEntityPage(membership.polityEntityId)}
                           >
                             <div className="world-history-shelf-card__head">
                               <div className="world-history-shelf-card__chips">
