@@ -180,28 +180,6 @@ export interface ActivityEvent {
   occurredAt: string;
 }
 
-export interface Place {
-  id: number;
-  name: string;
-  latitude?: number;
-  longitude?: number;
-  bounds?: Record<string, unknown>;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface TimelineEvent {
-  id: number;
-  title: string;
-  startYear?: number;
-  endYear?: number;
-  placeId?: number;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface PolitySnapshot {
   id: number;
   referenceEntityId: number;
@@ -409,12 +387,6 @@ export type UpdateKnowledgeReview = Partial<Omit<KnowledgeReview, 'id' | 'create
 
 export type NewActivityEvent = Omit<ActivityEvent, 'id' | 'occurredAt'>;
 export type UpdateActivityEvent = Partial<Omit<ActivityEvent, 'id' | 'occurredAt'>>;
-
-export type NewPlace = Omit<Place, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdatePlace = Partial<Omit<Place, 'id' | 'createdAt' | 'updatedAt'>>;
-
-export type NewTimelineEvent = Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateTimelineEvent = Partial<Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>>;
 
 export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdatePolitySnapshot = Partial<

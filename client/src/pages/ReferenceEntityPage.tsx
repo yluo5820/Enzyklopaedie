@@ -516,7 +516,6 @@ const ReferenceEntityPage: React.FC = () => {
     loadEntity();
   }, [entityId]);
 
-  const legacySource = typeof entity?.metadata?.legacySource === 'string' ? entity.metadata.legacySource : null;
   const isBuiltInPolity = entity ? isBuiltInPolityReferenceEntity(entity) : false;
   const editableKindOptions = useMemo(() => {
     if (!entity) return primaryKindOptions;
@@ -536,7 +535,6 @@ const ReferenceEntityPage: React.FC = () => {
     () =>
       metadataEntries.filter(
         ([key]) =>
-          key !== 'legacySource' &&
           key !== 'link' &&
           key !== 'builtIn' &&
           key !== 'atlasSource' &&
@@ -916,7 +914,7 @@ const ReferenceEntityPage: React.FC = () => {
       key: 'chronology',
       eyebrow: 'Chronology',
       value: formatTimespan(entity),
-      meta: legacySource ? `Imported from ${legacySource}` : 'Native atlas record',
+      meta: isBuiltInPolity ? 'Built-in atlas record' : 'Native atlas record',
       hint: 'The main time span currently recorded for this entity.',
     };
 
@@ -1042,8 +1040,8 @@ const ReferenceEntityPage: React.FC = () => {
     authoredWorks.length,
     entity,
     itemRelations.length,
-    legacySource,
     formationMembershipPolityEntries,
+    isBuiltInPolity,
     politySnapshotYears,
     politySnapshots.length,
     relatedItems.length,
@@ -1383,9 +1381,7 @@ const ReferenceEntityPage: React.FC = () => {
             <span>{topicContextCount} topic links</span>
             <span>{structureLinkCount} entity links</span>
             <span>Updated {formatDate(entity.updatedAt)}</span>
-            {legacySource ? (
-              <span>Imported from {legacySource}</span>
-            ) : isBuiltInPolity ? (
+            {isBuiltInPolity ? (
               <span>Built-in atlas record</span>
             ) : (
               <span>Primary atlas record</span>

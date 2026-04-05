@@ -119,9 +119,6 @@ const formatTimespan = (entity: ReferenceEntity) => {
   return start || end || 'No chronology yet';
 };
 
-const getLegacySource = (entity: ReferenceEntity) =>
-  typeof entity.metadata?.legacySource === 'string' ? entity.metadata.legacySource : null;
-
 const parseYearInput = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
@@ -482,7 +479,6 @@ const ReferenceEntitiesPage: React.FC = () => {
 
                   <div className="reference-entities-items">
                     {group.entities.map((entity) => {
-                      const legacySource = getLegacySource(entity);
                       const isBuiltInPolity = isBuiltInPolityReferenceEntity(entity);
                       return (
                         <article key={entity.id} className="reference-entities-item">
@@ -493,11 +489,6 @@ const ReferenceEntitiesPage: React.FC = () => {
                                 {isBuiltInPolity ? (
                                   <span className="reference-entities-badge reference-entities-badge-secondary">
                                     atlas built-in
-                                  </span>
-                                ) : null}
-                                {legacySource ? (
-                                  <span className="reference-entities-badge reference-entities-badge-secondary">
-                                    imported from {legacySource}
                                   </span>
                                 ) : null}
                               </div>

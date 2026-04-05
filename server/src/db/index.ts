@@ -197,29 +197,6 @@ export async function initializeDatabase() {
       occurredAt TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS places (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      latitude REAL,
-      longitude REAL,
-      bounds TEXT,
-      description TEXT,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS timeline_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      startYear INTEGER,
-      endYear INTEGER,
-      placeId INTEGER,
-      description TEXT,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL,
-      FOREIGN KEY (placeId) REFERENCES places(id)
-    );
-
     CREATE TABLE IF NOT EXISTS canonical_historical_entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       authority TEXT NOT NULL,
@@ -376,6 +353,11 @@ export async function initializeDatabase() {
      WHERE entityType IN ('topic', 'study_topic')`
   );
 
+  await db.exec(`
+    DROP TABLE IF EXISTS timeline_events;
+    DROP TABLE IF EXISTS places;
+  `);
+
   await seedCoreRecords(db);
 
   console.log('Database initialized successfully with new schema.');
@@ -404,8 +386,6 @@ export const resetDatabase = async () => {
       DELETE FROM activity_events;
       DELETE FROM study_topics;
       DELETE FROM exhibits;
-      DELETE FROM timeline_events;
-      DELETE FROM places;
       DELETE FROM knowledge_items;
       DELETE FROM reference_entities;
       DELETE FROM topics;

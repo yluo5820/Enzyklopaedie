@@ -340,27 +340,30 @@ Once this refactor is in place, the world-history page should behave like this:
 
 This makes the map the canonical entrance into atlas entities instead of a separate visual toy.
 
-## Recommended Implementation Order
+## Current Status
 
-1. Add the design doc and freeze the vocabulary.
-2. Add the new tables:
-   - `polity_snapshots`
-   - `formation_memberships`
-   - `person_polity_memberships`
-3. Add a temporary compatibility layer so the app can still read old entity kinds.
-4. Write the historical-basemaps importer.
-5. Filter anonymous regions out of the current map runtime.
-6. Seed imported polities into `reference_entities`.
-7. Refactor entity list and entity page from five kinds to three.
-8. Add polity membership editing to people and formations.
-9. Only then remove the old `nation` / `civilization` / `era` / `place` assumptions from the UI.
+Completed:
 
-## Immediate Next Step
+1. The vocabulary is frozen around `person / polity / formation`.
+2. `polity_snapshots` and `formation_memberships` are in the active schema.
+3. Anonymous basemap regions are filtered out of the world-history UI.
+4. The historical-basemaps importer seeds built-in `polity` records and snapshots.
+5. The atlas UI now centers on the three active kinds.
+6. The old `nation / civilization / era / place` local atlas kinds have been removed from the active UI and model.
 
-The first implementation slice should be:
+Still open:
 
-1. filter anonymous basemap regions out of the world-history UI
-2. add `polity_snapshots`
-3. write the importer that seeds `reference_entities(kind = polity)` from `historical-basemaps`
+1. add explicit `person_polity_memberships`
+2. make people use those memberships directly in the atlas UI
+3. let the world-history page open directly into built-in polity records and formation composition
+4. decide whether a later dedicated `site` layer is needed for cities, battle sites, and other true places
 
-That is the smallest step that materially moves the atlas into the new model.
+## Next Implementation Slice
+
+The next meaningful implementation step is:
+
+1. add `person_polity_memberships`
+2. surface them on person pages
+3. let selected world-history regions bridge directly into polity membership and formation workflows
+
+That is the next step that materially deepens the atlas after the current migration cleanup.

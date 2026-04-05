@@ -82,7 +82,9 @@ The current automated coverage is intentionally focused on the new foundation:
 
 - shared domain helpers
 - item create/update API flow
-- unified reference entity create/update/delete API flow
+- atlas entity create/update/delete API flow
+- formation membership and atlas relation flow
+- world-history basemap and importer flow
 - activity event recording for knowledge changes
 
 For a focused server-only pass, run:
@@ -98,18 +100,18 @@ After `npm start`, use this path:
 1. Open `http://localhost:5173`
 2. Check the home dashboard loads
 3. Open `Items` and add an item
-4. Open `Entities` and confirm the reference atlas loads with imported legacy entities like `Unknown Author`
-5. Create a new entity, open it, update it, and delete it again
+4. Open `Entities` and confirm the atlas loads with `person`, `polity`, and `formation`
+5. Create a new formation, open it, update it, and delete it again
 6. Open `Subjects` and confirm the tree loads with `Ontology` as the root
 7. Open a subject page from the tree, create a child subject, and create a topic inside that subject
 8. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
-9. Open an item, attach or create a topic, then link it to an entity such as a person or era
+9. Open an item, attach or create a topic, then link it to an entity such as a person, polity, or formation
 10. Open that entity page and confirm the linked topic and item appear in its context sections
-11. Add an entity-to-entity structural link such as a civilization containing an era or nation
+11. Add an entity-to-entity structural link such as a formation containing a polity or a formation belonging to a broader formation
 12. Add a note, a task, and a review on the item page
 13. Return to `Home` and confirm recent activity entries appear
-14. Open `World History` and confirm the map and timeline render
-15. If `data/historical-basemaps` is present, confirm local boundary snapshots load too
+14. Open `World History` and confirm the map, basemap snapshot, and timeline render
+15. If `data/historical-basemaps` is present, confirm local boundary snapshots and built-in polity resolution load too
 
 ## Working Notes
 
