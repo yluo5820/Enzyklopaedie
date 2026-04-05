@@ -3,6 +3,7 @@ import type {
   FormationMembershipDetail,
   KnowledgeRelationDetail,
   KnowledgeRelationType,
+  PersonPolityMembershipDetail,
   PolitySnapshot,
   ReferenceEntity,
   ReferenceEntityKind,
@@ -11,13 +12,16 @@ import type {
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   createFormationMembership,
+  createPersonPolityMembership,
   createReferenceEntityRelation,
   deleteFormationMembership,
+  deletePersonPolityMembership,
   deleteReferenceEntity,
   deleteReferenceEntityRelation,
   fetchReferenceEntities,
   fetchReferenceEntity,
   fetchReferenceEntityFormationMemberships,
+  fetchReferenceEntityPersonPolityMemberships,
   fetchReferenceEntityOutgoingRelations,
   fetchReferenceEntityPolitySnapshots,
   fetchReferenceEntityRelations,
@@ -97,18 +101,8 @@ type OverviewCard = {
 const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
   person: {
     helperText:
-      'Use structure modes here for provenance and setting: which polity this person belongs to, which formation they belong to, and who influenced them.',
+      'Use structure modes here for broader formations and influence links. Direct polity membership is managed in its own section.',
     modes: [
-      {
-        id: 'polity',
-        label: 'Polity',
-        description: 'Place the person in a polity.',
-        allowedRelationTypes: ['located_in'],
-        defaultRelationType: 'located_in',
-        notePlaceholder: 'Optional note about this polity membership',
-        targetPrompt: 'Choose a polity',
-        targetKinds: ['polity'],
-      },
       {
         id: 'formation',
         label: 'Formation',
@@ -407,7 +401,7 @@ const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
 const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'formation') return 'Formation structure';
   if (kind === 'polity') return 'Polity structure';
-  return 'Affiliations and influences';
+  return 'Formation and influence links';
 };
 
 const getKindPriority = (kindOrder: ReferenceEntityKind[]) =>
@@ -435,6 +429,7 @@ const ReferenceEntityPage: React.FC = () => {
   const [outgoingRelations, setOutgoingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [politySnapshots, setPolitySnapshots] = useState<PolitySnapshot[]>([]);
   const [formationMemberships, setFormationMemberships] = useState<FormationMembershipDetail[]>([]);
+  const [personPolityMemberships, setPersonPolityMemberships] = useState<PersonPolityMembershipDetail[]>([]);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
     title: '',
@@ -454,18 +449,27 @@ const ReferenceEntityPage: React.FC = () => {
     endYear: '',
     note: '',
   });
+  const [personPolityMembershipForm, setPersonPolityMembershipForm] = useState({
+    polityEntityId: '',
+    startYear: '',
+    endYear: '',
+    note: '',
+  });
   const [structureModeId, setStructureModeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [showStructureComposer, setShowStructureComposer] = useState(false);
   const [showFormationMembershipComposer, setShowFormationMembershipComposer] = useState(false);
+  const [showPersonPolityMembershipComposer, setShowPersonPolityMembershipComposer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
   const [savingFormationMembership, setSavingFormationMembership] = useState(false);
+  const [savingPersonPolityMembership, setSavingPersonPolityMembership] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [politySnapshotsError, setPolitySnapshotsError] = useState<string | null>(null);
   const [formationMembershipsError, setFormationMembershipsError] = useState<string | null>(null);
+  const [personPolityMembershipsError, setPersonPolityMembershipsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!Number.isInteger(entityId) || entityId <= 0) {
@@ -483,14 +487,21 @@ const ReferenceEntityPage: React.FC = () => {
             fetchReferenceEntityRelations(entityId),
             fetchReferenceEntityOutgoingRelations(entityId),
           ]);
-        const fetchedPolitySnapshots =
+        const [
+          fetchedPolitySnapshots,
+          fetchedFormationMemberships,
+          fetchedPersonPolityMemberships,
+        ] = await Promise.all([
           fetchedEntity.kind === 'polity'
-            ? await fetchReferenceEntityPolitySnapshots(entityId)
-            : [];
-        const fetchedFormationMemberships =
+            ? fetchReferenceEntityPolitySnapshots(entityId)
+            : Promise.resolve([]),
           fetchedEntity.kind === 'polity' || fetchedEntity.kind === 'formation'
-            ? await fetchReferenceEntityFormationMemberships(entityId)
-            : [];
+            ? fetchReferenceEntityFormationMemberships(entityId)
+            : Promise.resolve([]),
+          fetchedEntity.kind === 'person' || fetchedEntity.kind === 'polity'
+            ? fetchReferenceEntityPersonPolityMemberships(entityId)
+            : Promise.resolve([]),
+        ]);
 
         setEntity(fetchedEntity);
         setAllEntities(fetchedEntities);
@@ -498,16 +509,20 @@ const ReferenceEntityPage: React.FC = () => {
         setOutgoingRelations(fetchedOutgoingRelations);
         setPolitySnapshots(fetchedPolitySnapshots);
         setFormationMemberships(fetchedFormationMemberships);
+        setPersonPolityMemberships(fetchedPersonPolityMemberships);
         setPolitySnapshotsError(null);
         setFormationMembershipsError(null);
+        setPersonPolityMembershipsError(null);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load reference entity.');
         setPolitySnapshots([]);
         setFormationMemberships([]);
+        setPersonPolityMemberships([]);
         setPolitySnapshotsError('Failed to load atlas snapshots.');
         setFormationMembershipsError('Failed to load formation memberships.');
+        setPersonPolityMembershipsError('Failed to load person polity memberships.');
       } finally {
         setLoading(false);
       }
@@ -610,6 +625,20 @@ const ReferenceEntityPage: React.FC = () => {
         (membership) => typeof membership.formationEntityId === 'number'
       ),
     [formationMemberships]
+  );
+  const personMembershipPolityEntries = useMemo(
+    () =>
+      personPolityMemberships.filter(
+        (membership) => typeof membership.polityEntityId === 'number'
+      ),
+    [personPolityMemberships]
+  );
+  const polityPersonMembershipEntries = useMemo(
+    () =>
+      personPolityMemberships.filter(
+        (membership) => typeof membership.personEntityId === 'number'
+      ),
+    [personPolityMemberships]
   );
 
   const outgoingStructureRelations = useMemo(
@@ -753,12 +782,6 @@ const ReferenceEntityPage: React.FC = () => {
     const incomingPartOf = incomingEntityRelations
       .filter((relation) => relation.relationType === 'part_of')
       .map((relation) => createStructureEntry(relation, 'incoming', 'member here'));
-    const outgoingLocatedIn = outgoingStructureRelations
-      .filter((relation) => relation.relationType === 'located_in')
-      .map((relation) => createStructureEntry(relation, 'outgoing', 'located in'));
-    const incomingLocatedIn = incomingEntityRelations
-      .filter((relation) => relation.relationType === 'located_in')
-      .map((relation) => createStructureEntry(relation, 'incoming', 'located here'));
     const outgoingInfluencedBy = outgoingStructureRelations
       .filter((relation) => relation.relationType === 'influenced_by')
       .map((relation) => createStructureEntry(relation, 'outgoing', 'influenced by'));
@@ -774,8 +797,6 @@ const ReferenceEntityPage: React.FC = () => {
 
     const containedScope = [...outgoingContains, ...incomingPartOf];
     const broaderContainers = [...outgoingPartOf, ...incomingContains];
-    const locationWithin = outgoingLocatedIn;
-    const hostedHere = incomingLocatedIn;
     const influencedBy = outgoingInfluencedBy;
     const influences = incomingInfluencedBy;
     const peerLinks = [...outgoingRelatedTo, ...incomingRelatedTo];
@@ -784,8 +805,6 @@ const ReferenceEntityPage: React.FC = () => {
       [
         ...containedScope,
         ...broaderContainers,
-        ...locationWithin,
-        ...hostedHere,
         ...influencedBy,
         ...influences,
         ...peerLinks,
@@ -818,11 +837,11 @@ const ReferenceEntityPage: React.FC = () => {
     if (entity?.kind === 'person') {
       return finalizeGroups([
         buildStructureGroup(
-          'belongs-in',
-          'Belongs in',
-          'Polity and formation links that situate this person.',
-          'No polity or formation links yet.',
-          [...locationWithin, ...broaderContainers]
+          'formation-links',
+          'Formation links',
+          'Broader formations explicitly linked to this person.',
+          'No broader formations are linked yet.',
+          broaderContainers
         ),
         buildStructureGroup(
           'influenced-by',
@@ -863,13 +882,6 @@ const ReferenceEntityPage: React.FC = () => {
           `Formation links for this ${entity.kind}.`,
           'No broader formation links yet.',
           broaderContainers
-        ),
-        buildStructureGroup(
-          'located-here',
-          'Located here',
-          `People that are placed inside this ${entity.kind}.`,
-          'Nothing is located here yet.',
-          hostedHere
         ),
         buildStructureGroup(
           'peer-links',
@@ -919,7 +931,7 @@ const ReferenceEntityPage: React.FC = () => {
     };
 
     if (entity.kind === 'person') {
-      const belongsIn = getGroupByKey(structureGroups, 'belongs-in');
+      const formationLinks = getGroupByKey(structureGroups, 'formation-links');
       const influencedByGroup = getGroupByKey(structureGroups, 'influenced-by');
       const influencesGroup = getGroupByKey(structureGroups, 'influences');
       const peerLinksGroup = getGroupByKey(structureGroups, 'peer-links');
@@ -931,11 +943,18 @@ const ReferenceEntityPage: React.FC = () => {
       return [
         chronologyCard,
         {
-          key: 'belongs-in',
-          eyebrow: 'Belongs In',
-          value: `${belongsIn?.entries.length ?? 0} links`,
-          meta: getGroupPreview(belongsIn, 'No polity or formation links yet.'),
-          hint: 'Polity and formation links that situate this person.',
+          key: 'polities',
+          eyebrow: 'Polities',
+          value: `${personMembershipPolityEntries.length} memberships`,
+          meta: personMembershipPolityEntries.length
+            ? personMembershipPolityEntries
+                .slice(0, 2)
+                .map((membership) => membership.polityTitle || 'Untitled polity')
+                .join(' · ')
+            : formationLinks?.entries.length
+              ? `${formationLinks.entries.length} formation links`
+              : 'No polity memberships yet.',
+          hint: 'Direct polity memberships attached to this person.',
         },
         {
           key: 'works',
@@ -979,11 +998,18 @@ const ReferenceEntityPage: React.FC = () => {
           hint: 'Year-specific geometries imported from the historical basemap dataset.',
         },
         {
-          key: 'contained-scope',
-          eyebrow: 'Contained Scope',
-          value: `${containedScope?.entries.length ?? 0} links`,
-          meta: getGroupPreview(containedScope, 'No contained scope recorded yet.'),
-          hint: `Sub-polities or member entities recorded inside this ${entity.kind}.`,
+          key: 'people',
+          eyebrow: 'People Here',
+          value: `${polityPersonMembershipEntries.length} memberships`,
+          meta: polityPersonMembershipEntries.length
+            ? polityPersonMembershipEntries
+                .slice(0, 2)
+                .map((membership) => membership.personTitle || 'Untitled person')
+                .join(' · ')
+            : containedScope?.entries.length
+              ? `${containedScope.entries.length} contained scope links`
+              : 'No people assigned yet.',
+          hint: `People explicitly placed inside this ${entity.kind}.`,
         },
         {
           key: 'placed-in',
@@ -1042,8 +1068,10 @@ const ReferenceEntityPage: React.FC = () => {
     itemRelations.length,
     formationMembershipPolityEntries,
     isBuiltInPolity,
+    personMembershipPolityEntries,
     politySnapshotYears,
     politySnapshots.length,
+    polityPersonMembershipEntries,
     relatedItems.length,
     structureGroups,
     topicContextCount,
@@ -1115,6 +1143,15 @@ const ReferenceEntityPage: React.FC = () => {
       const updatedEntity = await updateReferenceEntity(entity.id, payload);
       setEntity(updatedEntity);
       setFormState(toFormState(updatedEntity));
+      if (updatedEntity.kind !== 'polity') {
+        setPolitySnapshots([]);
+      }
+      if (updatedEntity.kind !== 'formation' && updatedEntity.kind !== 'polity') {
+        setFormationMemberships([]);
+      }
+      if (updatedEntity.kind !== 'person' && updatedEntity.kind !== 'polity') {
+        setPersonPolityMemberships([]);
+      }
       startTransition(() => {
         setAllEntities((current) =>
           current.map((existing) => (existing.id === updatedEntity.id ? updatedEntity : existing))
@@ -1213,6 +1250,51 @@ const ReferenceEntityPage: React.FC = () => {
     }
   };
 
+  const handleCreatePersonPolityMembership = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!entity || entity.kind !== 'person' || !personPolityMembershipForm.polityEntityId) return;
+
+    setSavingPersonPolityMembership(true);
+    setError(null);
+
+    try {
+      const membership = await createPersonPolityMembership(entity.id, {
+        polityEntityId: Number(personPolityMembershipForm.polityEntityId),
+        startYear: parseYearInput(personPolityMembershipForm.startYear) ?? undefined,
+        endYear: parseYearInput(personPolityMembershipForm.endYear) ?? undefined,
+        note: personPolityMembershipForm.note.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setPersonPolityMemberships((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === membership.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = membership;
+            return next;
+          }
+          return [...current, membership];
+        });
+      });
+
+      setPersonPolityMembershipForm({
+        polityEntityId: '',
+        startYear: '',
+        endYear: '',
+        note: '',
+      });
+    } catch (membershipError) {
+      console.error(membershipError);
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : 'Failed to create person polity membership.'
+      );
+    } finally {
+      setSavingPersonPolityMembership(false);
+    }
+  };
+
   const handleDeleteRelation = async (relationId: number) => {
     if (!entity) return;
 
@@ -1243,6 +1325,26 @@ const ReferenceEntityPage: React.FC = () => {
         membershipError instanceof Error
           ? membershipError.message
           : 'Failed to delete formation membership.'
+      );
+    }
+  };
+
+  const handleDeletePersonPolityMembership = async (
+    membership: PersonPolityMembershipDetail
+  ) => {
+    try {
+      await deletePersonPolityMembership(membership.personEntityId, membership.id);
+      startTransition(() => {
+        setPersonPolityMemberships((current) =>
+          current.filter((entry) => entry.id !== membership.id)
+        );
+      });
+    } catch (membershipError) {
+      console.error(membershipError);
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : 'Failed to delete person polity membership.'
       );
     }
   };
@@ -1560,7 +1662,7 @@ const ReferenceEntityPage: React.FC = () => {
               </div>
             </div>
 
-            {itemContextGroups.length === 0 ? (
+          {itemContextGroups.length === 0 ? (
               <div className="reference-entity-empty">
                 {entity.kind === 'person'
                   ? 'No items point to this person yet.'
@@ -1572,6 +1674,149 @@ const ReferenceEntityPage: React.FC = () => {
               </div>
             )}
           </section>
+
+          {entity.kind === 'person' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Membership</span>
+                  <h2>
+                    Polity memberships
+                    <EntityHint text="Direct polity memberships place this person inside built-in atlas polities. Use the structure section for broader formations and influence links." />
+                    <span className="reference-entity-count-badge">{personMembershipPolityEntries.length}</span>
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="reference-entity-secondary-button"
+                  onClick={() => setShowPersonPolityMembershipComposer((current) => !current)}
+                >
+                  {showPersonPolityMembershipComposer ? 'Close' : 'Manage polities'}
+                </button>
+              </div>
+
+              {showPersonPolityMembershipComposer ? (
+                <section className="reference-entity-inline-panel">
+                  <form className="reference-entity-form" onSubmit={handleCreatePersonPolityMembership}>
+                    <div className="reference-entity-grid-inline">
+                      <div className="reference-entity-field">
+                        <label htmlFor="person-polity-membership-polity">Polity</label>
+                        <select
+                          id="person-polity-membership-polity"
+                          value={personPolityMembershipForm.polityEntityId}
+                          onChange={(event) =>
+                            setPersonPolityMembershipForm((current) => ({
+                              ...current,
+                              polityEntityId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Choose a polity</option>
+                          {selectablePolities.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="reference-entity-field">
+                        <label htmlFor="person-polity-membership-start">Start Year</label>
+                        <input
+                          id="person-polity-membership-start"
+                          type="number"
+                          value={personPolityMembershipForm.startYear}
+                          onChange={(event) =>
+                            setPersonPolityMembershipForm((current) => ({
+                              ...current,
+                              startYear: event.target.value,
+                            }))
+                          }
+                          placeholder="-323"
+                        />
+                      </div>
+                      <div className="reference-entity-field">
+                        <label htmlFor="person-polity-membership-end">End Year</label>
+                        <input
+                          id="person-polity-membership-end"
+                          type="number"
+                          value={personPolityMembershipForm.endYear}
+                          onChange={(event) =>
+                            setPersonPolityMembershipForm((current) => ({
+                              ...current,
+                              endYear: event.target.value,
+                            }))
+                          }
+                          placeholder="1453"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="reference-entity-field">
+                      <label htmlFor="person-polity-membership-note">Note</label>
+                      <input
+                        id="person-polity-membership-note"
+                        value={personPolityMembershipForm.note}
+                        onChange={(event) =>
+                          setPersonPolityMembershipForm((current) => ({
+                            ...current,
+                            note: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional note about this polity membership"
+                      />
+                    </div>
+
+                    <div className="reference-entity-inline-actions">
+                      <button
+                        type="submit"
+                        disabled={savingPersonPolityMembership || !personPolityMembershipForm.polityEntityId}
+                      >
+                        {savingPersonPolityMembership ? 'Adding…' : 'Add polity'}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              ) : null}
+
+              {personPolityMembershipsError ? (
+                <div className="reference-entity-error">{personPolityMembershipsError}</div>
+              ) : personMembershipPolityEntries.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No polity memberships have been recorded for this person yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {personMembershipPolityEntries.map((membership) => (
+                    <article key={membership.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>Polity</span>
+                            {membership.startYear !== undefined || membership.endYear !== undefined ? (
+                              <span>
+                                {`${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`}
+                              </span>
+                            ) : null}
+                          </div>
+                          {membership.politySlug ? (
+                            <Link to={`/entities/${membership.polityEntityId}`} className="reference-entity-card-link">
+                              <h3>{membership.polityTitle || 'Untitled polity'}</h3>
+                            </Link>
+                          ) : (
+                            <h3>{membership.polityTitle || 'Untitled polity'}</h3>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => handleDeletePersonPolityMembership(membership)}>
+                          Delete
+                        </button>
+                      </div>
+                      {membership.note ? <p>{membership.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
 
           {entity.kind === 'formation' ? (
             <section className="reference-entity-panel">
@@ -1707,6 +1952,59 @@ const ReferenceEntityPage: React.FC = () => {
                           )}
                         </div>
                         <button type="button" onClick={() => handleDeleteFormationMembership(membership.id)}>
+                          Delete
+                        </button>
+                      </div>
+                      {membership.note ? <p>{membership.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {entity.kind === 'polity' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Membership</span>
+                  <h2>
+                    People in this polity
+                    <EntityHint text="People explicitly assigned to this polity through person memberships." />
+                    <span className="reference-entity-count-badge">{polityPersonMembershipEntries.length}</span>
+                  </h2>
+                </div>
+              </div>
+
+              {personPolityMembershipsError ? (
+                <div className="reference-entity-error">{personPolityMembershipsError}</div>
+              ) : polityPersonMembershipEntries.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No people have been placed inside this polity yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {polityPersonMembershipEntries.map((membership) => (
+                    <article key={membership.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>Person</span>
+                            {membership.startYear !== undefined || membership.endYear !== undefined ? (
+                              <span>
+                                {`${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`}
+                              </span>
+                            ) : null}
+                          </div>
+                          {membership.personSlug ? (
+                            <Link to={`/entities/${membership.personEntityId}`} className="reference-entity-card-link">
+                              <h3>{membership.personTitle || 'Untitled person'}</h3>
+                            </Link>
+                          ) : (
+                            <h3>{membership.personTitle || 'Untitled person'}</h3>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => handleDeletePersonPolityMembership(membership)}>
                           Delete
                         </button>
                       </div>

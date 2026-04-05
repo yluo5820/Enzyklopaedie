@@ -108,7 +108,6 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
     switch (fromEntityKind as ReferenceEntityKind | undefined) {
       case 'person':
         if (toEntityKind === 'person') return relationTypeSet('influenced_by', 'related_to');
-        if (toEntityKind === 'polity') return relationTypeSet('located_in');
         if (toEntityKind === 'formation') return relationTypeSet('part_of');
         return relationTypeSet();
       case 'formation':

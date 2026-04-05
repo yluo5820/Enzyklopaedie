@@ -20,9 +20,11 @@ import {
   NewKnowledgeReview,
   NewKnowledgeTask,
   NewFormationMembership,
+  NewPersonPolityMembership,
   NewReferenceEntity,
   NewSubject,
   NewTopic,
+  PersonPolityMembershipDetail,
   PolitySnapshot,
   ReferenceEntity,
   Subject,
@@ -413,6 +415,16 @@ export const fetchReferenceEntityFormationMemberships = async (
   return response.json();
 };
 
+export const fetchReferenceEntityPersonPolityMemberships = async (
+  id: number
+): Promise<PersonPolityMembershipDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-polity-memberships`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch person polity memberships');
+  }
+  return response.json();
+};
+
 export const fetchReferenceEntityOutgoingRelations = async (
   id: number
 ): Promise<KnowledgeRelationDetail[]> => {
@@ -462,6 +474,24 @@ export const createFormationMembership = async (
   return response.json();
 };
 
+export const createPersonPolityMembership = async (
+  id: number,
+  membershipData: Omit<NewPersonPolityMembership, 'personEntityId'>
+): Promise<PersonPolityMembershipDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-polity-memberships`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(membershipData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create person polity membership');
+  }
+  return response.json();
+};
+
 export const deleteReferenceEntityRelation = async (
   id: number,
   relationId: number
@@ -487,6 +517,22 @@ export const deleteFormationMembership = async (
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(errorPayload?.message || 'Failed to delete formation membership');
+  }
+};
+
+export const deletePersonPolityMembership = async (
+  id: number,
+  membershipId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/reference-entities/${id}/person-polity-memberships/${membershipId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to delete person polity membership');
   }
 };
 

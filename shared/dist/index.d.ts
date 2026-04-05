@@ -153,6 +153,21 @@ export interface FormationMembershipDetail extends FormationMembership {
     polityTitle?: string;
     politySlug?: string;
 }
+export interface PersonPolityMembership {
+    id: number;
+    personEntityId: number;
+    polityEntityId: number;
+    startYear?: number;
+    endYear?: number;
+    note?: string;
+    createdAt: string;
+}
+export interface PersonPolityMembershipDetail extends PersonPolityMembership {
+    personTitle?: string;
+    personSlug?: string;
+    polityTitle?: string;
+    politySlug?: string;
+}
 export interface HistoricalBasemapPolityMatchResponse {
     referenceEntity: ReferenceEntity;
     snapshot: PolitySnapshot;
@@ -274,6 +289,8 @@ export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updat
 export type UpdatePolitySnapshot = Partial<Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewFormationMembership = Omit<FormationMembership, 'id' | 'createdAt'>;
 export type UpdateFormationMembership = Partial<Omit<FormationMembership, 'id' | 'createdAt'>>;
+export type NewPersonPolityMembership = Omit<PersonPolityMembership, 'id' | 'createdAt'>;
+export type UpdatePersonPolityMembership = Partial<Omit<PersonPolityMembership, 'id' | 'createdAt'>>;
 export type NewCanonicalHistoricalEntity = Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateCanonicalHistoricalEntity = Partial<Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewExhibit = Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>;

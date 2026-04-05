@@ -622,6 +622,39 @@
   gap: 10px;
 }
 
+.world-history-inline-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(123, 77, 42, 0.12);
+}
+
+.world-history-inline-form__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(110px, 0.8fr));
+  gap: 10px;
+}
+
+.world-history-inline-form select,
+.world-history-inline-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font: inherit;
+}
+
+.world-history-inline-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .world-history-shelf {
   display: grid;
   gap: 10px;
@@ -765,6 +798,10 @@
   .world-history-selected-card__thumb {
     width: 60px;
     height: 80px;
+  }
+
+  .world-history-inline-form__grid {
+    grid-template-columns: 1fr;
   }
 
   .world-history-timeline__meta {

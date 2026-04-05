@@ -259,6 +259,19 @@ export async function initializeDatabase() {
       FOREIGN KEY (polityEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS person_polity_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personEntityId INTEGER NOT NULL,
+      polityEntityId INTEGER NOT NULL,
+      startYear INTEGER,
+      endYear INTEGER,
+      note TEXT,
+      createdAt TEXT NOT NULL,
+      UNIQUE(personEntityId, polityEntityId, startYear, endYear),
+      FOREIGN KEY (personEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (polityEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS exhibits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -283,6 +296,10 @@ export async function initializeDatabase() {
       ON formation_memberships(formationEntityId, startYear, polityEntityId);
     CREATE INDEX IF NOT EXISTS idx_formation_memberships_polity
       ON formation_memberships(polityEntityId, startYear, formationEntityId);
+    CREATE INDEX IF NOT EXISTS idx_person_polity_memberships_person
+      ON person_polity_memberships(personEntityId, startYear, polityEntityId);
+    CREATE INDEX IF NOT EXISTS idx_person_polity_memberships_polity
+      ON person_polity_memberships(polityEntityId, startYear, personEntityId);
     CREATE INDEX IF NOT EXISTS idx_study_topics_subject ON study_topics(subjectId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_study_topics_parent ON study_topics(parentTopicId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_knowledge_item_study_topics_item
@@ -377,6 +394,7 @@ export const resetDatabase = async () => {
       DELETE FROM canonical_historical_entity_geometries;
       DELETE FROM canonical_historical_entities;
       DELETE FROM formation_memberships;
+      DELETE FROM person_polity_memberships;
       DELETE FROM polity_snapshots;
       DELETE FROM knowledge_item_study_topics;
       DELETE FROM knowledge_notes;

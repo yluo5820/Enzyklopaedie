@@ -15,6 +15,8 @@ import type {
   ReferenceEntity,
 } from '@enzyklopaedie/shared';
 import {
+  createFormationMembership,
+  createPersonPolityMembership,
   deleteHistoricalAtlasEntity,
   fetchHistoricalBasemapLayer,
   fetchHistoricalBasemapManifest,
@@ -117,6 +119,14 @@ const formatYear = (year?: number) => {
   if (year === undefined) return 'Undated';
   if (year < 0) return `${Math.abs(year)} BCE`;
   return `${year} CE`;
+};
+
+const parseOptionalYearInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) ? parsed : undefined;
 };
 
 const formatTimespan = (entity: Pick<CanonicalHistoricalEntity, 'startYear' | 'endYear'>) => {
@@ -326,6 +336,24 @@ const WorldHistoryPage: React.FC = () => {
   const [resolvedPolityMatch, setResolvedPolityMatch] =
     useState<HistoricalBasemapPolityMatchResponse | null>(null);
   const [resolvedPolityMatchError, setResolvedPolityMatchError] = useState<string | null>(null);
+  const [showPersonPlacementComposer, setShowPersonPlacementComposer] = useState(false);
+  const [showFormationPlacementComposer, setShowFormationPlacementComposer] = useState(false);
+  const [personPlacementForm, setPersonPlacementForm] = useState({
+    personEntityId: '',
+    startYear: '',
+    endYear: '',
+    note: '',
+  });
+  const [formationPlacementForm, setFormationPlacementForm] = useState({
+    formationEntityId: '',
+    startYear: '',
+    endYear: '',
+    note: '',
+  });
+  const [atlasMembershipError, setAtlasMembershipError] = useState<string | null>(null);
+  const [atlasMembershipMessage, setAtlasMembershipMessage] = useState<string | null>(null);
+  const [savingPersonPlacement, setSavingPersonPlacement] = useState(false);
+  const [savingFormationPlacement, setSavingFormationPlacement] = useState(false);
   const [basemapQuery, setBasemapQuery] = useState('');
   const [year, setYear] = useState(() => {
     const parsed = Number(searchParams.get('year'));
@@ -586,6 +614,20 @@ const WorldHistoryPage: React.FC = () => {
     selectedBasemapFeature,
     selectedBasemapLabel,
   ]);
+  const personEntities = useMemo(
+    () =>
+      [...referenceEntities]
+        .filter((entity) => entity.kind === 'person')
+        .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
+    [referenceEntities]
+  );
+  const formationEntities = useMemo(
+    () =>
+      [...referenceEntities]
+        .filter((entity) => entity.kind === 'formation')
+        .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
+    [referenceEntities]
+  );
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -734,6 +776,25 @@ const WorldHistoryPage: React.FC = () => {
   }, [activeBasemapYear, selectedBasemapFeature, selectedBasemapFeatureId]);
 
   useEffect(() => {
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+    setShowPersonPlacementComposer(false);
+    setShowFormationPlacementComposer(false);
+    setPersonPlacementForm({
+      personEntityId: '',
+      startYear: '',
+      endYear: '',
+      note: '',
+    });
+    setFormationPlacementForm({
+      formationEntityId: '',
+      startYear: '',
+      endYear: '',
+      note: '',
+    });
+  }, [resolvedPolityReferenceEntityId]);
+
+  useEffect(() => {
     if (!hoveredBasemapFeatureId) return;
 
     const stillPresent = activeBasemapFeatures.some(
@@ -852,6 +913,80 @@ const WorldHistoryPage: React.FC = () => {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to create a local entity.');
     } finally {
       setPendingPromoteId(null);
+    }
+  };
+
+  const handleCreatePersonPlacement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resolvedPolityMatch || !personPlacementForm.personEntityId) return;
+
+    setSavingPersonPlacement(true);
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+
+    try {
+      const personEntity = personEntities.find(
+        (entry) => String(entry.id) === personPlacementForm.personEntityId
+      );
+      await createPersonPolityMembership(Number(personPlacementForm.personEntityId), {
+        polityEntityId: resolvedPolityMatch.referenceEntity.id,
+        startYear: parseOptionalYearInput(personPlacementForm.startYear),
+        endYear: parseOptionalYearInput(personPlacementForm.endYear),
+        note: personPlacementForm.note.trim() || undefined,
+      });
+      setAtlasMembershipMessage(
+        `Placed "${personEntity?.title || 'Selected person'}" in "${resolvedPolityMatch.referenceEntity.title}".`
+      );
+      setPersonPlacementForm({
+        personEntityId: '',
+        startYear: '',
+        endYear: '',
+        note: '',
+      });
+      setShowPersonPlacementComposer(false);
+    } catch (error) {
+      setAtlasMembershipError(
+        error instanceof Error ? error.message : 'Failed to place the person in this polity.'
+      );
+    } finally {
+      setSavingPersonPlacement(false);
+    }
+  };
+
+  const handleCreateFormationPlacement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resolvedPolityMatch || !formationPlacementForm.formationEntityId) return;
+
+    setSavingFormationPlacement(true);
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+
+    try {
+      const formationEntity = formationEntities.find(
+        (entry) => String(entry.id) === formationPlacementForm.formationEntityId
+      );
+      await createFormationMembership(Number(formationPlacementForm.formationEntityId), {
+        polityEntityId: resolvedPolityMatch.referenceEntity.id,
+        startYear: parseOptionalYearInput(formationPlacementForm.startYear),
+        endYear: parseOptionalYearInput(formationPlacementForm.endYear),
+        note: formationPlacementForm.note.trim() || undefined,
+      });
+      setAtlasMembershipMessage(
+        `Added "${resolvedPolityMatch.referenceEntity.title}" to "${formationEntity?.title || 'Selected formation'}".`
+      );
+      setFormationPlacementForm({
+        formationEntityId: '',
+        startYear: '',
+        endYear: '',
+        note: '',
+      });
+      setShowFormationPlacementComposer(false);
+    } catch (error) {
+      setAtlasMembershipError(
+        error instanceof Error ? error.message : 'Failed to add this polity to the formation.'
+      );
+    } finally {
+      setSavingFormationPlacement(false);
     }
   };
 
@@ -1642,7 +1777,171 @@ const WorldHistoryPage: React.FC = () => {
                                     >
                                       Open polity
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowPersonPlacementComposer((current) => !current)
+                                      }
+                                    >
+                                      {showPersonPlacementComposer ? 'Close person placement' : 'Place person here'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowFormationPlacementComposer((current) => !current)
+                                      }
+                                    >
+                                      {showFormationPlacementComposer ? 'Close formation link' : 'Add to formation'}
+                                    </button>
                                   </div>
+                                  {showPersonPlacementComposer ? (
+                                    <form
+                                      className="world-history-inline-form"
+                                      onSubmit={handleCreatePersonPlacement}
+                                    >
+                                      <div className="world-history-inline-form__grid">
+                                        <select
+                                          value={personPlacementForm.personEntityId}
+                                          onChange={(event) =>
+                                            setPersonPlacementForm((current) => ({
+                                              ...current,
+                                              personEntityId: event.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value="">Choose a person</option>
+                                          {personEntities.map((entry) => (
+                                            <option key={entry.id} value={entry.id}>
+                                              {entry.title}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="number"
+                                          value={personPlacementForm.startYear}
+                                          onChange={(event) =>
+                                            setPersonPlacementForm((current) => ({
+                                              ...current,
+                                              startYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="Start year"
+                                        />
+                                        <input
+                                          type="number"
+                                          value={personPlacementForm.endYear}
+                                          onChange={(event) =>
+                                            setPersonPlacementForm((current) => ({
+                                              ...current,
+                                              endYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="End year"
+                                        />
+                                      </div>
+                                      <input
+                                        value={personPlacementForm.note}
+                                        onChange={(event) =>
+                                          setPersonPlacementForm((current) => ({
+                                            ...current,
+                                            note: event.target.value,
+                                          }))
+                                        }
+                                        placeholder="Optional note about this polity membership"
+                                      />
+                                      <div className="world-history-inline-form__actions">
+                                        <button
+                                          type="submit"
+                                          className="is-primary"
+                                          disabled={
+                                            savingPersonPlacement ||
+                                            !personPlacementForm.personEntityId
+                                          }
+                                        >
+                                          {savingPersonPlacement ? 'Placing…' : 'Confirm placement'}
+                                        </button>
+                                      </div>
+                                      {personEntities.length === 0 ? (
+                                        <span className="world-history-hint">
+                                          Create a person in the atlas first, then place them here.
+                                        </span>
+                                      ) : null}
+                                    </form>
+                                  ) : null}
+                                  {showFormationPlacementComposer ? (
+                                    <form
+                                      className="world-history-inline-form"
+                                      onSubmit={handleCreateFormationPlacement}
+                                    >
+                                      <div className="world-history-inline-form__grid">
+                                        <select
+                                          value={formationPlacementForm.formationEntityId}
+                                          onChange={(event) =>
+                                            setFormationPlacementForm((current) => ({
+                                              ...current,
+                                              formationEntityId: event.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value="">Choose a formation</option>
+                                          {formationEntities.map((entry) => (
+                                            <option key={entry.id} value={entry.id}>
+                                              {entry.title}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="number"
+                                          value={formationPlacementForm.startYear}
+                                          onChange={(event) =>
+                                            setFormationPlacementForm((current) => ({
+                                              ...current,
+                                              startYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="Start year"
+                                        />
+                                        <input
+                                          type="number"
+                                          value={formationPlacementForm.endYear}
+                                          onChange={(event) =>
+                                            setFormationPlacementForm((current) => ({
+                                              ...current,
+                                              endYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="End year"
+                                        />
+                                      </div>
+                                      <input
+                                        value={formationPlacementForm.note}
+                                        onChange={(event) =>
+                                          setFormationPlacementForm((current) => ({
+                                            ...current,
+                                            note: event.target.value,
+                                          }))
+                                        }
+                                        placeholder="Optional note about this formation membership"
+                                      />
+                                      <div className="world-history-inline-form__actions">
+                                        <button
+                                          type="submit"
+                                          className="is-primary"
+                                          disabled={
+                                            savingFormationPlacement ||
+                                            !formationPlacementForm.formationEntityId
+                                          }
+                                        >
+                                          {savingFormationPlacement ? 'Adding…' : 'Add membership'}
+                                        </button>
+                                      </div>
+                                      {formationEntities.length === 0 ? (
+                                        <span className="world-history-hint">
+                                          Create a formation first, then add this polity into it.
+                                        </span>
+                                      ) : null}
+                                    </form>
+                                  ) : null}
                                 </article>
                               </div>
                             </div>
@@ -1748,6 +2047,12 @@ const WorldHistoryPage: React.FC = () => {
                         </div>
                       )}
                     </div>
+                    {atlasMembershipError ? (
+                      <div className="world-history-feedback is-error">{atlasMembershipError}</div>
+                    ) : null}
+                    {atlasMembershipMessage ? (
+                      <div className="world-history-feedback">{atlasMembershipMessage}</div>
+                    ) : null}
                     <p>
                       This region comes from the local historical-basemaps snapshot, not from your pinned authority
                       shelf. Use it as the geographic frame for the current year.

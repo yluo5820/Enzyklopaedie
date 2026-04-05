@@ -212,6 +212,23 @@ export interface FormationMembershipDetail extends FormationMembership {
   politySlug?: string;
 }
 
+export interface PersonPolityMembership {
+  id: number;
+  personEntityId: number;
+  polityEntityId: number;
+  startYear?: number;
+  endYear?: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PersonPolityMembershipDetail extends PersonPolityMembership {
+  personTitle?: string;
+  personSlug?: string;
+  polityTitle?: string;
+  politySlug?: string;
+}
+
 export interface HistoricalBasemapPolityMatchResponse {
   referenceEntity: ReferenceEntity;
   snapshot: PolitySnapshot;
@@ -394,6 +411,8 @@ export type UpdatePolitySnapshot = Partial<
 >;
 export type NewFormationMembership = Omit<FormationMembership, 'id' | 'createdAt'>;
 export type UpdateFormationMembership = Partial<Omit<FormationMembership, 'id' | 'createdAt'>>;
+export type NewPersonPolityMembership = Omit<PersonPolityMembership, 'id' | 'createdAt'>;
+export type UpdatePersonPolityMembership = Partial<Omit<PersonPolityMembership, 'id' | 'createdAt'>>;
 
 export type NewCanonicalHistoricalEntity = Omit<
   CanonicalHistoricalEntity,

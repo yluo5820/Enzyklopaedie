@@ -1191,6 +1191,59 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(polityMemberships.length, 1);
     assert.equal(polityMemberships[0].formationTitle, 'Eastern Roman World');
 
+    const personPolityMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polityEntityId: polityEntity.id,
+          startYear: 1045,
+          endYear: 1078,
+          note: 'Primary polity membership for this test person.',
+        }),
+      }
+    );
+    assert.equal(personPolityMembershipResponse.status, 201);
+    const personPolityMembership = await personPolityMembershipResponse.json();
+    assert.equal(personPolityMembership.personEntityId, personEntity.id);
+    assert.equal(personPolityMembership.polityEntityId, polityEntity.id);
+    assert.equal(personPolityMembership.personTitle, 'Michael Psellos');
+    assert.equal(personPolityMembership.polityTitle, 'Anatolian Theme');
+
+    const personPolityMembershipListResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships`
+    );
+    assert.equal(personPolityMembershipListResponse.status, 200);
+    const personPolityMemberships = await personPolityMembershipListResponse.json();
+    assert.equal(personPolityMemberships.length, 1);
+    assert.equal(personPolityMemberships[0].polityTitle, 'Anatolian Theme');
+
+    const polityPersonMembershipListResponse = await request(
+      `/api/reference-entities/${polityEntity.id}/person-polity-memberships`
+    );
+    assert.equal(polityPersonMembershipListResponse.status, 200);
+    const polityPersonMemberships = await polityPersonMembershipListResponse.json();
+    assert.equal(polityPersonMemberships.length, 1);
+    assert.equal(polityPersonMemberships[0].personTitle, 'Michael Psellos');
+
+    const invalidPersonPolityRelationResponse = await request(
+      `/api/reference-entities/${personEntity.id}/outgoing-relations`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEntityId: polityEntity.id,
+          relationType: 'located_in',
+        }),
+      }
+    );
+    assert.equal(invalidPersonPolityRelationResponse.status, 400);
+    assert.match(
+      (await invalidPersonPolityRelationResponse.json()).message,
+      /not allowed from person to polity/
+    );
+
     const activityResponse = await request('/api/activity-events?limit=50');
     assert.equal(activityResponse.status, 200);
     const activityEvents = await activityResponse.json();
@@ -1224,6 +1277,21 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(formationMembershipListAfterDeleteResponse.status, 200);
     const formationMembershipsAfterDelete = await formationMembershipListAfterDeleteResponse.json();
     assert.equal(formationMembershipsAfterDelete.length, 0);
+
+    const deletePersonPolityMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships/${personPolityMembership.id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    assert.equal(deletePersonPolityMembershipResponse.status, 204);
+
+    const personPolityMembershipListAfterDeleteResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships`
+    );
+    assert.equal(personPolityMembershipListAfterDeleteResponse.status, 200);
+    const personPolityMembershipsAfterDelete = await personPolityMembershipListAfterDeleteResponse.json();
+    assert.equal(personPolityMembershipsAfterDelete.length, 0);
 
     const deleteResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
       method: 'DELETE',
