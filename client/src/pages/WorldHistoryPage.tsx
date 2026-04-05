@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalSearchMatch,
+  FormationMembershipDetail,
   HistoricalBasemapPolityMatchResponse,
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
@@ -17,6 +18,7 @@ import type {
 import {
   createFormationMembership,
   createPersonPolityMembership,
+  deleteFormationMembership,
   deleteHistoricalAtlasEntity,
   fetchHistoricalBasemapLayer,
   fetchHistoricalBasemapManifest,
@@ -24,6 +26,7 @@ import {
   fetchHistoricalAtlasGeometry,
   fetchHistoricalAtlasEntities,
   fetchReferenceEntities,
+  fetchReferenceEntityFormationMemberships,
   promoteHistoricalAtlasEntity,
   saveHistoricalAtlasEntity,
   searchHistoricalAtlas,
@@ -331,6 +334,10 @@ const WorldHistoryPage: React.FC = () => {
     const parsed = Number(searchParams.get('selected'));
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
+  const [activeFormationId, setActiveFormationId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('formation'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
   const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
   const [hoveredBasemapFeatureId, setHoveredBasemapFeatureId] = useState<string | null>(null);
   const [resolvedPolityMatch, setResolvedPolityMatch] =
@@ -352,8 +359,12 @@ const WorldHistoryPage: React.FC = () => {
   });
   const [atlasMembershipError, setAtlasMembershipError] = useState<string | null>(null);
   const [atlasMembershipMessage, setAtlasMembershipMessage] = useState<string | null>(null);
+  const [activeFormationMemberships, setActiveFormationMemberships] = useState<FormationMembershipDetail[]>([]);
+  const [formationWorkspaceError, setFormationWorkspaceError] = useState<string | null>(null);
+  const [isLoadingFormationWorkspace, setIsLoadingFormationWorkspace] = useState(false);
   const [savingPersonPlacement, setSavingPersonPlacement] = useState(false);
   const [savingFormationPlacement, setSavingFormationPlacement] = useState(false);
+  const [removingFormationMembershipId, setRemovingFormationMembershipId] = useState<number | null>(null);
   const [basemapQuery, setBasemapQuery] = useState('');
   const [year, setYear] = useState(() => {
     const parsed = Number(searchParams.get('year'));
@@ -628,6 +639,20 @@ const WorldHistoryPage: React.FC = () => {
         .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
     [referenceEntities]
   );
+  const activeFormation = useMemo(
+    () => formationEntities.find((entity) => entity.id === activeFormationId) ?? null,
+    [activeFormationId, formationEntities]
+  );
+  const selectedPolityFormationMembership = useMemo(() => {
+    if (!resolvedPolityMatch) return null;
+
+    return (
+      activeFormationMemberships.find(
+        (membership) =>
+          membership.polityEntityId === resolvedPolityMatch.referenceEntity.id
+      ) ?? null
+    );
+  }, [activeFormationMemberships, resolvedPolityMatch]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -643,10 +668,13 @@ const WorldHistoryPage: React.FC = () => {
     if (selectedAtlasEntityId) nextParams.set('selected', String(selectedAtlasEntityId));
     else nextParams.delete('selected');
 
+    if (activeFormationId) nextParams.set('formation', String(activeFormationId));
+    else nextParams.delete('formation');
+
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
     }
-  }, [query, searchKind, year, selectedAtlasEntityId, searchParams, setSearchParams]);
+  }, [activeFormationId, query, searchKind, year, selectedAtlasEntityId, searchParams, setSearchParams]);
 
   useEffect(() => {
     const loadHistoricalBasemapManifest = async () => {
@@ -709,6 +737,44 @@ const WorldHistoryPage: React.FC = () => {
 
     void loadReferenceEntities();
   }, []);
+
+  useEffect(() => {
+    if (!activeFormationId && formationEntities[0]) {
+      setActiveFormationId(formationEntities[0].id);
+    }
+  }, [activeFormationId, formationEntities]);
+
+  useEffect(() => {
+    if (activeFormationId && !formationEntities.some((entity) => entity.id === activeFormationId)) {
+      setActiveFormationId(formationEntities[0]?.id ?? null);
+    }
+  }, [activeFormationId, formationEntities]);
+
+  useEffect(() => {
+    const loadFormationWorkspace = async () => {
+      if (!activeFormationId) {
+        setActiveFormationMemberships([]);
+        setFormationWorkspaceError(null);
+        return;
+      }
+
+      setIsLoadingFormationWorkspace(true);
+      setFormationWorkspaceError(null);
+      try {
+        const memberships = await fetchReferenceEntityFormationMemberships(activeFormationId);
+        setActiveFormationMemberships(memberships);
+      } catch (error) {
+        setActiveFormationMemberships([]);
+        setFormationWorkspaceError(
+          error instanceof Error ? error.message : 'Failed to load the active formation.'
+        );
+      } finally {
+        setIsLoadingFormationWorkspace(false);
+      }
+    };
+
+    void loadFormationWorkspace();
+  }, [activeFormationId]);
 
   useEffect(() => {
     const loadHistoricalBasemapLayer = async () => {
@@ -787,12 +853,25 @@ const WorldHistoryPage: React.FC = () => {
       note: '',
     });
     setFormationPlacementForm({
-      formationEntityId: '',
+      formationEntityId: activeFormationId ? String(activeFormationId) : '',
       startYear: '',
       endYear: '',
       note: '',
     });
-  }, [resolvedPolityReferenceEntityId]);
+  }, [activeFormationId, resolvedPolityReferenceEntityId]);
+
+  useEffect(() => {
+    if (!activeFormationId) return;
+
+    setFormationPlacementForm((current) =>
+      current.formationEntityId
+        ? current
+        : {
+            ...current,
+            formationEntityId: String(activeFormationId),
+          }
+    );
+  }, [activeFormationId]);
 
   useEffect(() => {
     if (!hoveredBasemapFeatureId) return;
@@ -965,12 +1044,23 @@ const WorldHistoryPage: React.FC = () => {
       const formationEntity = formationEntities.find(
         (entry) => String(entry.id) === formationPlacementForm.formationEntityId
       );
-      await createFormationMembership(Number(formationPlacementForm.formationEntityId), {
+      const membership = await createFormationMembership(Number(formationPlacementForm.formationEntityId), {
         polityEntityId: resolvedPolityMatch.referenceEntity.id,
         startYear: parseOptionalYearInput(formationPlacementForm.startYear),
         endYear: parseOptionalYearInput(formationPlacementForm.endYear),
         note: formationPlacementForm.note.trim() || undefined,
       });
+      if (Number(formationPlacementForm.formationEntityId) === activeFormationId) {
+        setActiveFormationMemberships((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === membership.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = membership;
+            return next;
+          }
+          return [...current, membership];
+        });
+      }
       setAtlasMembershipMessage(
         `Added "${resolvedPolityMatch.referenceEntity.title}" to "${formationEntity?.title || 'Selected formation'}".`
       );
@@ -987,6 +1077,28 @@ const WorldHistoryPage: React.FC = () => {
       );
     } finally {
       setSavingFormationPlacement(false);
+    }
+  };
+
+  const handleRemoveFormationPlacement = async (membership: FormationMembershipDetail) => {
+    setRemovingFormationMembershipId(membership.id);
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+
+    try {
+      await deleteFormationMembership(membership.formationEntityId, membership.id);
+      setActiveFormationMemberships((current) =>
+        current.filter((entry) => entry.id !== membership.id)
+      );
+      setAtlasMembershipMessage(
+        `Removed "${membership.polityTitle || 'Selected polity'}" from "${membership.formationTitle || 'the active formation'}".`
+      );
+    } catch (error) {
+      setAtlasMembershipError(
+        error instanceof Error ? error.message : 'Failed to remove this polity from the formation.'
+      );
+    } finally {
+      setRemovingFormationMembershipId(null);
     }
   };
 
@@ -1676,7 +1788,13 @@ const WorldHistoryPage: React.FC = () => {
                 <div className="world-history-panel__header">
                   <div>
                     <span className="world-history-panel__eyebrow">Snapshot</span>
-                    <h2>{selectedBasemapFeature ? getBasemapLabel(selectedBasemapFeature) : 'Select a region'}</h2>
+                    <h2>
+                      {resolvedPolityMatch
+                        ? resolvedPolityMatch.referenceEntity.title
+                        : selectedBasemapFeature
+                          ? getBasemapLabel(selectedBasemapFeature)
+                          : 'Select a region'}
+                    </h2>
                   </div>
                   {selectedBasemapFeature ? (
                     <button
@@ -1695,6 +1813,15 @@ const WorldHistoryPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="world-history-selected-card">
+                    {resolvedPolityMatch ? (
+                      <div className="world-history-selected-card__summary">
+                        <span className="world-history-panel__eyebrow">Resolved polity</span>
+                        <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+                        <span className="world-history-hint">
+                          Snapshot region: {getBasemapLabel(selectedBasemapFeature)}
+                        </span>
+                      </div>
+                    ) : null}
                     <div className="world-history-selected-card__facts">
                       <div>
                         <span className="world-history-panel__eyebrow">Snapshot year</span>
@@ -2057,6 +2184,208 @@ const WorldHistoryPage: React.FC = () => {
                       This region comes from the local historical-basemaps snapshot, not from your pinned authority
                       shelf. Use it as the geographic frame for the current year.
                     </p>
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Formation Workspace</span>
+                    <h2>{activeFormation ? activeFormation.title : 'Choose a formation'}</h2>
+                  </div>
+                  {activeFormation ? (
+                    <button
+                      type="button"
+                      className="world-history-clear-button"
+                      onClick={() => navigate(`/entities/${activeFormation.id}`)}
+                    >
+                      Open formation
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="world-history-inline-form">
+                  <div className="world-history-inline-form__grid">
+                    <select
+                      value={activeFormationId ? String(activeFormationId) : ''}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        setActiveFormationId(Number.isInteger(nextValue) && nextValue > 0 ? nextValue : null);
+                      }}
+                    >
+                      <option value="">Choose a formation</option>
+                      {formationEntities.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {formationEntities.length === 0 ? (
+                  <div className="world-history-empty">
+                    Create a formation in the atlas, then use the map to compose it from built-in polities.
+                  </div>
+                ) : isLoadingFormationWorkspace ? (
+                  <div className="world-history-empty">Loading the active formation workspace…</div>
+                ) : formationWorkspaceError ? (
+                  <div className="world-history-feedback is-error">{formationWorkspaceError}</div>
+                ) : !activeFormation ? (
+                  <div className="world-history-empty">
+                    Pick a formation here to make map-based composition the active workflow.
+                  </div>
+                ) : (
+                  <div className="world-history-selected-card">
+                    <div className="world-history-selected-card__facts">
+                      <div>
+                        <span className="world-history-panel__eyebrow">Chronology</span>
+                        <strong>{formatTimespan(activeFormation)}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Member polities</span>
+                        <strong>{activeFormationMemberships.length}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Selected region</span>
+                        <strong>
+                          {selectedPolityFormationMembership
+                            ? 'Already included'
+                            : resolvedPolityMatch
+                              ? 'Ready to add'
+                              : 'Choose a polity'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {resolvedPolityMatch ? (
+                      <div className="world-history-selected-card__summary">
+                        <span className="world-history-panel__eyebrow">Selected polity</span>
+                        <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+                        <span className="world-history-hint">
+                          {selectedPolityFormationMembership
+                            ? selectedPolityFormationMembership.startYear !== undefined ||
+                              selectedPolityFormationMembership.endYear !== undefined
+                              ? `${selectedPolityFormationMembership.startYear !== undefined ? formatYear(selectedPolityFormationMembership.startYear) : 'Open'} - ${selectedPolityFormationMembership.endYear !== undefined ? formatYear(selectedPolityFormationMembership.endYear) : 'Open'}`
+                              : 'This polity is already part of the active formation.'
+                            : 'Use the selected region as the next member of this formation.'}
+                        </span>
+                        <div className="world-history-selected-card__actions">
+                          {selectedPolityFormationMembership ? (
+                            <button
+                              type="button"
+                              className="is-destructive"
+                              onClick={() => void handleRemoveFormationPlacement(selectedPolityFormationMembership)}
+                              disabled={removingFormationMembershipId === selectedPolityFormationMembership.id}
+                            >
+                              {removingFormationMembershipId === selectedPolityFormationMembership.id
+                                ? 'Removing…'
+                                : 'Remove from formation'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="is-primary"
+                              onClick={() => setShowFormationPlacementComposer(true)}
+                            >
+                              Add selected polity
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="world-history-empty">
+                        Select a named snapshot region that resolves to a built-in polity to compose this formation.
+                      </div>
+                    )}
+
+                    {showFormationPlacementComposer && resolvedPolityMatch && !selectedPolityFormationMembership ? (
+                      <form
+                        className="world-history-inline-form"
+                        onSubmit={handleCreateFormationPlacement}
+                      >
+                        <div className="world-history-inline-form__grid">
+                          <input
+                            value={resolvedPolityMatch.referenceEntity.title}
+                            disabled
+                            aria-label="Selected polity"
+                          />
+                          <input
+                            type="number"
+                            value={formationPlacementForm.startYear}
+                            onChange={(event) =>
+                              setFormationPlacementForm((current) => ({
+                                ...current,
+                                startYear: event.target.value,
+                              }))
+                            }
+                            placeholder="Start year"
+                          />
+                          <input
+                            type="number"
+                            value={formationPlacementForm.endYear}
+                            onChange={(event) =>
+                              setFormationPlacementForm((current) => ({
+                                ...current,
+                                endYear: event.target.value,
+                              }))
+                            }
+                            placeholder="End year"
+                          />
+                        </div>
+                        <input
+                          value={formationPlacementForm.note}
+                          onChange={(event) =>
+                            setFormationPlacementForm((current) => ({
+                              ...current,
+                              note: event.target.value,
+                            }))
+                          }
+                          placeholder="Optional note about this formation membership"
+                        />
+                        <div className="world-history-inline-form__actions">
+                          <button
+                            type="submit"
+                            className="is-primary"
+                            disabled={savingFormationPlacement || !activeFormationId}
+                          >
+                            {savingFormationPlacement ? 'Adding…' : 'Confirm membership'}
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+
+                    {activeFormationMemberships.length === 0 ? (
+                      <div className="world-history-empty">
+                        No built-in polities are assigned to this formation yet.
+                      </div>
+                    ) : (
+                      <div className="world-history-shelf">
+                        {activeFormationMemberships.slice(0, 8).map((membership) => (
+                          <button
+                            key={`formation-member-${membership.id}`}
+                            type="button"
+                            className={`world-history-shelf-card ${
+                              membership.polityEntityId === resolvedPolityMatch?.referenceEntity.id ? 'is-selected' : ''
+                            }`}
+                            onClick={() => navigate(`/entities/${membership.polityEntityId}`)}
+                          >
+                            <div className="world-history-shelf-card__head">
+                              <div className="world-history-shelf-card__chips">
+                                <span className="world-history-kind-chip">Polity</span>
+                              </div>
+                            </div>
+                            <strong>{membership.polityTitle || 'Untitled polity'}</strong>
+                            <span>
+                              {membership.startYear !== undefined || membership.endYear !== undefined
+                                ? `${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`
+                                : 'Undated membership'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
