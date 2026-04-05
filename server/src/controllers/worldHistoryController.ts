@@ -323,6 +323,25 @@ const localEntityKindMap: Partial<Record<CanonicalHistoricalEntityKind, Referenc
   ruler: 'person',
 };
 
+const findExistingReferenceEntityByKindAndTitle = async (
+  db: Awaited<ReturnType<typeof getDb>>,
+  kind: ReferenceEntityKind,
+  title: string
+) => {
+  const normalizedTitle = title.trim();
+  if (!normalizedTitle) return null;
+
+  const row = await db.get<ReferenceEntityRow>(
+    `SELECT * FROM reference_entities
+     WHERE kind = ? AND lower(title) = lower(?)
+     LIMIT 1`,
+    kind,
+    normalizedTitle
+  );
+
+  return row ? hydrateReferenceEntity(row) : null;
+};
+
 const isVisibleInYear = (entity: CanonicalHistoricalEntity, year: number | null) => {
   if (year === null) return true;
   if (entity.startYear !== undefined && entity.endYear !== undefined) {
@@ -557,10 +576,14 @@ export const createCanonicalHistoricalEntity = asyncErrorHandler(async (req: Req
   }
 
   const db = await getDb();
+  const targetKind = localEntityKindMap[payload.kind];
+  const referenceEntityLinkCandidate =
+    targetKind ? await findExistingReferenceEntityByKindAndTitle(db, targetKind, title) : null;
   const entity = await upsertCanonicalHistoricalEntity(db, {
     authority: 'wikidata',
     authorityId,
     kind: payload.kind,
+    referenceEntityId: payload.referenceEntityId ?? referenceEntityLinkCandidate?.id,
     title,
     summary: typeof payload.summary === 'string' ? payload.summary.trim() || undefined : undefined,
     description:
@@ -708,6 +731,30 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
   const targetKind = localEntityKindMap[canonicalEntity.kind];
   if (!targetKind) {
     return res.status(400).json({ message: 'This atlas entity kind cannot be promoted yet.' });
+  }
+
+  const existingByTitle = await findExistingReferenceEntityByKindAndTitle(
+    db,
+    targetKind,
+    canonicalEntity.title
+  );
+  if (existingByTitle) {
+    await db.run(
+      `UPDATE canonical_historical_entities
+       SET referenceEntityId = ?, updatedAt = ?
+       WHERE id = ?`,
+      existingByTitle.id,
+      new Date().toISOString(),
+      canonicalEntity.id
+    );
+
+    return res.json({
+      atlasEntity: {
+        ...canonicalEntity,
+        referenceEntityId: existingByTitle.id,
+      },
+      referenceEntity: existingByTitle,
+    });
   }
 
   const slug = await generateUniqueReferenceEntitySlug(db, targetKind, canonicalEntity.title);

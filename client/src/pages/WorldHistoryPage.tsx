@@ -41,9 +41,9 @@ import './WorldHistoryPage.css';
 const kindLabels: Record<HistoricalAtlasKind, string> = {
   all: 'All types',
   battle: 'Battles',
-  civilization: 'Civilizations',
-  era: 'Eras',
-  nation: 'Nations & polities',
+  civilization: 'Civilizations / formations',
+  era: 'Eras / formations',
+  nation: 'Polities',
   person: 'People',
   place: 'Places',
   region: 'Regions',
@@ -163,6 +163,19 @@ const formatMembershipTimespan = (membership: {
     return `Until ${formatYear(membership.endYear)}`;
   }
   return 'Undated';
+};
+
+const formatEntityBounds = (entity: { startYear?: number; endYear?: number }) => {
+  if (entity.startYear !== undefined && entity.endYear !== undefined) {
+    return `${formatYear(entity.startYear)} - ${formatYear(entity.endYear)}`;
+  }
+  if (entity.startYear !== undefined) {
+    return `From ${formatYear(entity.startYear)}`;
+  }
+  if (entity.endYear !== undefined) {
+    return `Until ${formatYear(entity.endYear)}`;
+  }
+  return 'No date range recorded';
 };
 
 const isVisibleInYear = (entity: Pick<CanonicalHistoricalEntity, 'startYear' | 'endYear'>, year: number) => {
@@ -317,6 +330,34 @@ const normalizeEntityLabel = (value?: string | null) =>
     .replace(/[^a-z0-9]+/g, ' ')
     .trim() ?? '';
 
+const getAtlasVisibilityBounds = (
+  entity: CanonicalHistoricalEntity,
+  linkedReferenceEntity: ReferenceEntity | null
+) => {
+  if (linkedReferenceEntity?.kind === 'polity') {
+    return {
+      startYear: linkedReferenceEntity.startYear,
+      endYear: linkedReferenceEntity.endYear,
+    };
+  }
+
+  return {
+    startYear: entity.startYear,
+    endYear: entity.endYear,
+  };
+};
+
+const isAtlasEntityVisibleInYear = (
+  entity: CanonicalHistoricalEntity,
+  year: number,
+  linkedReferenceEntity: ReferenceEntity | null
+) => isVisibleInYear(getAtlasVisibilityBounds(entity, linkedReferenceEntity), year);
+
+const formatAtlasEntityTimespan = (
+  entity: CanonicalHistoricalEntity,
+  linkedReferenceEntity: ReferenceEntity | null
+) => formatEntityBounds(getAtlasVisibilityBounds(entity, linkedReferenceEntity));
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -458,9 +499,37 @@ const WorldHistoryPage: React.FC = () => {
     });
   }, [yearBounds.maxYear, yearBounds.minYear]);
 
+  const linkedPolityByAtlasEntityId = useMemo(() => {
+    const referenceEntityById = new Map(referenceEntities.map((entity) => [entity.id, entity] as const));
+    const builtInPolityByLabel = new Map(
+      referenceEntities
+        .filter(isBuiltInPolityReferenceEntity)
+        .map((entity) => [normalizeEntityLabel(entity.title), entity] as const)
+    );
+
+    return new Map(
+      atlasEntities.map((entity) => {
+        const linkedById =
+          typeof entity.referenceEntityId === 'number'
+            ? referenceEntityById.get(entity.referenceEntityId) ?? null
+            : null;
+        const linkedByLabel =
+          linkedById ??
+          (MATCHABLE_ATLAS_ENTITY_KINDS.has(entity.kind)
+            ? builtInPolityByLabel.get(normalizeEntityLabel(entity.title)) ?? null
+            : null);
+
+        return [entity.id, linkedByLabel] as const;
+      })
+    );
+  }, [atlasEntities, referenceEntities]);
+
   const visibleAtlasEntities = useMemo(
-    () => atlasEntities.filter((entity) => isVisibleInYear(entity, year)),
-    [atlasEntities, year]
+    () =>
+      atlasEntities.filter((entity) =>
+        isAtlasEntityVisibleInYear(entity, year, linkedPolityByAtlasEntityId.get(entity.id) ?? null)
+      ),
+    [atlasEntities, linkedPolityByAtlasEntityId, year]
   );
 
   const mappableAtlasEntities = useMemo<CanonicalHistoricalEntityWithCoordinates[]>(
@@ -484,10 +553,16 @@ const WorldHistoryPage: React.FC = () => {
 
   const selectedVisibleAtlasEntity = useMemo<CanonicalHistoricalEntityWithCoordinates | null>(
     () =>
-      selectedAtlasEntity && isVisibleInYear(selectedAtlasEntity, year) && hasCoordinates(selectedAtlasEntity)
+      selectedAtlasEntity &&
+      isAtlasEntityVisibleInYear(
+        selectedAtlasEntity,
+        year,
+        linkedPolityByAtlasEntityId.get(selectedAtlasEntity.id) ?? null
+      ) &&
+      hasCoordinates(selectedAtlasEntity)
         ? selectedAtlasEntity
         : null,
-    [selectedAtlasEntity, year]
+    [linkedPolityByAtlasEntityId, selectedAtlasEntity, year]
   );
 
   const topVisibleKinds = useMemo(() => {
@@ -1238,7 +1313,7 @@ const WorldHistoryPage: React.FC = () => {
       setAtlasEntities((current) =>
         current.map((entry) => (entry.id === promoted.atlasEntity.id ? promoted.atlasEntity : entry))
       );
-      navigate(`/entities/${promoted.referenceEntity.id}`);
+      openEntityPage(promoted.referenceEntity.id);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : 'Failed to create a local entity.');
     } finally {
@@ -1611,6 +1686,22 @@ const WorldHistoryPage: React.FC = () => {
             map.getCanvas().style.cursor = '';
           });
 
+          map.on('click', 'atlas-active-formation-members-fill', (event) => {
+            const feature = event.features?.[0] as BasemapFeature | undefined;
+            const featureId = feature?.properties?.atlasFeatureId;
+            if (typeof featureId === 'string' && featureId) {
+              setSelectedBasemapFeatureId(featureId);
+            }
+          });
+
+          map.on('mouseenter', 'atlas-active-formation-members-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mouseleave', 'atlas-active-formation-members-fill', () => {
+            map.getCanvas().style.cursor = '';
+          });
+
         map.on('click', 'atlas-historical-basemap-fill', (event) => {
           const feature = event.features?.[0] as BasemapFeature | undefined;
           if (!isNamedBasemapFeature(feature)) {
@@ -1747,6 +1838,19 @@ const WorldHistoryPage: React.FC = () => {
     if (map.getLayer('atlas-entities-selected')) {
       map.setFilter('atlas-entities-selected', ['==', ['get', 'id'], selectedId] as any);
     }
+  }, [
+    activeFormationMembersGeojson,
+    historicalBasemapLayer,
+    hoveredBasemapFeature,
+    selectedGeometry,
+    selectedPolityPeoplePresenceGeojson,
+    selectedVisibleAtlasEntity,
+    visibleAtlasEntities,
+  ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
 
     if (selectedGeometry) {
       const bounds = getGeoJsonBounds(selectedGeometry);
@@ -1811,16 +1915,10 @@ const WorldHistoryPage: React.FC = () => {
       );
     }
   }, [
-    activeFormationMembersGeojson,
-    historicalBasemapLayer,
-    hoveredBasemapFeature,
     mappableAtlasEntities,
     selectedBasemapFeature,
-    selectedBasemapFeatureId,
     selectedGeometry,
-    selectedPolityPeoplePresenceGeojson,
     selectedVisibleAtlasEntity,
-    visibleAtlasEntities,
   ]);
 
   return (
@@ -2028,7 +2126,10 @@ const WorldHistoryPage: React.FC = () => {
                       <div>
                         <span className="world-history-kind-chip">{kindLabels[selectedAtlasEntity.kind]}</span>
                         <p className="world-history-selected-card__timespan">
-                          {formatTimespan(selectedAtlasEntity)}
+                          {formatAtlasEntityTimespan(
+                            selectedAtlasEntity,
+                            linkedPolityByAtlasEntityId.get(selectedAtlasEntity.id) ?? null
+                          )}
                         </p>
                       </div>
                       {selectedAtlasEntity.imageUrl && (
@@ -2053,7 +2154,15 @@ const WorldHistoryPage: React.FC = () => {
                       </div>
                       <div>
                         <span className="world-history-panel__eyebrow">Visible at {formatYear(year)}</span>
-                        <strong>{isVisibleInYear(selectedAtlasEntity, year) ? 'Yes' : 'No'}</strong>
+                        <strong>
+                          {isAtlasEntityVisibleInYear(
+                            selectedAtlasEntity,
+                            year,
+                            linkedPolityByAtlasEntityId.get(selectedAtlasEntity.id) ?? null
+                          )
+                            ? 'Yes'
+                            : 'No'}
+                        </strong>
                       </div>
                       <div>
                         <span className="world-history-panel__eyebrow">Local encyclopedia</span>
@@ -2066,11 +2175,11 @@ const WorldHistoryPage: React.FC = () => {
                     </div>
 
                     <div className="world-history-selected-card__actions">
-                      {selectedAtlasEntity.referenceEntityId ? (
+                      {typeof selectedAtlasEntity.referenceEntityId === 'number' ? (
                         <button
                           type="button"
                           className="is-primary"
-                          onClick={() => navigate(`/entities/${selectedAtlasEntity.referenceEntityId}`)}
+                          onClick={() => openEntityPage(selectedAtlasEntity.referenceEntityId!)}
                         >
                           Open linked entity
                         </button>
@@ -2512,7 +2621,12 @@ const WorldHistoryPage: React.FC = () => {
                                       </div>
                                       <strong>{entity.title}</strong>
                                     </div>
-                                    <span className="world-history-hint">{formatTimespan(entity)}</span>
+                                    <span className="world-history-hint">
+                                      {formatAtlasEntityTimespan(
+                                        entity,
+                                        linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                                      )}
+                                    </span>
                                     <div className="world-history-reconciliation-card__actions">
                                       <button
                                         type="button"
@@ -2894,7 +3008,11 @@ const WorldHistoryPage: React.FC = () => {
                   <div className="world-history-shelf">
                     {atlasEntities.map((entity) => {
                       const isSelected = entity.id === selectedAtlasEntity?.id;
-                      const isVisible = isVisibleInYear(entity, year);
+                      const isVisible = isAtlasEntityVisibleInYear(
+                        entity,
+                        year,
+                        linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                      );
                       return (
                         <button
                           key={entity.id}
@@ -2912,7 +3030,12 @@ const WorldHistoryPage: React.FC = () => {
                             <span className={`world-history-visibility-dot ${isVisible ? 'is-visible' : ''}`} />
                           </div>
                           <strong>{entity.title}</strong>
-                          <span>{formatTimespan(entity)}</span>
+                              <span>
+                                {formatAtlasEntityTimespan(
+                                  entity,
+                                  linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                                )}
+                              </span>
                         </button>
                       );
                     })}
@@ -2956,7 +3079,12 @@ const WorldHistoryPage: React.FC = () => {
                             </div>
                           </div>
                           <strong>{entity.title}</strong>
-                          <span>{formatTimespan(entity)}</span>
+                          <span>
+                            {formatAtlasEntityTimespan(
+                              entity,
+                              linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                            )}
+                          </span>
                         </button>
                       );
                     })}
