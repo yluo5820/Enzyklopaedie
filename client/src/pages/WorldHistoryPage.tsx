@@ -1508,8 +1508,7 @@ const WorldHistoryPage: React.FC = () => {
             <span className="world-history-eyebrow">World History</span>
             <h1>Canonical Atlas</h1>
             <p>
-              Read local historical boundaries as the base layer, then pin canonical records on top so the
-              map starts behaving like an atlas instead of a static demo.
+              Local historical boundaries below, with atlas tools layered on top.
             </p>
           </div>
 
@@ -1546,106 +1545,105 @@ const WorldHistoryPage: React.FC = () => {
         </header>
 
         <div className="world-history-layout">
-          <aside className="world-history-sidebar">
-            <section className="world-history-panel">
-              <div className="world-history-panel__header">
-                <div>
-                  <span className="world-history-panel__eyebrow">Search</span>
-                  <h2>Bring in canonical history</h2>
-                </div>
-              </div>
-
-              <div className="world-history-search">
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void runSearch();
-                    }
-                  }}
-                  placeholder="Hegel, Roman Empire, Battle of Actium..."
-                />
-
-                <div className="world-history-search__controls">
-                  <select value={searchKind} onChange={(event) => setSearchKind(event.target.value as HistoricalAtlasKind)}>
-                    {atlasKindOptions.map((kind) => (
-                      <option key={kind} value={kind}>
-                        {kindLabels[kind]}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="button" onClick={() => void runSearch()} disabled={isSearching}>
-                    {isSearching ? 'Searching…' : 'Search authority'}
-                  </button>
-                </div>
-              </div>
-
-              {searchError && <div className="world-history-feedback is-error">{searchError}</div>}
-              {statusMessage && <div className="world-history-feedback">{statusMessage}</div>}
-
-              <div className="world-history-results">
-                {searchResults.length === 0 ? (
-                  <div className="world-history-empty">
-                    Search first, then pin the records that should live in your atlas shelf.
-                  </div>
-                ) : (
-                  searchResults.map((result) => {
-                    const saveKey = `${result.authority}:${result.authorityId}`;
-                    const isSaved = savedAuthorityIds.has(saveKey);
-                    return (
-                      <article key={saveKey} className="world-history-result-card">
-                        <div className="world-history-result-card__head">
-                          <div>
-                            <span className="world-history-kind-chip">{kindLabels[result.kind]}</span>
-                            <h3>{result.title}</h3>
-                          </div>
-                          {result.imageUrl && (
-                            <img
-                              src={result.imageUrl}
-                              alt=""
-                              className="world-history-result-card__thumb"
-                            />
-                          )}
-                        </div>
-                        <p>{result.summary || 'No authority summary was returned for this record.'}</p>
-                        <div className="world-history-result-card__meta">
-                          <span>{formatTimespan(result)}</span>
-                          <span>{hasCoordinates(result) ? 'Mapped point available' : 'No coordinates yet'}</span>
-                          <span>{result.metadata?.hasGeoshape ? 'Boundary available' : 'Point only'}</span>
-                        </div>
-                        <div className="world-history-result-card__actions">
-                          <button
-                            type="button"
-                            className="is-primary"
-                            onClick={() => void handleSaveAtlasEntity(result)}
-                            disabled={isSaved || pendingSaveAuthorityId === result.authorityId}
-                          >
-                            {isSaved
-                              ? 'Pinned'
-                              : pendingSaveAuthorityId === result.authorityId
-                                ? 'Pinning…'
-                                : 'Pin to atlas'}
-                          </button>
-                          {result.sourceUrl && (
-                            <a href={result.sourceUrl} target="_blank" rel="noreferrer">
-                              Source
-                            </a>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-          </aside>
-
           <section className="world-history-main">
             <section className="world-history-map">
               <div ref={mapContainerRef} className="world-history-map__canvas" />
+              <div className="world-history-map__float world-history-map__float--left">
+                <section className="world-history-panel world-history-panel--floating">
+                  <div className="world-history-panel__header">
+                    <div>
+                      <span className="world-history-panel__eyebrow">Search</span>
+                      <h2>Bring in canonical history</h2>
+                    </div>
+                  </div>
+
+                  <div className="world-history-search">
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void runSearch();
+                        }
+                      }}
+                      placeholder="Hegel, Roman Empire, Battle of Actium..."
+                    />
+
+                    <div className="world-history-search__controls">
+                      <select value={searchKind} onChange={(event) => setSearchKind(event.target.value as HistoricalAtlasKind)}>
+                        {atlasKindOptions.map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kindLabels[kind]}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => void runSearch()} disabled={isSearching}>
+                        {isSearching ? 'Searching…' : 'Search authority'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {searchError && <div className="world-history-feedback is-error">{searchError}</div>}
+                  {statusMessage && <div className="world-history-feedback">{statusMessage}</div>}
+
+                  <div className="world-history-results">
+                    {searchResults.length === 0 ? (
+                      <div className="world-history-empty">
+                        Search first, then pin the records that should live in your atlas shelf.
+                      </div>
+                    ) : (
+                      searchResults.map((result) => {
+                        const saveKey = `${result.authority}:${result.authorityId}`;
+                        const isSaved = savedAuthorityIds.has(saveKey);
+                        return (
+                          <article key={saveKey} className="world-history-result-card">
+                            <div className="world-history-result-card__head">
+                              <div>
+                                <span className="world-history-kind-chip">{kindLabels[result.kind]}</span>
+                                <h3>{result.title}</h3>
+                              </div>
+                              {result.imageUrl && (
+                                <img
+                                  src={result.imageUrl}
+                                  alt=""
+                                  className="world-history-result-card__thumb"
+                                />
+                              )}
+                            </div>
+                            <p>{result.summary || 'No authority summary was returned for this record.'}</p>
+                            <div className="world-history-result-card__meta">
+                              <span>{formatTimespan(result)}</span>
+                              <span>{hasCoordinates(result) ? 'Mapped point available' : 'No coordinates yet'}</span>
+                              <span>{result.metadata?.hasGeoshape ? 'Boundary available' : 'Point only'}</span>
+                            </div>
+                            <div className="world-history-result-card__actions">
+                              <button
+                                type="button"
+                                className="is-primary"
+                                onClick={() => void handleSaveAtlasEntity(result)}
+                                disabled={isSaved || pendingSaveAuthorityId === result.authorityId}
+                              >
+                                {isSaved
+                                  ? 'Pinned'
+                                  : pendingSaveAuthorityId === result.authorityId
+                                    ? 'Pinning…'
+                                    : 'Pin to atlas'}
+                              </button>
+                              {result.sourceUrl && (
+                                <a href={result.sourceUrl} target="_blank" rel="noreferrer">
+                                  Source
+                                </a>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              </div>
               {mapError && (
                 <div className="world-history-map__overlay">
                   <strong>Map unavailable</strong>
