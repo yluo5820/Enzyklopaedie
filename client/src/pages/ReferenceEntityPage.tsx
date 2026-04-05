@@ -726,12 +726,20 @@ const ReferenceEntityPage: React.FC = () => {
   const externalLink =
     typeof entity?.metadata?.link === 'string' && entity.metadata.link
       ? entity.metadata.link
+      : typeof entity?.metadata?.atlasSourceUrl === 'string' && entity.metadata.atlasSourceUrl
+        ? entity.metadata.atlasSourceUrl
+      : null;
+  const entityImageUrl =
+    typeof entity?.metadata?.atlasImageUrl === 'string' && entity.metadata.atlasImageUrl
+      ? entity.metadata.atlasImageUrl
       : null;
   const displayMetadataEntries = useMemo(
     () =>
       metadataEntries.filter(
         ([key]) =>
           key !== 'link' &&
+          key !== 'atlasSourceUrl' &&
+          key !== 'atlasImageUrl' &&
           key !== 'builtIn' &&
           key !== 'atlasSource' &&
           key !== 'polityImportKey' &&
@@ -2021,6 +2029,11 @@ const ReferenceEntityPage: React.FC = () => {
             </section>
           ) : null}
         </div>
+        {entityImageUrl ? (
+          <figure className="reference-entity-hero-media">
+            <img src={entityImageUrl} alt={entity.title} />
+          </figure>
+        ) : null}
       </section>
 
       {error ? <div className="reference-entity-error">{error}</div> : null}

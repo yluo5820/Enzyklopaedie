@@ -359,6 +359,55 @@ const findExistingReferenceEntityByKindAndTitle = async (
   return row ? hydrateReferenceEntity(row) : null;
 };
 
+const buildAtlasReferenceEntityMetadata = (canonicalEntity: CanonicalHistoricalEntity) => ({
+  atlasAuthority: canonicalEntity.authority,
+  atlasAuthorityId: canonicalEntity.authorityId,
+  atlasKind: canonicalEntity.kind,
+  ...(canonicalEntity.sourceUrl ? { atlasSourceUrl: canonicalEntity.sourceUrl } : {}),
+  ...(canonicalEntity.imageUrl ? { atlasImageUrl: canonicalEntity.imageUrl } : {}),
+  ...(canonicalEntity.latitude !== undefined && canonicalEntity.longitude !== undefined
+    ? {
+        atlasCoordinates: {
+          latitude: canonicalEntity.latitude,
+          longitude: canonicalEntity.longitude,
+        },
+      }
+    : {}),
+});
+
+const syncReferenceEntityAtlasMetadata = async (
+  db: Awaited<ReturnType<typeof getDb>>,
+  entity: ReferenceEntity,
+  canonicalEntity: CanonicalHistoricalEntity
+) => {
+  const mergedMetadata = {
+    ...(entity.metadata ?? {}),
+    ...buildAtlasReferenceEntityMetadata(canonicalEntity),
+  };
+
+  const currentMetadataJson = JSON.stringify(entity.metadata ?? null);
+  const mergedMetadataJson = JSON.stringify(mergedMetadata);
+  if (currentMetadataJson === mergedMetadataJson) {
+    return entity;
+  }
+
+  const updatedAt = new Date().toISOString();
+  await db.run(
+    `UPDATE reference_entities
+     SET metadata = ?, updatedAt = ?
+     WHERE id = ?`,
+    mergedMetadataJson,
+    updatedAt,
+    entity.id
+  );
+
+  return {
+    ...entity,
+    metadata: mergedMetadata,
+    updatedAt,
+  };
+};
+
 const isVisibleInYear = (entity: CanonicalHistoricalEntity, year: number | null) => {
   if (year === null) return true;
   if (entity.startYear !== undefined && entity.endYear !== undefined) {
@@ -746,9 +795,14 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
     );
 
     if (existingRow) {
+      const existingEntity = await syncReferenceEntityAtlasMetadata(
+        db,
+        hydrateReferenceEntity(existingRow),
+        canonicalEntity
+      );
       return res.json({
         atlasEntity: canonicalEntity,
-        referenceEntity: hydrateReferenceEntity(existingRow),
+        referenceEntity: existingEntity,
       });
     }
   }
@@ -766,21 +820,24 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
     targetFormationSubtype
   );
   if (existingByTitle) {
+    const updatedExistingEntity = await syncReferenceEntityAtlasMetadata(db, existingByTitle, canonicalEntity);
+    const now = new Date().toISOString();
     await db.run(
       `UPDATE canonical_historical_entities
        SET referenceEntityId = ?, updatedAt = ?
        WHERE id = ?`,
-      existingByTitle.id,
-      new Date().toISOString(),
+      updatedExistingEntity.id,
+      now,
       canonicalEntity.id
     );
 
     return res.json({
       atlasEntity: {
         ...canonicalEntity,
-        referenceEntityId: existingByTitle.id,
+        referenceEntityId: updatedExistingEntity.id,
+        updatedAt: now,
       },
-      referenceEntity: existingByTitle,
+      referenceEntity: updatedExistingEntity,
     });
   }
 
@@ -801,18 +858,7 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
     canonicalEntity.endYear ?? null,
     JSON.stringify({
       ...(canonicalEntity.metadata ?? {}),
-      atlasAuthority: canonicalEntity.authority,
-      atlasAuthorityId: canonicalEntity.authorityId,
-      atlasKind: canonicalEntity.kind,
-      atlasSourceUrl: canonicalEntity.sourceUrl,
-      atlasImageUrl: canonicalEntity.imageUrl,
-      atlasCoordinates:
-        canonicalEntity.latitude !== undefined && canonicalEntity.longitude !== undefined
-          ? {
-              latitude: canonicalEntity.latitude,
-              longitude: canonicalEntity.longitude,
-            }
-          : undefined,
+      ...buildAtlasReferenceEntityMetadata(canonicalEntity),
     }),
     now,
     now
@@ -841,18 +887,7 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
     endYear: canonicalEntity.endYear,
     metadata: {
       ...(canonicalEntity.metadata ?? {}),
-      atlasAuthority: canonicalEntity.authority,
-      atlasAuthorityId: canonicalEntity.authorityId,
-      atlasKind: canonicalEntity.kind,
-      atlasSourceUrl: canonicalEntity.sourceUrl,
-      atlasImageUrl: canonicalEntity.imageUrl,
-      atlasCoordinates:
-        canonicalEntity.latitude !== undefined && canonicalEntity.longitude !== undefined
-          ? {
-              latitude: canonicalEntity.latitude,
-              longitude: canonicalEntity.longitude,
-            }
-          : undefined,
+      ...buildAtlasReferenceEntityMetadata(canonicalEntity),
     },
     createdAt: now,
     updatedAt: now,

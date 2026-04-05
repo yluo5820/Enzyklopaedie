@@ -1740,6 +1740,15 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
                       },
                     },
                   ],
+                  P18: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: 'Roman Empire illustration.jpg',
+                        },
+                      },
+                    },
+                  ],
                   P3896: [
                     {
                       mainsnak: {
@@ -1807,6 +1816,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(matches[0].kind, 'nation');
       assert.equal(matches[0].startYear, -27);
       assert.equal(matches[0].endYear, 476);
+      assert.equal(
+        matches[0].imageUrl,
+        'https://commons.wikimedia.org/wiki/Special:FilePath/Roman%20Empire%20illustration.jpg?width=480'
+      );
 
       const createResponse = await requestThroughHttp('/api/world-history/entities', {
         method: 'POST',
@@ -1855,6 +1868,14 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(promoted.atlasEntity.referenceEntityId > 0, true);
       assert.equal(promoted.referenceEntity.title, 'Roman Empire');
       assert.equal(promoted.referenceEntity.kind, 'polity');
+      assert.equal(
+        promoted.referenceEntity.metadata.atlasImageUrl,
+        'https://commons.wikimedia.org/wiki/Special:FilePath/Roman%20Empire%20illustration.jpg?width=480'
+      );
+      assert.equal(
+        promoted.referenceEntity.metadata.atlasSourceUrl,
+        'https://www.wikidata.org/wiki/Q2277'
+      );
 
       const listAfterPromoteResponse = await requestThroughHttp('/api/world-history/entities?year=100');
       assert.equal(listAfterPromoteResponse.status, 200);
@@ -1900,6 +1921,61 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(promotedEra.referenceEntity.kind, 'formation');
       assert.equal(promotedEra.referenceEntity.formationSubtype, 'era');
       assert.equal(promotedEra.referenceEntity.title, 'Late Antiquity');
+
+      const localPersonResponse = await requestThroughHttp('/api/reference-entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'person',
+          title: 'Euclid',
+        }),
+      });
+      assert.equal(localPersonResponse.status, 201);
+      const localPerson = await localPersonResponse.json();
+
+      const canonicalPersonResponse = await requestThroughHttp('/api/world-history/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authority: 'wikidata',
+          authorityId: 'Q8747',
+          kind: 'person',
+          title: 'Euclid',
+          summary: 'Ancient Greek mathematician',
+          imageUrl: 'https://example.test/euclid.jpg',
+          sourceUrl: 'https://www.wikidata.org/wiki/Q8747',
+        }),
+      });
+      assert.equal(canonicalPersonResponse.status, 201);
+      const canonicalPerson = await canonicalPersonResponse.json();
+
+      const promoteExistingPersonResponse = await requestThroughHttp(
+        `/api/world-history/entities/${canonicalPerson.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteExistingPersonResponse.status, 200);
+      const promotedExistingPerson = await promoteExistingPersonResponse.json();
+      assert.equal(promotedExistingPerson.referenceEntity.id, localPerson.id);
+      assert.equal(
+        promotedExistingPerson.referenceEntity.metadata.atlasImageUrl,
+        'https://example.test/euclid.jpg'
+      );
+      assert.equal(
+        promotedExistingPerson.referenceEntity.metadata.atlasSourceUrl,
+        'https://www.wikidata.org/wiki/Q8747'
+      );
+
+      const localPersonAfterPromoteResponse = await requestThroughHttp(
+        `/api/reference-entities/${localPerson.id}`
+      );
+      assert.equal(localPersonAfterPromoteResponse.status, 200);
+      const localPersonAfterPromote = await localPersonAfterPromoteResponse.json();
+      assert.equal(
+        localPersonAfterPromote.metadata.atlasImageUrl,
+        'https://example.test/euclid.jpg'
+      );
 
       const deleteResponse = await requestThroughHttp(`/api/world-history/entities/${created.id}`, {
         method: 'DELETE',
