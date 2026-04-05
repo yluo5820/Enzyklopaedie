@@ -1,5 +1,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
+  FormationSubtype,
   FormationMembershipDetail,
   KnowledgeRelationDetail,
   KnowledgeRelationType,
@@ -36,6 +37,20 @@ const kindLabels: Record<ReferenceEntityKind, string> = {
   polity: 'Polity',
   formation: 'Formation',
 };
+const formationSubtypeLabels: Record<FormationSubtype, string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  tradition: 'Tradition',
+  world_frame: 'World Frame',
+  other: 'Other',
+};
+const formationSubtypeOptions: FormationSubtype[] = [
+  'civilization',
+  'era',
+  'tradition',
+  'world_frame',
+  'other',
+];
 
 type EntityStructurePreset = {
   helperText: string;
@@ -226,6 +241,7 @@ const parseYearInput = (value: string) => {
 
 const toFormState = (entity: ReferenceEntity) => ({
   kind: entity.kind,
+  formationSubtype: entity.formationSubtype ?? ('civilization' as FormationSubtype),
   title: entity.title,
   summary: entity.summary || '',
   description: entity.description || '',
@@ -432,6 +448,7 @@ const ReferenceEntityPage: React.FC = () => {
   const [personPolityMemberships, setPersonPolityMemberships] = useState<PersonPolityMembershipDetail[]>([]);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
+    formationSubtype: 'civilization' as FormationSubtype,
     title: '',
     summary: '',
     description: '',
@@ -926,7 +943,12 @@ const ReferenceEntityPage: React.FC = () => {
       key: 'chronology',
       eyebrow: 'Chronology',
       value: formatTimespan(entity),
-      meta: isBuiltInPolity ? 'Built-in atlas record' : 'Native atlas record',
+      meta:
+        entity.kind === 'formation' && entity.formationSubtype
+          ? formationSubtypeLabels[entity.formationSubtype]
+          : isBuiltInPolity
+            ? 'Built-in atlas record'
+            : 'Native atlas record',
       hint: 'The main time span currently recorded for this entity.',
     };
 
@@ -1128,6 +1150,7 @@ const ReferenceEntityPage: React.FC = () => {
     setError(null);
 
     const payload: UpdateReferenceEntity = {
+      formationSubtype: formState.kind === 'formation' ? formState.formationSubtype : null,
       summary: formState.summary.trim(),
       description: formState.description.trim(),
     };
@@ -1475,6 +1498,9 @@ const ReferenceEntityPage: React.FC = () => {
           </p>
           <div className="reference-entity-hero-meta">
             <span>{formatTimespan(entity)}</span>
+            {entity.kind === 'formation' && entity.formationSubtype ? (
+              <span>{formationSubtypeLabels[entity.formationSubtype]}</span>
+            ) : null}
             {entity.kind === 'polity' ? <span>{politySnapshots.length} atlas snapshots</span> : null}
             <span>
               {authoredWorks.length || itemRelations.length}{' '}
@@ -1540,6 +1566,24 @@ const ReferenceEntityPage: React.FC = () => {
                       ))}
                     </select>
                   </div>
+
+                  {formState.kind === 'formation' ? (
+                    <div className="reference-entity-field">
+                      <label htmlFor="formationSubtype">Formation Type</label>
+                      <select
+                        id="formationSubtype"
+                        name="formationSubtype"
+                        value={formState.formationSubtype}
+                        onChange={handleChange}
+                      >
+                        {formationSubtypeOptions.map((subtype) => (
+                          <option key={subtype} value={subtype}>
+                            {formationSubtypeLabels[subtype]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
 
                   <div className="reference-entity-field">
                     <label htmlFor="title">Title</label>

@@ -1,5 +1,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
+  FormationSubtype,
   NewReferenceEntity,
   ReferenceEntity,
   ReferenceEntityKind,
@@ -24,6 +25,20 @@ const singularKindLabels: Record<ReferenceEntityKind, string> = {
   polity: 'Polity',
   formation: 'Formation',
 };
+const formationSubtypeLabels: Record<FormationSubtype, string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  tradition: 'Tradition',
+  world_frame: 'World Frame',
+  other: 'Other',
+};
+const formationSubtypeOptions: FormationSubtype[] = [
+  'civilization',
+  'era',
+  'tradition',
+  'world_frame',
+  'other',
+];
 const kindAtlasLeads: Record<ReferenceEntityKind, string> = {
   person: 'Writers, thinkers, speakers, and other individual figures.',
   polity: 'Built-in historical-geographical units imported from the world-history basemap.',
@@ -88,8 +103,12 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
 type EntityFilter = 'all' | ReferenceEntityKind;
 type EntityWorkbenchView = 'create' | 'list';
 
-const createInitialFormState = (kind: ReferenceEntityKind = 'person') => ({
+const createInitialFormState = (
+  kind: ReferenceEntityKind = 'person',
+  formationSubtype: FormationSubtype = 'civilization'
+) => ({
   kind,
+  formationSubtype,
   title: '',
   summary: '',
   description: '',
@@ -239,6 +258,7 @@ const ReferenceEntitiesPage: React.FC = () => {
 
     const payload: NewReferenceEntity = {
       kind: formState.kind,
+      formationSubtype: formState.kind === 'formation' ? formState.formationSubtype : undefined,
       title: formState.title.trim(),
       summary: formState.summary.trim() || undefined,
       description: formState.description.trim() || undefined,
@@ -249,6 +269,9 @@ const ReferenceEntitiesPage: React.FC = () => {
     try {
       const createdEntity = await createReferenceEntity(payload);
       const savedKind = payload.kind;
+      const savedFormationSubtype = payload.kind === 'formation'
+        ? payload.formationSubtype ?? formState.formationSubtype
+        : 'civilization';
       startTransition(() => {
         setEntities((current) => {
           const existingIndex = current.findIndex((entity) => entity.id === createdEntity.id);
@@ -261,7 +284,7 @@ const ReferenceEntitiesPage: React.FC = () => {
           return [...current, createdEntity];
         });
       });
-      setFormState(createInitialFormState(savedKind));
+      setFormState(createInitialFormState(savedKind, savedFormationSubtype));
     } catch (submitError) {
       console.error(submitError);
       setError('Failed to create reference entity.');
@@ -325,7 +348,31 @@ const ReferenceEntitiesPage: React.FC = () => {
               </select>
             </div>
 
-            <div className="reference-entities-field reference-entities-field-span-8 is-primary">
+            {formState.kind === 'formation' ? (
+              <div className="reference-entities-field reference-entities-field-span-4 is-primary">
+                <label htmlFor="formationSubtype">Formation Type</label>
+                <select
+                  id="formationSubtype"
+                  name="formationSubtype"
+                  value={formState.formationSubtype}
+                  onChange={handleChange}
+                >
+                  {formationSubtypeOptions.map((subtype) => (
+                    <option key={subtype} value={subtype}>
+                      {formationSubtypeLabels[subtype]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <div
+              className={`reference-entities-field ${
+                formState.kind === 'formation'
+                  ? 'reference-entities-field-span-4'
+                  : 'reference-entities-field-span-8'
+              } is-primary`}
+            >
               <label htmlFor="title">Title</label>
               <input id="title" name="title" value={formState.title} onChange={handleChange} required />
             </div>
@@ -486,6 +533,11 @@ const ReferenceEntitiesPage: React.FC = () => {
                             <div>
                               <div className="reference-entities-meta">
                                 <span className="reference-entities-badge">{entity.kind}</span>
+                                {entity.kind === 'formation' && entity.formationSubtype ? (
+                                  <span className="reference-entities-badge reference-entities-badge-secondary">
+                                    {formationSubtypeLabels[entity.formationSubtype]}
+                                  </span>
+                                ) : null}
                                 {isBuiltInPolity ? (
                                   <span className="reference-entities-badge reference-entities-badge-secondary">
                                     atlas built-in

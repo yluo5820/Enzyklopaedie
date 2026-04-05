@@ -993,18 +993,17 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kind: 'formation',
+        formationSubtype: 'civilization',
         title: 'Eastern Roman World',
         summary: 'Updated during the server test pass.',
         endYear: 1453,
-        metadata: {
-          subtype: 'civilization',
-        },
       }),
     });
 
     assert.equal(updateResponse.status, 200);
     const updatedEntity = await updateResponse.json();
     assert.equal(updatedEntity.kind, 'formation');
+    assert.equal(updatedEntity.formationSubtype, 'civilization');
     assert.equal(updatedEntity.title, 'Eastern Roman World');
     assert.equal(updatedEntity.slug, 'formation-eastern-roman-world');
     assert.equal(updatedEntity.startYear, 330);
@@ -1014,6 +1013,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kind: 'formation',
+        formationSubtype: 'era',
         title: 'Mediterranean Antiquity',
         startYear: -200,
         endYear: 700,
@@ -1027,6 +1027,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kind: 'formation',
+        formationSubtype: 'tradition',
         title: 'Orthodox East',
         startYear: 330,
         endYear: 1453,
@@ -1869,6 +1870,36 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(promoteAgainResponse.status, 200);
       const promotedAgain = await promoteAgainResponse.json();
       assert.equal(promotedAgain.referenceEntity.id, promoted.referenceEntity.id);
+
+      const createEraResponse = await requestThroughHttp('/api/world-history/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authority: 'wikidata',
+          authorityId: 'Q999999',
+          kind: 'era',
+          title: 'Late Antiquity',
+          summary: 'A test era for formation subtype promotion.',
+          startYear: 250,
+          endYear: 750,
+          sourceUrl: 'https://www.wikidata.org/wiki/Q999999',
+        }),
+      });
+      assert.equal(createEraResponse.status, 201);
+      const createdEra = await createEraResponse.json();
+      assert.equal(createdEra.kind, 'era');
+
+      const promoteEraResponse = await requestThroughHttp(
+        `/api/world-history/entities/${createdEra.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteEraResponse.status, 200);
+      const promotedEra = await promoteEraResponse.json();
+      assert.equal(promotedEra.referenceEntity.kind, 'formation');
+      assert.equal(promotedEra.referenceEntity.formationSubtype, 'era');
+      assert.equal(promotedEra.referenceEntity.title, 'Late Antiquity');
 
       const deleteResponse = await requestThroughHttp(`/api/world-history/entities/${created.id}`, {
         method: 'DELETE',

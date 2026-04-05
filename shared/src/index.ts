@@ -64,9 +64,24 @@ export type ReferenceEntityKind =
   | 'polity'
   | 'formation';
 
+export type FormationSubtype =
+  | 'civilization'
+  | 'era'
+  | 'tradition'
+  | 'world_frame'
+  | 'other';
+
+export const isFormationSubtype = (value: unknown): value is FormationSubtype =>
+  value === 'civilization' ||
+  value === 'era' ||
+  value === 'tradition' ||
+  value === 'world_frame' ||
+  value === 'other';
+
 export interface ReferenceEntity {
   id: number;
   kind: ReferenceEntityKind;
+  formationSubtype?: FormationSubtype;
   title: string;
   slug: string;
   summary?: string;
@@ -379,6 +394,7 @@ export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'upd
 
 export interface ReferenceEntityDraft {
   kind: ReferenceEntityKind;
+  formationSubtype?: FormationSubtype | null;
   title: string;
   summary?: string | null;
   description?: string | null;

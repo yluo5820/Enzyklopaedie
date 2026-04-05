@@ -107,6 +107,7 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS reference_entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kind TEXT NOT NULL,
+      formationSubtype TEXT,
       title TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
       summary TEXT,
@@ -325,6 +326,19 @@ export async function initializeDatabase() {
     await db.exec(
       `ALTER TABLE canonical_historical_entities
        ADD COLUMN referenceEntityId INTEGER REFERENCES reference_entities(id) ON DELETE SET NULL`
+    );
+  }
+
+  const referenceEntityColumns = await db.all<{ name: string }[]>(
+    `PRAGMA table_info(reference_entities)`
+  );
+  if (
+    referenceEntityColumns.length > 0 &&
+    !referenceEntityColumns.some((column) => column.name === 'formationSubtype')
+  ) {
+    await db.exec(
+      `ALTER TABLE reference_entities
+       ADD COLUMN formationSubtype TEXT`
     );
   }
 

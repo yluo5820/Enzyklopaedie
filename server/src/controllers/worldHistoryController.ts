@@ -3,6 +3,7 @@ import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalEntityKind,
   CanonicalHistoricalSearchMatch,
+  FormationSubtype,
   HistoricalBasemapPolityMatchResponse,
   NewCanonicalHistoricalEntity,
   ReferenceEntity,
@@ -323,21 +324,37 @@ const localEntityKindMap: Partial<Record<CanonicalHistoricalEntityKind, Referenc
   ruler: 'person',
 };
 
+const localFormationSubtypeMap: Partial<Record<CanonicalHistoricalEntityKind, FormationSubtype>> = {
+  civilization: 'civilization',
+  era: 'era',
+};
+
 const findExistingReferenceEntityByKindAndTitle = async (
   db: Awaited<ReturnType<typeof getDb>>,
   kind: ReferenceEntityKind,
-  title: string
+  title: string,
+  formationSubtype?: FormationSubtype
 ) => {
   const normalizedTitle = title.trim();
   if (!normalizedTitle) return null;
 
-  const row = await db.get<ReferenceEntityRow>(
-    `SELECT * FROM reference_entities
-     WHERE kind = ? AND lower(title) = lower(?)
-     LIMIT 1`,
-    kind,
-    normalizedTitle
-  );
+  const row =
+    kind === 'formation' && formationSubtype
+      ? await db.get<ReferenceEntityRow>(
+          `SELECT * FROM reference_entities
+           WHERE kind = ? AND lower(title) = lower(?) AND formationSubtype = ?
+           LIMIT 1`,
+          kind,
+          normalizedTitle,
+          formationSubtype
+        )
+      : await db.get<ReferenceEntityRow>(
+          `SELECT * FROM reference_entities
+           WHERE kind = ? AND lower(title) = lower(?)
+           LIMIT 1`,
+          kind,
+          normalizedTitle
+        );
 
   return row ? hydrateReferenceEntity(row) : null;
 };
@@ -577,8 +594,16 @@ export const createCanonicalHistoricalEntity = asyncErrorHandler(async (req: Req
 
   const db = await getDb();
   const targetKind = localEntityKindMap[payload.kind];
+  const targetFormationSubtype = localFormationSubtypeMap[payload.kind];
   const referenceEntityLinkCandidate =
-    targetKind ? await findExistingReferenceEntityByKindAndTitle(db, targetKind, title) : null;
+    targetKind
+      ? await findExistingReferenceEntityByKindAndTitle(
+          db,
+          targetKind,
+          title,
+          targetFormationSubtype
+        )
+      : null;
   const entity = await upsertCanonicalHistoricalEntity(db, {
     authority: 'wikidata',
     authorityId,
@@ -729,6 +754,7 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
   }
 
   const targetKind = localEntityKindMap[canonicalEntity.kind];
+  const targetFormationSubtype = localFormationSubtypeMap[canonicalEntity.kind];
   if (!targetKind) {
     return res.status(400).json({ message: 'This atlas entity kind cannot be promoted yet.' });
   }
@@ -736,7 +762,8 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
   const existingByTitle = await findExistingReferenceEntityByKindAndTitle(
     db,
     targetKind,
-    canonicalEntity.title
+    canonicalEntity.title,
+    targetFormationSubtype
   );
   if (existingByTitle) {
     await db.run(
@@ -762,9 +789,10 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
 
   const result = await db.run(
     `INSERT INTO reference_entities
-      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (kind, formationSubtype, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     targetKind,
+    targetFormationSubtype ?? null,
     canonicalEntity.title,
     slug,
     canonicalEntity.summary ?? null,
@@ -804,6 +832,7 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
   const referenceEntity: ReferenceEntity = {
     id: referenceEntityId,
     kind: targetKind,
+    formationSubtype: targetFormationSubtype,
     title: canonicalEntity.title,
     slug,
     summary: canonicalEntity.summary,
@@ -834,11 +863,12 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
     entityType: 'reference_entity',
     entityId: referenceEntity.id,
     message: `Created ${referenceEntity.kind} "${referenceEntity.title}" from the world history atlas`,
-    metadata: {
-      kind: referenceEntity.kind,
-      slug: referenceEntity.slug,
-      atlasAuthority: canonicalEntity.authority,
-      atlasAuthorityId: canonicalEntity.authorityId,
+      metadata: {
+        kind: referenceEntity.kind,
+        formationSubtype: referenceEntity.formationSubtype,
+        slug: referenceEntity.slug,
+        atlasAuthority: canonicalEntity.authority,
+        atlasAuthorityId: canonicalEntity.authorityId,
     },
   });
 

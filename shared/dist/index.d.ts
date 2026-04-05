@@ -52,9 +52,12 @@ export interface TopicSummary extends Topic {
     subjectSlug: string;
 }
 export type ReferenceEntityKind = 'person' | 'polity' | 'formation';
+export type FormationSubtype = 'civilization' | 'era' | 'tradition' | 'world_frame' | 'other';
+export declare const isFormationSubtype: (value: unknown) => value is FormationSubtype;
 export interface ReferenceEntity {
     id: number;
     kind: ReferenceEntityKind;
+    formationSubtype?: FormationSubtype;
     title: string;
     slug: string;
     summary?: string;
@@ -266,6 +269,7 @@ export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 export interface ReferenceEntityDraft {
     kind: ReferenceEntityKind;
+    formationSubtype?: FormationSubtype | null;
     title: string;
     summary?: string | null;
     description?: string | null;

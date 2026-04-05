@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import {
+  isFormationSubtype,
   isBuiltInPolityEntity,
   type NewReferenceEntity,
   type PolitySnapshot,
@@ -47,6 +48,61 @@ const parseOptionalYear = (value: unknown) => {
   }
 
   return { provided: true as const, value: parsed };
+};
+
+const parseFormationSubtype = (value: unknown, kind: ReferenceEntityKind) => {
+  if (kind !== 'formation') {
+    return { provided: false as const, value: null };
+  }
+
+  if (value === undefined) {
+    return { provided: false as const };
+  }
+
+  if (value === null || value === '') {
+    return { provided: true as const, value: null };
+  }
+
+  if (!isFormationSubtype(value)) {
+    return { provided: true as const, invalid: true as const };
+  }
+
+  return { provided: true as const, value };
+};
+
+const findExistingReferenceEntityByIdentity = async (
+  db: Awaited<ReturnType<typeof getDb>>,
+  kind: ReferenceEntityKind,
+  title: string,
+  formationSubtype: string | null,
+  excludeId?: number
+) => {
+  if (kind === 'formation') {
+    if (formationSubtype) {
+      return db.get<ReferenceEntityRow>(
+        `SELECT * FROM reference_entities
+         WHERE kind = ? AND lower(title) = lower(?) AND formationSubtype = ?${excludeId ? ' AND id != ?' : ''}
+         LIMIT 1`,
+        ...(excludeId
+          ? [kind, title, formationSubtype, excludeId]
+          : [kind, title, formationSubtype])
+      );
+    }
+
+    return db.get<ReferenceEntityRow>(
+      `SELECT * FROM reference_entities
+       WHERE kind = ? AND lower(title) = lower(?) AND formationSubtype IS NULL${excludeId ? ' AND id != ?' : ''}
+       LIMIT 1`,
+      ...(excludeId ? [kind, title, excludeId] : [kind, title])
+    );
+  }
+
+  return db.get<ReferenceEntityRow>(
+    `SELECT * FROM reference_entities
+     WHERE kind = ? AND lower(title) = lower(?)${excludeId ? ' AND id != ?' : ''}
+     LIMIT 1`,
+    ...(excludeId ? [kind, title, excludeId] : [kind, title])
+  );
 };
 
 export const getAllReferenceEntities = asyncErrorHandler(async (req: Request, res: Response) => {
@@ -137,14 +193,19 @@ export const createReferenceEntity = asyncErrorHandler(async (req: Request, res:
 
   const startYear = parseOptionalYear(newEntity.startYear);
   const endYear = parseOptionalYear(newEntity.endYear);
+  const formationSubtype = parseFormationSubtype(newEntity.formationSubtype, newEntity.kind);
+  if (formationSubtype.invalid) {
+    return res.status(400).json({ message: 'Invalid formation subtype' });
+  }
   if (startYear.invalid || endYear.invalid) {
     return res.status(400).json({ message: 'Invalid reference entity year' });
   }
 
-  const existing = await db.get<ReferenceEntityRow>(
-    'SELECT * FROM reference_entities WHERE kind = ? AND lower(title) = lower(?)',
+  const existing = await findExistingReferenceEntityByIdentity(
+    db,
     newEntity.kind,
-    title
+    title,
+    formationSubtype.value ?? null
   );
   if (existing) {
     return res.status(200).json(hydrateReferenceEntity(existing));
@@ -154,9 +215,10 @@ export const createReferenceEntity = asyncErrorHandler(async (req: Request, res:
   const now = new Date().toISOString();
   const result = await db.run(
     `INSERT INTO reference_entities
-      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (kind, formationSubtype, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     newEntity.kind,
+    formationSubtype.value ?? null,
     title,
     slug,
     newEntity.summary?.trim() || null,
@@ -171,6 +233,7 @@ export const createReferenceEntity = asyncErrorHandler(async (req: Request, res:
   const entity: ReferenceEntity = {
     id: result.lastID as number,
     kind: newEntity.kind,
+    formationSubtype: formationSubtype.value ?? undefined,
     title,
     slug,
     summary: newEntity.summary?.trim() || undefined,
@@ -189,6 +252,7 @@ export const createReferenceEntity = asyncErrorHandler(async (req: Request, res:
     message: `Created ${entity.kind} "${entity.title}"`,
     metadata: {
       kind: entity.kind,
+      formationSubtype: entity.formationSubtype,
       slug: entity.slug,
     },
   });
@@ -255,6 +319,11 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
     values.push(nextKind);
   }
 
+  const formationSubtype = parseFormationSubtype(updatedEntity.formationSubtype, nextKind);
+  if (formationSubtype.invalid) {
+    return res.status(400).json({ message: 'Invalid formation subtype' });
+  }
+
   let nextTitle = existing.title;
   if (updatedEntity.title !== undefined) {
     const title = updatedEntity.title.trim();
@@ -264,6 +333,16 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
     nextTitle = title;
     fields.push('title = ?');
     values.push(nextTitle);
+  }
+
+  if (nextKind === 'formation') {
+    if (formationSubtype.provided) {
+      fields.push('formationSubtype = ?');
+      values.push(formationSubtype.value ?? null);
+    }
+  } else if (existing.formationSubtype !== undefined) {
+    fields.push('formationSubtype = ?');
+    values.push(null);
   }
 
   if (updatedEntity.summary !== undefined) {
@@ -289,6 +368,24 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
   if (updatedEntity.metadata !== undefined) {
     fields.push('metadata = ?');
     values.push(updatedEntity.metadata ? JSON.stringify(updatedEntity.metadata) : null);
+  }
+
+  const nextFormationSubtype =
+    nextKind === 'formation'
+      ? (formationSubtype.provided
+          ? formationSubtype.value ?? null
+          : existing.formationSubtype ?? null)
+      : null;
+
+  const conflictingEntity = await findExistingReferenceEntityByIdentity(
+    db,
+    nextKind,
+    nextTitle,
+    nextFormationSubtype,
+    id
+  );
+  if (conflictingEntity) {
+    return res.status(409).json({ message: 'A reference entity with this identity already exists' });
   }
 
   if (nextKind !== existing.kind || nextTitle !== existing.title) {
@@ -324,6 +421,7 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
     message: `Updated ${entity.kind} "${entity.title}"`,
     metadata: {
       kind: entity.kind,
+      formationSubtype: entity.formationSubtype,
       slug: entity.slug,
     },
   });
