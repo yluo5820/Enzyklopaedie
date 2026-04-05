@@ -408,6 +408,7 @@ const WorldHistoryPage: React.FC = () => {
     const parsed = Number(searchParams.get('formation'));
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
+  const [selectedFormationOverlayId, setSelectedFormationOverlayId] = useState<number | null>(null);
   const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
   const [hoveredBasemapFeatureId, setHoveredBasemapFeatureId] = useState<string | null>(null);
   const [resolvedPolityMatch, setResolvedPolityMatch] =
@@ -458,6 +459,8 @@ const WorldHistoryPage: React.FC = () => {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapLoadedRef = useRef(false);
   const basemapPopupRef = useRef<maplibregl.Popup | null>(null);
+  const selectedBasemapFeatureIdRef = useRef<string | null>(selectedBasemapFeatureId);
+  const activeFormationIdRef = useRef<number | null>(activeFormationId);
 
   const atlasYearBounds = useMemo(() => getAtlasYearBounds(atlasEntities), [atlasEntities]);
   const yearBounds = useMemo(() => {
@@ -881,6 +884,13 @@ const WorldHistoryPage: React.FC = () => {
     activeFormationMemberships,
     formationPolitySnapshotCache,
   ]);
+  const isActiveFormationOverlaySelected =
+    activeFormationId !== null &&
+    selectedFormationOverlayId === activeFormationId &&
+    activeFormationMembersGeojson.features.length > 0;
+  const selectedFormationOverlayGeojson = isActiveFormationOverlaySelected
+    ? activeFormationMembersGeojson
+    : EMPTY_FEATURE_COLLECTION;
 
   const openEntityPage = (entityId: number) => {
     navigate(`/entities/${entityId}`, {
@@ -911,6 +921,14 @@ const WorldHistoryPage: React.FC = () => {
       setSearchParams(nextParams, { replace: true });
     }
   }, [activeFormationId, query, searchKind, year, selectedAtlasEntityId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    selectedBasemapFeatureIdRef.current = selectedBasemapFeatureId;
+  }, [selectedBasemapFeatureId]);
+
+  useEffect(() => {
+    activeFormationIdRef.current = activeFormationId;
+  }, [activeFormationId]);
 
   useEffect(() => {
     const loadHistoricalBasemapManifest = async () => {
@@ -985,6 +1003,29 @@ const WorldHistoryPage: React.FC = () => {
       setActiveFormationId(formationEntities[0]?.id ?? null);
     }
   }, [activeFormationId, formationEntities]);
+
+  useEffect(() => {
+    if (!activeFormationId || activeFormationMembersGeojson.features.length === 0) {
+      if (selectedFormationOverlayId !== null) {
+        setSelectedFormationOverlayId(null);
+      }
+      return;
+    }
+
+    if (selectedFormationOverlayId !== null && selectedFormationOverlayId !== activeFormationId) {
+      setSelectedFormationOverlayId(null);
+    }
+  }, [
+    activeFormationId,
+    activeFormationMembersGeojson.features.length,
+    selectedFormationOverlayId,
+  ]);
+
+  useEffect(() => {
+    if (selectedAtlasEntityId !== null && selectedFormationOverlayId !== null) {
+      setSelectedFormationOverlayId(null);
+    }
+  }, [selectedAtlasEntityId, selectedFormationOverlayId]);
 
   useEffect(() => {
     const loadFormationWorkspace = async () => {
@@ -1480,6 +1521,11 @@ const WorldHistoryPage: React.FC = () => {
             data: EMPTY_FEATURE_COLLECTION as any,
           });
 
+          map.addSource('atlas-selected-formation-overlay', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
           map.addSource('atlas-selected-basemap-feature', {
             type: 'geojson',
             data: EMPTY_FEATURE_COLLECTION as any,
@@ -1534,6 +1580,27 @@ const WorldHistoryPage: React.FC = () => {
               'line-color': '#35573a',
               'line-width': 1.8,
               'line-opacity': 0.92,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-formation-overlay-fill',
+            type: 'fill',
+            source: 'atlas-selected-formation-overlay',
+            paint: {
+              'fill-color': '#3f6a45',
+              'fill-opacity': 0.24,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-formation-overlay-outline',
+            type: 'line',
+            source: 'atlas-selected-formation-overlay',
+            paint: {
+              'line-color': '#26462b',
+              'line-width': 2.5,
+              'line-opacity': 0.98,
             },
           });
 
@@ -1690,6 +1757,17 @@ const WorldHistoryPage: React.FC = () => {
             const feature = event.features?.[0] as BasemapFeature | undefined;
             const featureId = feature?.properties?.atlasFeatureId;
             if (typeof featureId === 'string' && featureId) {
+              if (
+                activeFormationIdRef.current &&
+                selectedBasemapFeatureIdRef.current === featureId
+              ) {
+                setSelectedFormationOverlayId((current) =>
+                  current === activeFormationIdRef.current ? null : activeFormationIdRef.current
+                );
+                return;
+              }
+
+              setSelectedFormationOverlayId(null);
               setSelectedBasemapFeatureId(featureId);
             }
           });
@@ -1709,6 +1787,7 @@ const WorldHistoryPage: React.FC = () => {
           }
           const featureId = feature?.properties?.atlasFeatureId;
           if (typeof featureId === 'string' && featureId) {
+            setSelectedFormationOverlayId(null);
             setSelectedBasemapFeatureId(featureId);
           }
         });
@@ -1790,6 +1869,9 @@ const WorldHistoryPage: React.FC = () => {
 
     const basemapSource = map.getSource('atlas-historical-basemap') as GeoJSONSource | undefined;
     const formationMembersSource = map.getSource('atlas-active-formation-members') as GeoJSONSource | undefined;
+    const selectedFormationOverlaySource = map.getSource(
+      'atlas-selected-formation-overlay'
+    ) as GeoJSONSource | undefined;
     const selectedBasemapSource = map.getSource('atlas-selected-basemap-feature') as GeoJSONSource | undefined;
     const hoveredBasemapSource = map.getSource('atlas-hovered-basemap-feature') as GeoJSONSource | undefined;
     const selectedPolityPeopleSource = map.getSource('atlas-selected-polity-people') as GeoJSONSource | undefined;
@@ -1798,6 +1880,7 @@ const WorldHistoryPage: React.FC = () => {
     if (
       !basemapSource ||
       !formationMembersSource ||
+      !selectedFormationOverlaySource ||
       !selectedBasemapSource ||
       !hoveredBasemapSource ||
       !selectedPolityPeopleSource ||
@@ -1809,6 +1892,7 @@ const WorldHistoryPage: React.FC = () => {
 
     basemapSource.setData((historicalBasemapLayer?.geojson ?? EMPTY_FEATURE_COLLECTION) as any);
     formationMembersSource.setData(activeFormationMembersGeojson as any);
+    selectedFormationOverlaySource.setData(selectedFormationOverlayGeojson as any);
     selectedBasemapSource.setData(
       selectedBasemapFeature
         ? ({
@@ -1842,6 +1926,9 @@ const WorldHistoryPage: React.FC = () => {
     activeFormationMembersGeojson,
     historicalBasemapLayer,
     hoveredBasemapFeature,
+    selectedBasemapFeature,
+    selectedBasemapFeatureId,
+    selectedFormationOverlayGeojson,
     selectedGeometry,
     selectedPolityPeoplePresenceGeojson,
     selectedVisibleAtlasEntity,
@@ -1851,6 +1938,20 @@ const WorldHistoryPage: React.FC = () => {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
+
+    if (isActiveFormationOverlaySelected) {
+      const bounds = getGeoJsonBounds(selectedFormationOverlayGeojson);
+      if (bounds) {
+        map.fitBounds(
+          [
+            [bounds.west, bounds.south],
+            [bounds.east, bounds.north],
+          ],
+          { padding: 78, duration: 900, maxZoom: 4.9 }
+        );
+        return;
+      }
+    }
 
     if (selectedGeometry) {
       const bounds = getGeoJsonBounds(selectedGeometry);
@@ -1915,8 +2016,10 @@ const WorldHistoryPage: React.FC = () => {
       );
     }
   }, [
+    isActiveFormationOverlaySelected,
     mappableAtlasEntities,
     selectedBasemapFeature,
+    selectedFormationOverlayGeojson,
     selectedGeometry,
     selectedVisibleAtlasEntity,
   ]);
@@ -2788,7 +2891,9 @@ const WorldHistoryPage: React.FC = () => {
                       <div>
                         <span className="world-history-panel__eyebrow">Selected region</span>
                         <strong>
-                          {selectedPolityFormationMembership
+                          {isActiveFormationOverlaySelected
+                            ? 'Formation overlay focused'
+                            : selectedPolityFormationMembership
                             ? 'Already included'
                             : resolvedPolityMatch
                               ? 'Ready to add'
@@ -2796,6 +2901,25 @@ const WorldHistoryPage: React.FC = () => {
                         </strong>
                       </div>
                     </div>
+                    <div className="world-history-selected-card__actions">
+                      {activeFormationMembersGeojson.features.length > 0 ? (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() =>
+                            setSelectedFormationOverlayId((current) =>
+                              current === activeFormationId ? null : activeFormationId
+                            )
+                          }
+                        >
+                          {isActiveFormationOverlaySelected ? 'Release overlay' : 'Select overlay'}
+                        </button>
+                      ) : null}
+                    </div>
+                    <span className="world-history-hint">
+                      Click a member region once to inspect that polity. Click the same member again, or use
+                      “Select overlay,” to focus the whole formation footprint for the active snapshot.
+                    </span>
                     {formationOverlayError ? (
                       <div className="world-history-feedback is-error">{formationOverlayError}</div>
                     ) : null}
