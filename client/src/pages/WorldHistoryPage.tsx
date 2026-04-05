@@ -258,6 +258,63 @@ const getGeoJsonBounds = (geojson: GeoJsonLike) => {
   };
 };
 
+const getBoundsCenter = (bounds: {
+  west: number;
+  east: number;
+  south: number;
+  north: number;
+}) => ({
+  longitude: (bounds.west + bounds.east) / 2,
+  latitude: (bounds.south + bounds.north) / 2,
+});
+
+const isMembershipVisibleInYear = (
+  membership: Pick<PersonPolityMembershipDetail, 'startYear' | 'endYear'>,
+  year: number
+) => {
+  if (membership.startYear !== undefined && membership.endYear !== undefined) {
+    return year >= membership.startYear && year <= membership.endYear;
+  }
+  if (membership.startYear !== undefined) {
+    return year >= membership.startYear;
+  }
+  if (membership.endYear !== undefined) {
+    return year <= membership.endYear;
+  }
+  return true;
+};
+
+const getPresenceMarkerCoordinates = (
+  bounds: {
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+  },
+  index: number,
+  total: number
+) => {
+  const center = getBoundsCenter(bounds);
+  if (total <= 1) {
+    return [center.longitude, center.latitude] as const;
+  }
+
+  const steps = Math.min(Math.max(total, 2), 6);
+  const slot = index % steps;
+  const ring = Math.floor(index / steps) + 1;
+  const angle = (2 * Math.PI * slot) / steps + (ring % 2 === 0 ? Math.PI / steps : 0);
+  const horizontalSpan = Math.max(bounds.east - bounds.west, 1.2);
+  const verticalSpan = Math.max(bounds.north - bounds.south, 0.8);
+  const radiusScale = 0.34 + (ring - 1) * 0.26;
+  const radiusLng = Math.min(Math.max(horizontalSpan * 0.16, 0.65), 6) * radiusScale;
+  const radiusLat = Math.min(Math.max(verticalSpan * 0.16, 0.45), 4) * radiusScale;
+
+  return [
+    center.longitude + Math.cos(angle) * radiusLng,
+    center.latitude + Math.sin(angle) * radiusLat,
+  ] as const;
+};
+
 const getFeatureCollectionFeatures = (geojson: GeoJsonLike | null | undefined) => {
   if (!geojson || geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
     return [] as Array<Record<string, unknown>>;
@@ -441,6 +498,9 @@ const WorldHistoryPage: React.FC = () => {
   const [formationPolitySnapshotCache, setFormationPolitySnapshotCache] = useState<
     Record<number, PolitySnapshot[]>
   >({});
+  const [formationPolityPersonMembershipCache, setFormationPolityPersonMembershipCache] = useState<
+    Record<number, PersonPolityMembershipDetail[]>
+  >({});
   const [formationWorkspaceError, setFormationWorkspaceError] = useState<string | null>(null);
   const [selectedPolityContextError, setSelectedPolityContextError] = useState<string | null>(null);
   const [formationOverlayError, setFormationOverlayError] = useState<string | null>(null);
@@ -459,6 +519,7 @@ const WorldHistoryPage: React.FC = () => {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapLoadedRef = useRef(false);
   const basemapPopupRef = useRef<maplibregl.Popup | null>(null);
+  const personPopupRef = useRef<maplibregl.Popup | null>(null);
   const selectedBasemapFeatureIdRef = useRef<string | null>(selectedBasemapFeatureId);
   const activeFormationIdRef = useRef<number | null>(activeFormationId);
 
@@ -830,24 +891,36 @@ const WorldHistoryPage: React.FC = () => {
       return EMPTY_FEATURE_COLLECTION;
     }
 
+    const visibleMemberships = [...selectedPolityPersonMemberships]
+      .filter((membership) => isMembershipVisibleInYear(membership, year))
+      .sort(
+        (left, right) =>
+          (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+            sensitivity: 'base',
+          }) || left.id - right.id
+      );
+
     return {
       type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          properties: {
-            polityId: resolvedPolityMatch.referenceEntity.id,
-            title: resolvedPolityMatch.referenceEntity.title,
-            count: selectedPolityPersonMemberships.length,
-          },
-          geometry: {
-            type: 'Point',
-            coordinates: [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2],
-          },
+      features: visibleMemberships.map((membership, index) => ({
+        type: 'Feature',
+        properties: {
+          atlasPresenceId: `polity-${membership.id}`,
+          atlasPresenceMode: 'polity',
+          atlasMembershipId: membership.id,
+          atlasPersonEntityId: membership.personEntityId,
+          atlasPersonTitle: membership.personTitle || 'Untitled person',
+          atlasPolityEntityId: resolvedPolityMatch.referenceEntity.id,
+          atlasPolityTitle: resolvedPolityMatch.referenceEntity.title,
+          atlasMembershipTimespan: formatMembershipTimespan(membership),
         },
-      ],
+        geometry: {
+          type: 'Point',
+          coordinates: getPresenceMarkerCoordinates(bounds, index, visibleMemberships.length),
+        },
+      })),
     };
-  }, [resolvedPolityMatch, selectedBasemapFeature, selectedPolityPersonMemberships.length]);
+  }, [resolvedPolityMatch, selectedBasemapFeature, selectedPolityPersonMemberships, year]);
   const activeFormationMembersGeojson = useMemo<FeatureCollectionLike>(() => {
     if (!activeFormationId || !activeBasemapYear || activeFormationMemberships.length === 0) {
       return EMPTY_FEATURE_COLLECTION;
@@ -891,6 +964,68 @@ const WorldHistoryPage: React.FC = () => {
   const selectedFormationOverlayGeojson = isActiveFormationOverlaySelected
     ? activeFormationMembersGeojson
     : EMPTY_FEATURE_COLLECTION;
+  const activeFormationPeoplePresenceGeojson = useMemo<FeatureCollectionLike>(() => {
+    if (!isActiveFormationOverlaySelected || !activeBasemapYear || activeFormationMemberships.length === 0) {
+      return EMPTY_FEATURE_COLLECTION;
+    }
+
+    const features = activeFormationMemberships.flatMap((membership) => {
+      const snapshots = formationPolitySnapshotCache[membership.polityEntityId] ?? [];
+      const snapshot = snapshots.find((entry) => entry.snapshotYear === activeBasemapYear.year);
+      if (!snapshot) return [];
+
+      const bounds = getGeoJsonBounds(snapshot.geometry);
+      if (!bounds) return [];
+
+      const visibleMemberships = [
+        ...(formationPolityPersonMembershipCache[membership.polityEntityId] ?? []),
+      ]
+        .filter((entry) => isMembershipVisibleInYear(entry, year))
+        .sort(
+          (left, right) =>
+            (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+              sensitivity: 'base',
+            }) || left.id - right.id
+        );
+
+      return visibleMemberships.map((entry, index) => ({
+        type: 'Feature',
+        properties: {
+          atlasPresenceId: `formation-${membership.id}-${entry.id}`,
+          atlasPresenceMode: 'formation',
+          atlasMembershipId: entry.id,
+          atlasPersonEntityId: entry.personEntityId,
+          atlasPersonTitle: entry.personTitle || 'Untitled person',
+          atlasPolityEntityId: membership.polityEntityId,
+          atlasPolityTitle: membership.polityTitle || snapshot.titleAtSnapshot,
+          atlasFormationEntityId: membership.formationEntityId,
+          atlasFormationTitle: membership.formationTitle || activeFormation?.title || '',
+          atlasMembershipTimespan: formatMembershipTimespan(entry),
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: getPresenceMarkerCoordinates(bounds, index, visibleMemberships.length),
+        },
+      }));
+    });
+
+    return {
+      type: 'FeatureCollection',
+      features,
+    };
+  }, [
+    activeBasemapYear,
+    activeFormation?.title,
+    activeFormationMemberships,
+    formationPolityPersonMembershipCache,
+    formationPolitySnapshotCache,
+    isActiveFormationOverlaySelected,
+    year,
+  ]);
+  const visiblePersonPresenceGeojson = isActiveFormationOverlaySelected
+    ? activeFormationPeoplePresenceGeojson
+    : selectedPolityPeoplePresenceGeojson;
+  const visiblePersonPresenceCount = visiblePersonPresenceGeojson.features.length;
 
   const openEntityPage = (entityId: number) => {
     navigate(`/entities/${entityId}`, {
@@ -1159,7 +1294,10 @@ const WorldHistoryPage: React.FC = () => {
   useEffect(() => {
     const polityIds = [...new Set(activeFormationMemberships.map((membership) => membership.polityEntityId))]
       .filter((value): value is number => Number.isInteger(value) && value > 0);
-    const missingPolityIds = polityIds.filter((polityId) => !formationPolitySnapshotCache[polityId]);
+    const missingPolityIds = polityIds.filter(
+      (polityId) =>
+        !formationPolitySnapshotCache[polityId] || !formationPolityPersonMembershipCache[polityId]
+    );
 
     if (missingPolityIds.length === 0) {
       setIsLoadingFormationOverlay(false);
@@ -1175,7 +1313,10 @@ const WorldHistoryPage: React.FC = () => {
         const entries = await Promise.all(
           missingPolityIds.map(async (polityId) => [
             polityId,
-            await fetchReferenceEntityPolitySnapshots(polityId),
+            {
+              snapshots: await fetchReferenceEntityPolitySnapshots(polityId),
+              personMemberships: await fetchReferenceEntityPersonPolityMemberships(polityId),
+            },
           ] as const)
         );
 
@@ -1183,7 +1324,13 @@ const WorldHistoryPage: React.FC = () => {
 
         setFormationPolitySnapshotCache((current) => ({
           ...current,
-          ...Object.fromEntries(entries),
+          ...Object.fromEntries(entries.map(([polityId, entry]) => [polityId, entry.snapshots])),
+        }));
+        setFormationPolityPersonMembershipCache((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            entries.map(([polityId, entry]) => [polityId, entry.personMemberships])
+          ),
         }));
         setFormationOverlayError(null);
       } catch (error) {
@@ -1191,7 +1338,7 @@ const WorldHistoryPage: React.FC = () => {
           setFormationOverlayError(
             error instanceof Error
               ? error.message
-              : 'Failed to load formation polity snapshots for the map overlay.'
+              : 'Failed to load formation atlas context for the map overlay.'
           );
         }
       } finally {
@@ -1206,7 +1353,11 @@ const WorldHistoryPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFormationMemberships, formationPolitySnapshotCache]);
+  }, [
+    activeFormationMemberships,
+    formationPolityPersonMembershipCache,
+    formationPolitySnapshotCache,
+  ]);
 
   useEffect(() => {
     setAtlasMembershipError(null);
@@ -1536,7 +1687,7 @@ const WorldHistoryPage: React.FC = () => {
             data: EMPTY_FEATURE_COLLECTION as any,
           });
 
-          map.addSource('atlas-selected-polity-people', {
+          map.addSource('atlas-person-presence', {
             type: 'geojson',
             data: EMPTY_FEATURE_COLLECTION as any,
           });
@@ -1647,26 +1798,20 @@ const WorldHistoryPage: React.FC = () => {
         });
 
           map.addLayer({
-            id: 'atlas-selected-polity-people',
+            id: 'atlas-person-presence',
             type: 'circle',
-            source: 'atlas-selected-polity-people',
+            source: 'atlas-person-presence',
             paint: {
-              'circle-radius': [
-                'interpolate',
-                ['linear'],
-                ['coalesce', ['get', 'count'], 0],
-                1,
-                8,
-                3,
-                11,
-                6,
-                14,
-                12,
-                18,
+              'circle-radius': 7,
+              'circle-color': [
+                'match',
+                ['get', 'atlasPresenceMode'],
+                'formation',
+                '#7a5b9e',
+                '#b57b36',
               ],
-              'circle-color': '#b57b36',
-              'circle-opacity': 0.94,
-              'circle-stroke-width': 2,
+              'circle-opacity': 0.95,
+              'circle-stroke-width': 1.8,
               'circle-stroke-color': '#fff6ea',
             },
           });
@@ -1780,6 +1925,62 @@ const WorldHistoryPage: React.FC = () => {
             map.getCanvas().style.cursor = '';
           });
 
+          map.on('click', 'atlas-person-presence', (event) => {
+            const feature = event.features?.[0] as { properties?: Record<string, unknown> } | undefined;
+            const personEntityId = feature?.properties?.atlasPersonEntityId;
+            const parsedId =
+              typeof personEntityId === 'number' ? personEntityId : Number(personEntityId);
+            if (Number.isInteger(parsedId) && parsedId > 0) {
+              navigate(`/entities/${parsedId}`, {
+                state: {
+                  returnTo: `${window.location.pathname}${window.location.search}`,
+                },
+              });
+            }
+          });
+
+          map.on('mouseenter', 'atlas-person-presence', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mousemove', 'atlas-person-presence', (event) => {
+            const feature = event.features?.[0] as { properties?: Record<string, unknown> } | undefined;
+            if (!feature?.properties) return;
+
+            if (!personPopupRef.current) {
+              personPopupRef.current = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                offset: 14,
+                className: 'world-history-map-popup',
+              });
+            }
+
+            const personTitle = String(feature.properties.atlasPersonTitle ?? 'Untitled person');
+            const polityTitle = String(feature.properties.atlasPolityTitle ?? 'Unknown polity');
+            const timespan = String(feature.properties.atlasMembershipTimespan ?? 'Undated');
+            const formationTitle = feature.properties.atlasFormationTitle
+              ? String(feature.properties.atlasFormationTitle)
+              : null;
+
+            personPopupRef.current
+              .setLngLat(event.lngLat)
+              .setHTML(
+                `<div class="world-history-map-popup__content">
+                  <strong>${escapeHtml(personTitle)}</strong>
+                  <span>${escapeHtml(polityTitle)}</span>
+                  ${formationTitle ? `<span>${escapeHtml(formationTitle)}</span>` : ''}
+                  <span>${escapeHtml(timespan)}</span>
+                </div>`
+              )
+              .addTo(map);
+          });
+
+          map.on('mouseleave', 'atlas-person-presence', () => {
+            map.getCanvas().style.cursor = '';
+            personPopupRef.current?.remove();
+          });
+
         map.on('click', 'atlas-historical-basemap-fill', (event) => {
           const feature = event.features?.[0] as BasemapFeature | undefined;
           if (!isNamedBasemapFeature(feature)) {
@@ -1858,6 +2059,7 @@ const WorldHistoryPage: React.FC = () => {
       disposed = true;
       mapLoadedRef.current = false;
       basemapPopupRef.current?.remove();
+      personPopupRef.current?.remove();
       localMap?.remove();
       mapRef.current = null;
     };
@@ -1874,7 +2076,7 @@ const WorldHistoryPage: React.FC = () => {
     ) as GeoJSONSource | undefined;
     const selectedBasemapSource = map.getSource('atlas-selected-basemap-feature') as GeoJSONSource | undefined;
     const hoveredBasemapSource = map.getSource('atlas-hovered-basemap-feature') as GeoJSONSource | undefined;
-    const selectedPolityPeopleSource = map.getSource('atlas-selected-polity-people') as GeoJSONSource | undefined;
+    const personPresenceSource = map.getSource('atlas-person-presence') as GeoJSONSource | undefined;
     const source = map.getSource('atlas-entities') as GeoJSONSource | undefined;
     const geometrySource = map.getSource('atlas-selected-geometry') as GeoJSONSource | undefined;
     if (
@@ -1883,7 +2085,7 @@ const WorldHistoryPage: React.FC = () => {
       !selectedFormationOverlaySource ||
       !selectedBasemapSource ||
       !hoveredBasemapSource ||
-      !selectedPolityPeopleSource ||
+      !personPresenceSource ||
       !source ||
       !geometrySource
     ) {
@@ -1910,7 +2112,7 @@ const WorldHistoryPage: React.FC = () => {
         : (EMPTY_FEATURE_COLLECTION as any)
     );
     source.setData(buildAtlasGeoJson(visibleAtlasEntities) as any);
-    selectedPolityPeopleSource.setData(selectedPolityPeoplePresenceGeojson as any);
+    personPresenceSource.setData(visiblePersonPresenceGeojson as any);
     geometrySource.setData(
       (selectedGeometry ?? EMPTY_FEATURE_COLLECTION) as any
     );
@@ -1930,7 +2132,7 @@ const WorldHistoryPage: React.FC = () => {
     selectedBasemapFeatureId,
     selectedFormationOverlayGeojson,
     selectedGeometry,
-    selectedPolityPeoplePresenceGeojson,
+    visiblePersonPresenceGeojson,
     selectedVisibleAtlasEntity,
     visibleAtlasEntities,
   ]);
@@ -2062,6 +2264,7 @@ const WorldHistoryPage: React.FC = () => {
               <span className="world-history-meta-value">{mappableAtlasEntities.length}</span>
               <span className="world-history-hint">
                 Overlay source: pinned authority records from Wikidata.
+                {visiblePersonPresenceCount > 0 ? ` People on map: ${visiblePersonPresenceCount}.` : ''}
                 {historicalBasemapLayer ? ` Snapshot regions: ${historicalBasemapLayer.featureCount}.` : ''}
               </span>
             </div>
