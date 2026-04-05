@@ -556,6 +556,10 @@ const WorldHistoryPage: React.FC = () => {
     const parsed = Number(searchParams.get('formation'));
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
+  const [focusedPolityId, setFocusedPolityId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('polity'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
   const [selectedFormationOverlayId, setSelectedFormationOverlayId] = useState<number | null>(null);
   const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
   const [hoveredBasemapFeatureId, setHoveredBasemapFeatureId] = useState<string | null>(null);
@@ -1263,10 +1267,22 @@ const WorldHistoryPage: React.FC = () => {
     if (activeFormationId) nextParams.set('formation', String(activeFormationId));
     else nextParams.delete('formation');
 
+    if (focusedPolityId) nextParams.set('polity', String(focusedPolityId));
+    else nextParams.delete('polity');
+
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
     }
-  }, [activeFormationId, query, searchKind, year, selectedAtlasEntityId, searchParams, setSearchParams]);
+  }, [
+    activeFormationId,
+    focusedPolityId,
+    query,
+    searchKind,
+    year,
+    selectedAtlasEntityId,
+    searchParams,
+    setSearchParams,
+  ]);
 
   useEffect(() => {
     selectedBasemapFeatureIdRef.current = selectedBasemapFeatureId;
@@ -1337,6 +1353,17 @@ const WorldHistoryPage: React.FC = () => {
 
     void loadReferenceEntities();
   }, []);
+
+  useEffect(() => {
+    if (!focusedPolityId) return;
+
+    if (
+      referenceEntities.length > 0 &&
+      !referenceEntities.some((entity) => entity.id === focusedPolityId && entity.kind === 'polity')
+    ) {
+      setFocusedPolityId(null);
+    }
+  }, [focusedPolityId, referenceEntities]);
 
   useEffect(() => {
     if (!activeFormationId && formationEntities[0]) {
@@ -1501,6 +1528,65 @@ const WorldHistoryPage: React.FC = () => {
 
     void loadSelectedPolityContext();
   }, [resolvedPolityReferenceEntityId]);
+
+  useEffect(() => {
+    const focusPolityFromUrl = async () => {
+      if (!focusedPolityId || !activeBasemapYear) return;
+
+      const focusedPolity = referenceEntities.find(
+        (entity) => entity.id === focusedPolityId && entity.kind === 'polity'
+      );
+      if (!focusedPolity) return;
+
+      if (resolvedPolityReferenceEntityId === focusedPolityId && selectedBasemapFeatureId) {
+        return;
+      }
+
+      try {
+        const snapshots = await fetchReferenceEntityPolitySnapshots(focusedPolityId);
+        const targetSnapshot =
+          snapshots.find((snapshot) => snapshot.snapshotYear === activeBasemapYear.year) ??
+          snapshots.reduce<PolitySnapshot | null>((closest, snapshot) => {
+            if (!closest) return snapshot;
+
+            return Math.abs(snapshot.snapshotYear - activeBasemapYear.year) <
+              Math.abs(closest.snapshotYear - activeBasemapYear.year)
+              ? snapshot
+              : closest;
+          }, null);
+
+        if (!targetSnapshot) return;
+
+        const sourceFeatureIds = Array.isArray(targetSnapshot.metadata?.sourceFeatureIds)
+          ? targetSnapshot.metadata.sourceFeatureIds.filter(
+              (value): value is string => typeof value === 'string' && value.length > 0
+            )
+          : [];
+
+        const matchingFeatureId =
+          sourceFeatureIds.find((featureId) =>
+            activeBasemapFeatures.some((feature) => feature.properties?.atlasFeatureId === featureId)
+          ) ?? null;
+
+        if (!matchingFeatureId) return;
+
+        setSelectedAtlasEntityId(null);
+        setSelectedFormationOverlayId(null);
+        setSelectedBasemapFeatureId(matchingFeatureId);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    void focusPolityFromUrl();
+  }, [
+    activeBasemapFeatures,
+    activeBasemapYear,
+    focusedPolityId,
+    referenceEntities,
+    resolvedPolityReferenceEntityId,
+    selectedBasemapFeatureId,
+  ]);
 
   useEffect(() => {
     const polityIds = [...new Set(activeFormationMemberships.map((membership) => membership.polityEntityId))]
@@ -2101,6 +2187,7 @@ const WorldHistoryPage: React.FC = () => {
             const id = feature?.properties?.id;
             const parsedId = typeof id === 'number' ? id : Number(id);
             if (Number.isInteger(parsedId) && parsedId > 0) {
+              setFocusedPolityId(null);
               setSelectedAtlasEntityId(parsedId);
             }
           });
@@ -2128,6 +2215,7 @@ const WorldHistoryPage: React.FC = () => {
               }
 
               setSelectedFormationOverlayId(null);
+              setFocusedPolityId(null);
               setSelectedBasemapFeatureId(featureId);
             }
           });
@@ -2204,6 +2292,7 @@ const WorldHistoryPage: React.FC = () => {
           const featureId = feature?.properties?.atlasFeatureId;
           if (typeof featureId === 'string' && featureId) {
             setSelectedFormationOverlayId(null);
+            setFocusedPolityId(null);
             setSelectedBasemapFeatureId(featureId);
           }
         });
@@ -2751,7 +2840,10 @@ const WorldHistoryPage: React.FC = () => {
                     <button
                       type="button"
                       className="world-history-clear-button"
-                      onClick={() => setSelectedBasemapFeatureId(null)}
+                      onClick={() => {
+                        setFocusedPolityId(null);
+                        setSelectedBasemapFeatureId(null);
+                      }}
                     >
                       Clear
                     </button>
@@ -3173,7 +3265,10 @@ const WorldHistoryPage: React.FC = () => {
                                       <button
                                         type="button"
                                         className="is-primary"
-                                        onClick={() => setSelectedAtlasEntityId(entity.id)}
+                                        onClick={() => {
+                                          setFocusedPolityId(null);
+                                          setSelectedAtlasEntityId(entity.id);
+                                        }}
                                       >
                                         Focus atlas record
                                       </button>
@@ -3595,6 +3690,7 @@ const WorldHistoryPage: React.FC = () => {
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' && filteredBasemapFeatures[0]) {
                         event.preventDefault();
+                        setFocusedPolityId(null);
                         setSelectedBasemapFeatureId(
                           filteredBasemapFeatures[0].properties?.atlasFeatureId ?? null
                         );
@@ -3621,7 +3717,10 @@ const WorldHistoryPage: React.FC = () => {
                           key={featureId}
                           type="button"
                           className={`world-history-region-result ${isSelected ? 'is-selected' : ''}`}
-                          onClick={() => setSelectedBasemapFeatureId(featureId ?? null)}
+                          onClick={() => {
+                            setFocusedPolityId(null);
+                            setSelectedBasemapFeatureId(featureId ?? null);
+                          }}
                         >
                           <strong>{getBasemapLabel(feature)}</strong>
                           <span>
@@ -3665,7 +3764,10 @@ const WorldHistoryPage: React.FC = () => {
                           key={entity.id}
                           type="button"
                           className={`world-history-shelf-card ${isSelected ? 'is-selected' : ''}`}
-                          onClick={() => setSelectedAtlasEntityId(entity.id)}
+                          onClick={() => {
+                            setFocusedPolityId(null);
+                            setSelectedAtlasEntityId(entity.id);
+                          }}
                         >
                           <div className="world-history-shelf-card__head">
                             <div className="world-history-shelf-card__chips">
@@ -3712,7 +3814,10 @@ const WorldHistoryPage: React.FC = () => {
                           key={`visible-${entity.id}`}
                           type="button"
                           className={`world-history-shelf-card ${isSelected ? 'is-selected' : ''}`}
-                          onClick={() => setSelectedAtlasEntityId(entity.id)}
+                          onClick={() => {
+                            setFocusedPolityId(null);
+                            setSelectedAtlasEntityId(entity.id);
+                          }}
                         >
                           <div className="world-history-shelf-card__head">
                             <div className="world-history-shelf-card__chips">

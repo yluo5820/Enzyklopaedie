@@ -87,6 +87,23 @@ const formatAtlasHorizon = (entities: ReferenceEntity[]) => {
   return null;
 };
 
+const resolveAtlasFocusYear = (entity: ReferenceEntity) =>
+  entity.endYear ?? entity.startYear ?? 1862;
+
+const buildAtlasHref = (entity: ReferenceEntity) => {
+  const year = resolveAtlasFocusYear(entity);
+
+  if (entity.kind === 'formation') {
+    return `/world-history?year=${year}&formation=${entity.id}`;
+  }
+
+  if (entity.kind === 'polity') {
+    return `/world-history?year=${year}&polity=${entity.id}`;
+  }
+
+  return null;
+};
+
 type SubjectAtlasEntityAggregate = {
   entity: ReferenceEntity;
   topicCount: number;
@@ -632,6 +649,16 @@ const SubjectPage: React.FC = () => {
                             ) : null}
                           </div>
                           {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                          <div className="topic-page-card-actions">
+                            <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-button">
+                              Open entity
+                            </Link>
+                            {buildAtlasHref(entry.entity) ? (
+                              <Link to={buildAtlasHref(entry.entity)!} className="topic-page-card-button">
+                                Open on atlas
+                              </Link>
+                            ) : null}
+                          </div>
                         </article>
                       ))}
                     </div>
@@ -661,6 +688,16 @@ const SubjectPage: React.FC = () => {
                             ) : null}
                           </div>
                           {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                          <div className="topic-page-card-actions">
+                            <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-button">
+                              Open entity
+                            </Link>
+                            {buildAtlasHref(entry.entity) ? (
+                              <Link to={buildAtlasHref(entry.entity)!} className="topic-page-card-button">
+                                Open on atlas
+                              </Link>
+                            ) : null}
+                          </div>
                         </article>
                       ))}
                     </div>
