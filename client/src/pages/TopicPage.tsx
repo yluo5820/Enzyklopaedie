@@ -1,5 +1,6 @@
 import React, { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type {
+  FormationSubtype,
   KnowledgeItem,
   KnowledgeRelationDetail,
   KnowledgeRelationType,
@@ -39,6 +40,22 @@ const relationKindOrder: ReferenceEntityKind[] = [
   'polity',
   'formation',
 ];
+
+const atlasKindOrder: ReferenceEntityKind[] = ['formation', 'polity', 'person'];
+
+const entityKindLabels: Record<ReferenceEntityKind, string> = {
+  person: 'Person',
+  polity: 'Polity',
+  formation: 'Formation',
+};
+
+const formationSubtypeLabels: Record<FormationSubtype, string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  tradition: 'Tradition',
+  world_frame: 'World Frame',
+  other: 'Formation',
+};
 
 const getStudyTopicRelationPreset = (
   targetEntityKind?: ReferenceEntityKind
@@ -119,6 +136,47 @@ const formatReferenceTimespan = (entity: ReferenceEntity) => {
 
   if (start && end) return `${start} - ${end}`;
   return start || end || null;
+};
+
+const formatEntityFrameLabel = (entity: ReferenceEntity) => {
+  if (entity.kind === 'formation' && entity.formationSubtype) {
+    return formationSubtypeLabels[entity.formationSubtype];
+  }
+
+  return entityKindLabels[entity.kind];
+};
+
+const formatAtlasHorizon = (entities: ReferenceEntity[]) => {
+  const datedEntities = entities.filter(
+    (entity) => entity.startYear !== undefined || entity.endYear !== undefined
+  );
+  if (datedEntities.length === 0) return null;
+
+  const starts = datedEntities
+    .map((entity) => entity.startYear)
+    .filter((value): value is number => value !== undefined);
+  const ends = datedEntities
+    .map((entity) => entity.endYear)
+    .filter((value): value is number => value !== undefined);
+
+  const earliest = starts.length > 0 ? Math.min(...starts) : undefined;
+  const latest = ends.length > 0 ? Math.max(...ends) : undefined;
+
+  if (earliest !== undefined && latest !== undefined) {
+    return earliest === latest
+      ? formatYear(earliest)
+      : `${formatYear(earliest)} - ${formatYear(latest)}`;
+  }
+
+  if (earliest !== undefined) return `From ${formatYear(earliest)}`;
+  if (latest !== undefined) return `Until ${formatYear(latest)}`;
+  return null;
+};
+
+type FramedEntityGroup = {
+  entity: ReferenceEntity;
+  relationTypes: KnowledgeRelationType[];
+  note?: string;
 };
 
 const TopicLineage = ({
@@ -292,6 +350,10 @@ const TopicPage: React.FC = () => {
       }),
     [referenceEntities]
   );
+  const referenceEntityMap = useMemo(
+    () => new Map(referenceEntities.map((entity) => [entity.id, entity])),
+    [referenceEntities]
+  );
   const selectedRelationTarget = useMemo(
     () => relationTargets.find((entity) => String(entity.id) === relationForm.toEntityId) ?? null,
     [relationForm.toEntityId, relationTargets]
@@ -308,6 +370,73 @@ const TopicPage: React.FC = () => {
     }
     return counts;
   }, [relations]);
+  const framedEntityGroups = useMemo(() => {
+    const grouped = new Map<number, FramedEntityGroup>();
+
+    for (const relation of relations) {
+      const entity = referenceEntityMap.get(relation.toEntityId);
+      if (!entity) continue;
+
+      const current = grouped.get(entity.id);
+      if (current) {
+        if (!current.relationTypes.includes(relation.relationType)) {
+          current.relationTypes.push(relation.relationType);
+        }
+        if (!current.note && relation.note) {
+          current.note = relation.note;
+        }
+        continue;
+      }
+
+      grouped.set(entity.id, {
+        entity,
+        relationTypes: [relation.relationType],
+        note: relation.note,
+      });
+    }
+
+    return [...grouped.values()].sort((left, right) => {
+      const kindDifference =
+        atlasKindOrder.indexOf(left.entity.kind) - atlasKindOrder.indexOf(right.entity.kind);
+      if (kindDifference !== 0) return kindDifference;
+
+      const titleDifference = left.entity.title.localeCompare(right.entity.title);
+      if (titleDifference !== 0) return titleDifference;
+
+      return left.entity.id - right.entity.id;
+    });
+  }, [referenceEntityMap, relations]);
+  const formationFrameGroups = useMemo(
+    () => framedEntityGroups.filter((entry) => entry.entity.kind === 'formation'),
+    [framedEntityGroups]
+  );
+  const polityFrameGroups = useMemo(
+    () => framedEntityGroups.filter((entry) => entry.entity.kind === 'polity'),
+    [framedEntityGroups]
+  );
+  const personFrameGroups = useMemo(
+    () => framedEntityGroups.filter((entry) => entry.entity.kind === 'person'),
+    [framedEntityGroups]
+  );
+  const topicAtlasHorizon = useMemo(
+    () => formatAtlasHorizon(framedEntityGroups.map((entry) => entry.entity)),
+    [framedEntityGroups]
+  );
+  const formationSubtypeSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const entry of formationFrameGroups) {
+      const label =
+        entry.entity.formationSubtype
+          ? formationSubtypeLabels[entry.entity.formationSubtype]
+          : formationSubtypeLabels.other;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .map(([label, count]) => `${count} ${label.toLowerCase()}${count === 1 ? '' : 's'}`)
+      .join(', ');
+  }, [formationFrameGroups]);
 
   useEffect(() => {
     if (!studyTopic) return;
@@ -640,7 +769,8 @@ const TopicPage: React.FC = () => {
               <strong>{relations.length} linked entit{relations.length === 1 ? 'y' : 'ies'}</strong>
               <span className="topic-page-overview-meta">
                 {relations.length > 0
-                  ? [...relationCountsByKind.entries()]
+                  ? topicAtlasHorizon ||
+                    [...relationCountsByKind.entries()]
                       .map(([kind, count]) => `${count} ${kind}`)
                       .join(', ')
                   : 'Not linked yet'}
@@ -808,6 +938,156 @@ const TopicPage: React.FC = () => {
                 {showRelationComposer ? 'Close' : 'Link entity'}
               </button>
             </div>
+
+            <div className="topic-page-overview-grid topic-page-atlas-overview-grid">
+              <article className="topic-page-overview-card">
+                <div className="topic-page-overview-label">
+                  <span className="topic-page-eyebrow">Formations</span>
+                  <PageHint text="The broader civilizational or era frames currently shaping this topic." />
+                </div>
+                <strong>{formationFrameGroups.length || 'None'}</strong>
+                <span className="topic-page-overview-meta">
+                  {formationFrameGroups.length > 0 ? formationSubtypeSummary : 'No formation frame yet'}
+                </span>
+              </article>
+              <article className="topic-page-overview-card">
+                <div className="topic-page-overview-label">
+                  <span className="topic-page-eyebrow">Polity Scope</span>
+                  <PageHint text="Named built-in or curated polities that localize the topic historically or geographically." />
+                </div>
+                <strong>{polityFrameGroups.length || 'None'}</strong>
+                <span className="topic-page-overview-meta">
+                  {polityFrameGroups.length > 0
+                    ? polityFrameGroups.slice(0, 2).map((entry) => entry.entity.title).join(', ')
+                    : 'No polity scope yet'}
+                </span>
+              </article>
+              <article className="topic-page-overview-card">
+                <div className="topic-page-overview-label">
+                  <span className="topic-page-eyebrow">People</span>
+                  <PageHint text="People linked because the topic centers on them or depends on them historically." />
+                </div>
+                <strong>{personFrameGroups.length || 'None'}</strong>
+                <span className="topic-page-overview-meta">
+                  {personFrameGroups.length > 0
+                    ? personFrameGroups.slice(0, 2).map((entry) => entry.entity.title).join(', ')
+                    : 'No people linked yet'}
+                </span>
+              </article>
+              <article className="topic-page-overview-card">
+                <div className="topic-page-overview-label">
+                  <span className="topic-page-eyebrow">Time Horizon</span>
+                  <PageHint text="The earliest and latest dates implied by the currently linked atlas entities." />
+                </div>
+                <strong>{topicAtlasHorizon || 'Open'}</strong>
+                <span className="topic-page-overview-meta">
+                  {topicAtlasHorizon ? 'Derived from linked entities' : 'No dated atlas frame yet'}
+                </span>
+              </article>
+            </div>
+
+            {framedEntityGroups.length > 0 ? (
+              <div className="topic-page-subsection-stack topic-page-atlas-subsection-stack">
+                {formationFrameGroups.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        Formation frame
+                        <PageHint text="The larger civilizational or era structures currently framing the topic." />
+                      </h3>
+                      <span className="topic-page-count-badge">{formationFrameGroups.length}</span>
+                    </div>
+                    <div className="topic-page-card-grid">
+                      {formationFrameGroups.map((entry) => (
+                        <article key={`formation-frame-${entry.entity.id}`} className="topic-page-card">
+                          <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-link">
+                            <strong>{entry.entity.title}</strong>
+                          </Link>
+                          <div className="topic-page-card-meta">
+                            <span>{formatEntityFrameLabel(entry.entity)}</span>
+                            {formatReferenceTimespan(entry.entity) ? (
+                              <span>{formatReferenceTimespan(entry.entity)}</span>
+                            ) : null}
+                            {entry.relationTypes.map((relationType) => (
+                              <span key={`${entry.entity.id}-${relationType}`}>
+                                {formatRelationType(relationType)}
+                              </span>
+                            ))}
+                          </div>
+                          {entry.entity.summary || entry.note ? <p>{entry.entity.summary || entry.note}</p> : null}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {polityFrameGroups.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        Polity scope
+                        <PageHint text="Named polities that place the topic into a more specific historical-geographic setting." />
+                      </h3>
+                      <span className="topic-page-count-badge">{polityFrameGroups.length}</span>
+                    </div>
+                    <div className="topic-page-card-grid">
+                      {polityFrameGroups.map((entry) => (
+                        <article key={`polity-frame-${entry.entity.id}`} className="topic-page-card">
+                          <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-link">
+                            <strong>{entry.entity.title}</strong>
+                          </Link>
+                          <div className="topic-page-card-meta">
+                            <span>{formatEntityFrameLabel(entry.entity)}</span>
+                            {formatReferenceTimespan(entry.entity) ? (
+                              <span>{formatReferenceTimespan(entry.entity)}</span>
+                            ) : null}
+                            {entry.relationTypes.map((relationType) => (
+                              <span key={`${entry.entity.id}-${relationType}`}>
+                                {formatRelationType(relationType)}
+                              </span>
+                            ))}
+                          </div>
+                          {entry.entity.summary || entry.note ? <p>{entry.entity.summary || entry.note}</p> : null}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {personFrameGroups.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        People in frame
+                        <PageHint text="People linked because the topic centers on them or depends on them historically." />
+                      </h3>
+                      <span className="topic-page-count-badge">{personFrameGroups.length}</span>
+                    </div>
+                    <div className="topic-page-card-grid">
+                      {personFrameGroups.map((entry) => (
+                        <article key={`person-frame-${entry.entity.id}`} className="topic-page-card">
+                          <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-link">
+                            <strong>{entry.entity.title}</strong>
+                          </Link>
+                          <div className="topic-page-card-meta">
+                            <span>{formatEntityFrameLabel(entry.entity)}</span>
+                            {formatReferenceTimespan(entry.entity) ? (
+                              <span>{formatReferenceTimespan(entry.entity)}</span>
+                            ) : null}
+                            {entry.relationTypes.map((relationType) => (
+                              <span key={`${entry.entity.id}-${relationType}`}>
+                                {formatRelationType(relationType)}
+                              </span>
+                            ))}
+                          </div>
+                          {entry.entity.summary || entry.note ? <p>{entry.entity.summary || entry.note}</p> : null}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
 
             {showRelationComposer ? (
               <form className="topic-page-form topic-page-inline-panel" onSubmit={handleCreateRelation}>
