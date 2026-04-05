@@ -1049,6 +1049,24 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(personResponse.status, 201);
     const personEntity = await personResponse.json();
 
+    const ontologyResponse = await request('/api/subjects');
+    assert.equal(ontologyResponse.status, 200);
+    const ontologySubjects = await ontologyResponse.json();
+    const ontologySubject = ontologySubjects.find((subject) => subject.slug === 'ontology');
+    assert.ok(ontologySubject);
+
+    const subjectResponse = await request('/api/subjects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Mathematics',
+        description: 'A subject used for person subject membership coverage.',
+        parentSubjectId: ontologySubject.id,
+      }),
+    });
+    assert.equal(subjectResponse.status, 201);
+    const mathSubject = await subjectResponse.json();
+
     const polityResponse = await request('/api/reference-entities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1228,6 +1246,32 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(polityPersonMemberships.length, 1);
     assert.equal(polityPersonMemberships[0].personTitle, 'Michael Psellos');
 
+    const personSubjectMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subjectId: mathSubject.id,
+          note: 'Primary field of study for this test person.',
+        }),
+      }
+    );
+    assert.equal(personSubjectMembershipResponse.status, 201);
+    const personSubjectMembership = await personSubjectMembershipResponse.json();
+    assert.equal(personSubjectMembership.personEntityId, personEntity.id);
+    assert.equal(personSubjectMembership.subjectId, mathSubject.id);
+    assert.equal(personSubjectMembership.personTitle, 'Michael Psellos');
+    assert.equal(personSubjectMembership.subjectName, 'Mathematics');
+
+    const personSubjectMembershipListResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships`
+    );
+    assert.equal(personSubjectMembershipListResponse.status, 200);
+    const personSubjectMemberships = await personSubjectMembershipListResponse.json();
+    assert.equal(personSubjectMemberships.length, 1);
+    assert.equal(personSubjectMemberships[0].subjectName, 'Mathematics');
+
     const invalidPersonPolityRelationResponse = await request(
       `/api/reference-entities/${personEntity.id}/outgoing-relations`,
       {
@@ -1293,6 +1337,21 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(personPolityMembershipListAfterDeleteResponse.status, 200);
     const personPolityMembershipsAfterDelete = await personPolityMembershipListAfterDeleteResponse.json();
     assert.equal(personPolityMembershipsAfterDelete.length, 0);
+
+    const deletePersonSubjectMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships/${personSubjectMembership.id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    assert.equal(deletePersonSubjectMembershipResponse.status, 204);
+
+    const personSubjectMembershipListAfterDeleteResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships`
+    );
+    assert.equal(personSubjectMembershipListAfterDeleteResponse.status, 200);
+    const personSubjectMembershipsAfterDelete = await personSubjectMembershipListAfterDeleteResponse.json();
+    assert.equal(personSubjectMembershipsAfterDelete.length, 0);
 
     const deleteResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
       method: 'DELETE',

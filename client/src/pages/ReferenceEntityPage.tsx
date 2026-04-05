@@ -5,27 +5,33 @@ import type {
   KnowledgeRelationDetail,
   KnowledgeRelationType,
   PersonPolityMembershipDetail,
+  PersonSubjectMembershipDetail,
   PolitySnapshot,
   ReferenceEntity,
   ReferenceEntityKind,
+  SubjectSummary,
   UpdateReferenceEntity,
 } from '@enzyklopaedie/shared';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   createFormationMembership,
   createPersonPolityMembership,
+  createPersonSubjectMembership,
   createReferenceEntityRelation,
   deleteFormationMembership,
   deletePersonPolityMembership,
+  deletePersonSubjectMembership,
   deleteReferenceEntity,
   deleteReferenceEntityRelation,
   fetchReferenceEntities,
   fetchReferenceEntity,
   fetchReferenceEntityFormationMemberships,
   fetchReferenceEntityPersonPolityMemberships,
+  fetchReferenceEntityPersonSubjectMemberships,
   fetchReferenceEntityOutgoingRelations,
   fetchReferenceEntityPolitySnapshots,
   fetchReferenceEntityRelations,
+  fetchSubjects,
   updateReferenceEntity,
 } from '../api';
 import './ReferenceEntityPage.css';
@@ -596,6 +602,7 @@ const ReferenceEntityPage: React.FC = () => {
 
   const [entity, setEntity] = useState<ReferenceEntity | null>(null);
   const [allEntities, setAllEntities] = useState<ReferenceEntity[]>([]);
+  const [allSubjects, setAllSubjects] = useState<SubjectSummary[]>([]);
   const [incomingRelations, setIncomingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [outgoingRelations, setOutgoingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [politySnapshots, setPolitySnapshots] = useState<PolitySnapshot[]>([]);
@@ -604,6 +611,7 @@ const ReferenceEntityPage: React.FC = () => {
   >({});
   const [formationMemberships, setFormationMemberships] = useState<FormationMembershipDetail[]>([]);
   const [personPolityMemberships, setPersonPolityMemberships] = useState<PersonPolityMembershipDetail[]>([]);
+  const [personSubjectMemberships, setPersonSubjectMemberships] = useState<PersonSubjectMembershipDetail[]>([]);
   const [atlasFocusYear, setAtlasFocusYear] = useState<number | null>(null);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
@@ -631,6 +639,10 @@ const ReferenceEntityPage: React.FC = () => {
     endYear: '',
     note: '',
   });
+  const [personSubjectMembershipForm, setPersonSubjectMembershipForm] = useState({
+    subjectId: '',
+    note: '',
+  });
   const [structureModeId, setStructureModeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -638,14 +650,17 @@ const ReferenceEntityPage: React.FC = () => {
   const [showStructureComposer, setShowStructureComposer] = useState(false);
   const [showFormationMembershipComposer, setShowFormationMembershipComposer] = useState(false);
   const [showPersonPolityMembershipComposer, setShowPersonPolityMembershipComposer] = useState(false);
+  const [showPersonSubjectMembershipComposer, setShowPersonSubjectMembershipComposer] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
   const [savingFormationMembership, setSavingFormationMembership] = useState(false);
   const [savingPersonPolityMembership, setSavingPersonPolityMembership] = useState(false);
+  const [savingPersonSubjectMembership, setSavingPersonSubjectMembership] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [politySnapshotsError, setPolitySnapshotsError] = useState<string | null>(null);
   const [formationMembershipsError, setFormationMembershipsError] = useState<string | null>(null);
   const [personPolityMembershipsError, setPersonPolityMembershipsError] = useState<string | null>(null);
+  const [personSubjectMembershipsError, setPersonSubjectMembershipsError] = useState<string | null>(null);
   const [formationPolitySnapshotsError, setFormationPolitySnapshotsError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -657,10 +672,11 @@ const ReferenceEntityPage: React.FC = () => {
 
     const loadEntity = async () => {
       try {
-        const [fetchedEntity, fetchedEntities, fetchedIncomingRelations, fetchedOutgoingRelations] =
+        const [fetchedEntity, fetchedEntities, fetchedSubjects, fetchedIncomingRelations, fetchedOutgoingRelations] =
           await Promise.all([
             fetchReferenceEntity(entityId),
             fetchReferenceEntities(),
+            fetchSubjects(),
             fetchReferenceEntityRelations(entityId),
             fetchReferenceEntityOutgoingRelations(entityId),
           ]);
@@ -668,6 +684,7 @@ const ReferenceEntityPage: React.FC = () => {
           fetchedPolitySnapshots,
           fetchedFormationMemberships,
           fetchedPersonPolityMemberships,
+          fetchedPersonSubjectMemberships,
         ] = await Promise.all([
           fetchedEntity.kind === 'polity'
             ? fetchReferenceEntityPolitySnapshots(entityId)
@@ -678,31 +695,40 @@ const ReferenceEntityPage: React.FC = () => {
           fetchedEntity.kind === 'person' || fetchedEntity.kind === 'polity'
             ? fetchReferenceEntityPersonPolityMemberships(entityId)
             : Promise.resolve([]),
+          fetchedEntity.kind === 'person'
+            ? fetchReferenceEntityPersonSubjectMemberships(entityId)
+            : Promise.resolve([]),
         ]);
 
         setEntity(fetchedEntity);
         setAllEntities(fetchedEntities);
+        setAllSubjects(fetchedSubjects);
         setIncomingRelations(fetchedIncomingRelations);
         setOutgoingRelations(fetchedOutgoingRelations);
         setPolitySnapshots(fetchedPolitySnapshots);
         setFormationPolitySnapshotCache({});
         setFormationMemberships(fetchedFormationMemberships);
         setPersonPolityMemberships(fetchedPersonPolityMemberships);
+        setPersonSubjectMemberships(fetchedPersonSubjectMemberships);
         setPolitySnapshotsError(null);
         setFormationMembershipsError(null);
         setPersonPolityMembershipsError(null);
+        setPersonSubjectMembershipsError(null);
         setFormationPolitySnapshotsError(null);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load reference entity.');
+        setAllSubjects([]);
         setPolitySnapshots([]);
         setFormationPolitySnapshotCache({});
         setFormationMemberships([]);
         setPersonPolityMemberships([]);
+        setPersonSubjectMemberships([]);
         setPolitySnapshotsError('Failed to load atlas snapshots.');
         setFormationMembershipsError('Failed to load formation memberships.');
         setPersonPolityMembershipsError('Failed to load person polity memberships.');
+        setPersonSubjectMembershipsError('Failed to load person subject memberships.');
         setFormationPolitySnapshotsError('Failed to load member polity snapshots.');
       } finally {
         setLoading(false);
@@ -834,6 +860,14 @@ const ReferenceEntityPage: React.FC = () => {
         .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
     [allEntities, entity?.id]
   );
+  const selectableSubjects = useMemo(
+    () =>
+      [...allSubjects].sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }) || left.id - right.id
+      ),
+    [allSubjects]
+  );
   const formationMembershipPolityEntries = useMemo(
     () =>
       formationMemberships.filter(
@@ -906,6 +940,15 @@ const ReferenceEntityPage: React.FC = () => {
         (membership) => typeof membership.personEntityId === 'number'
       ),
     [personPolityMemberships]
+  );
+  const personSubjectEntries = useMemo(
+    () =>
+      [...personSubjectMemberships].sort(
+        (left, right) =>
+          (left.subjectName ?? '').localeCompare(right.subjectName ?? '', undefined, { sensitivity: 'base' }) ||
+          left.id - right.id
+      ),
+    [personSubjectMemberships]
   );
 
   const outgoingStructureRelations = useMemo(
@@ -1532,6 +1575,9 @@ const ReferenceEntityPage: React.FC = () => {
       if (updatedEntity.kind !== 'person' && updatedEntity.kind !== 'polity') {
         setPersonPolityMemberships([]);
       }
+      if (updatedEntity.kind !== 'person') {
+        setPersonSubjectMemberships([]);
+      }
       startTransition(() => {
         setAllEntities((current) =>
           current.map((existing) => (existing.id === updatedEntity.id ? updatedEntity : existing))
@@ -1675,6 +1721,47 @@ const ReferenceEntityPage: React.FC = () => {
     }
   };
 
+  const handleCreatePersonSubjectMembership = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!entity || entity.kind !== 'person' || !personSubjectMembershipForm.subjectId) return;
+
+    setSavingPersonSubjectMembership(true);
+    setError(null);
+
+    try {
+      const membership = await createPersonSubjectMembership(entity.id, {
+        subjectId: Number(personSubjectMembershipForm.subjectId),
+        note: personSubjectMembershipForm.note.trim() || undefined,
+      });
+
+      startTransition(() => {
+        setPersonSubjectMemberships((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === membership.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = membership;
+            return next;
+          }
+          return [...current, membership];
+        });
+      });
+
+      setPersonSubjectMembershipForm({
+        subjectId: '',
+        note: '',
+      });
+    } catch (membershipError) {
+      console.error(membershipError);
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : 'Failed to create person subject membership.'
+      );
+    } finally {
+      setSavingPersonSubjectMembership(false);
+    }
+  };
+
   const handleDeleteRelation = async (relationId: number) => {
     if (!entity) return;
 
@@ -1725,6 +1812,26 @@ const ReferenceEntityPage: React.FC = () => {
         membershipError instanceof Error
           ? membershipError.message
           : 'Failed to delete person polity membership.'
+      );
+    }
+  };
+
+  const handleDeletePersonSubjectMembership = async (membershipId: number) => {
+    if (!entity || entity.kind !== 'person') return;
+
+    try {
+      await deletePersonSubjectMembership(entity.id, membershipId);
+      startTransition(() => {
+        setPersonSubjectMemberships((current) =>
+          current.filter((entry) => entry.id !== membershipId)
+        );
+      });
+    } catch (membershipError) {
+      console.error(membershipError);
+      setError(
+        membershipError instanceof Error
+          ? membershipError.message
+          : 'Failed to delete person subject membership.'
       );
     }
   };
@@ -2215,6 +2322,114 @@ const ReferenceEntityPage: React.FC = () => {
                           )}
                         </div>
                         <button type="button" onClick={() => handleDeletePersonPolityMembership(membership)}>
+                          Delete
+                        </button>
+                      </div>
+                      {membership.note ? <p>{membership.note}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {entity.kind === 'person' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Study Alignment</span>
+                  <h2>
+                    Subject memberships
+                    <EntityHint text="Assign this person to the conceptual subjects they belong to. These subject memberships are the basis for later subject-filtered atlas views." />
+                    <span className="reference-entity-count-badge">{personSubjectEntries.length}</span>
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="reference-entity-secondary-button"
+                  onClick={() => setShowPersonSubjectMembershipComposer((current) => !current)}
+                >
+                  {showPersonSubjectMembershipComposer ? 'Close' : 'Manage subjects'}
+                </button>
+              </div>
+
+              {showPersonSubjectMembershipComposer ? (
+                <section className="reference-entity-inline-panel">
+                  <form className="reference-entity-form" onSubmit={handleCreatePersonSubjectMembership}>
+                    <div className="reference-entity-grid-inline">
+                      <div className="reference-entity-field">
+                        <label htmlFor="person-subject-membership-subject">Subject</label>
+                        <select
+                          id="person-subject-membership-subject"
+                          value={personSubjectMembershipForm.subjectId}
+                          onChange={(event) =>
+                            setPersonSubjectMembershipForm((current) => ({
+                              ...current,
+                              subjectId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Choose a subject</option>
+                          {selectableSubjects.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="reference-entity-field">
+                      <label htmlFor="person-subject-membership-note">Note</label>
+                      <input
+                        id="person-subject-membership-note"
+                        value={personSubjectMembershipForm.note}
+                        onChange={(event) =>
+                          setPersonSubjectMembershipForm((current) => ({
+                            ...current,
+                            note: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional note about this subject placement"
+                      />
+                    </div>
+
+                    <div className="reference-entity-inline-actions">
+                      <button
+                        type="submit"
+                        disabled={savingPersonSubjectMembership || !personSubjectMembershipForm.subjectId}
+                      >
+                        {savingPersonSubjectMembership ? 'Adding…' : 'Add subject'}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              ) : null}
+
+              {personSubjectMembershipsError ? (
+                <div className="reference-entity-error">{personSubjectMembershipsError}</div>
+              ) : personSubjectEntries.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No subject memberships have been recorded for this person yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  {personSubjectEntries.map((membership) => (
+                    <article key={membership.id} className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>Subject</span>
+                          </div>
+                          {membership.subjectSlug ? (
+                            <Link to={`/subjects/${membership.subjectId}`} className="reference-entity-card-link">
+                              <h3>{membership.subjectName || 'Untitled subject'}</h3>
+                            </Link>
+                          ) : (
+                            <h3>{membership.subjectName || 'Untitled subject'}</h3>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => handleDeletePersonSubjectMembership(membership.id)}>
                           Delete
                         </button>
                       </div>

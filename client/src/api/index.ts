@@ -21,10 +21,12 @@ import {
   NewKnowledgeTask,
   NewFormationMembership,
   NewPersonPolityMembership,
+  NewPersonSubjectMembership,
   NewReferenceEntity,
   NewSubject,
   NewTopic,
   PersonPolityMembershipDetail,
+  PersonSubjectMembershipDetail,
   PolitySnapshot,
   ReferenceEntity,
   Subject,
@@ -425,6 +427,16 @@ export const fetchReferenceEntityPersonPolityMemberships = async (
   return response.json();
 };
 
+export const fetchReferenceEntityPersonSubjectMemberships = async (
+  id: number
+): Promise<PersonSubjectMembershipDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-subject-memberships`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch person subject memberships');
+  }
+  return response.json();
+};
+
 export const fetchReferenceEntityOutgoingRelations = async (
   id: number
 ): Promise<KnowledgeRelationDetail[]> => {
@@ -492,6 +504,24 @@ export const createPersonPolityMembership = async (
   return response.json();
 };
 
+export const createPersonSubjectMembership = async (
+  id: number,
+  membershipData: Omit<NewPersonSubjectMembership, 'personEntityId'>
+): Promise<PersonSubjectMembershipDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-subject-memberships`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(membershipData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create person subject membership');
+  }
+  return response.json();
+};
+
 export const deleteReferenceEntityRelation = async (
   id: number,
   relationId: number
@@ -533,6 +563,22 @@ export const deletePersonPolityMembership = async (
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(errorPayload?.message || 'Failed to delete person polity membership');
+  }
+};
+
+export const deletePersonSubjectMembership = async (
+  id: number,
+  membershipId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/reference-entities/${id}/person-subject-memberships/${membershipId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to delete person subject membership');
   }
 };
 
