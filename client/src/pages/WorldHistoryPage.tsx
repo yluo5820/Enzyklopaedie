@@ -145,6 +145,10 @@ const getFormationWorkspaceUi = (formation?: ReferenceEntity | null) =>
     formation?.kind === 'formation' ? formation.formationSubtype ?? 'other' : 'other'
   ];
 
+const shouldDefaultFormationMembershipToActiveYear = (formation?: ReferenceEntity | null) =>
+  formation?.kind === 'formation' &&
+  (formation.formationSubtype === 'era' || formation.formationSubtype === 'world_frame');
+
 const DEFAULT_YEAR = 1862;
 const DEFAULT_MIN_YEAR = -1200;
 const DEFAULT_MAX_YEAR = 2025;
@@ -346,7 +350,7 @@ const getBoundsCenter = (bounds: {
 });
 
 const isMembershipVisibleInYear = (
-  membership: Pick<PersonPolityMembershipDetail, 'startYear' | 'endYear'>,
+  membership: Pick<PersonPolityMembershipDetail | FormationMembershipDetail, 'startYear' | 'endYear'>,
   year: number
 ) => {
   if (membership.startYear !== undefined && membership.endYear !== undefined) {
@@ -906,16 +910,43 @@ const WorldHistoryPage: React.FC = () => {
     () => getFormationWorkspaceUi(activeFormation),
     [activeFormation]
   );
-  const selectedPolityFormationMembership = useMemo(() => {
+  const activeFormationIsYearBound = shouldDefaultFormationMembershipToActiveYear(activeFormation);
+  const activeFormationVisibleNow = useMemo(
+    () => (activeFormation ? isVisibleInYear(activeFormation, year) : false),
+    [activeFormation, year]
+  );
+  const selectedPolityMatchingFormationMemberships = useMemo(() => {
     if (!resolvedPolityMatch) return null;
 
-    return (
-      activeFormationMemberships.find(
-        (membership) =>
-          membership.polityEntityId === resolvedPolityMatch.referenceEntity.id
-      ) ?? null
+    return activeFormationMemberships.filter(
+      (membership) => membership.polityEntityId === resolvedPolityMatch.referenceEntity.id
     );
   }, [activeFormationMemberships, resolvedPolityMatch]);
+  const selectedPolityVisibleFormationMembership = useMemo(() => {
+    if (!selectedPolityMatchingFormationMemberships || !activeBasemapYear) return null;
+
+    return (
+      selectedPolityMatchingFormationMemberships.find((membership) =>
+        isMembershipVisibleInYear(membership, activeBasemapYear.year)
+      ) ?? null
+    );
+  }, [activeBasemapYear, selectedPolityMatchingFormationMemberships]);
+  const selectedPolityHistoricalFormationMembership = useMemo(() => {
+    if (!selectedPolityMatchingFormationMemberships || selectedPolityMatchingFormationMemberships.length === 0) {
+      return null;
+    }
+
+    return selectedPolityVisibleFormationMembership
+      ? null
+      : selectedPolityMatchingFormationMemberships[0] ?? null;
+  }, [selectedPolityMatchingFormationMemberships, selectedPolityVisibleFormationMembership]);
+  const visibleActiveFormationMemberships = useMemo(() => {
+    if (!activeBasemapYear) return [];
+
+    return activeFormationMemberships.filter((membership) =>
+      isMembershipVisibleInYear(membership, activeBasemapYear.year)
+    );
+  }, [activeBasemapYear, activeFormationMemberships]);
   const selectedPolitySnapshotYears = useMemo(
     () =>
       selectedPolitySnapshots
@@ -1003,11 +1034,11 @@ const WorldHistoryPage: React.FC = () => {
     };
   }, [resolvedPolityMatch, selectedBasemapFeature, selectedPolityPersonMemberships, year]);
   const activeFormationMembersGeojson = useMemo<FeatureCollectionLike>(() => {
-    if (!activeFormationId || !activeBasemapYear || activeFormationMemberships.length === 0) {
+    if (!activeFormationId || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
       return EMPTY_FEATURE_COLLECTION;
     }
 
-    const features = activeFormationMemberships.flatMap((membership) => {
+    const features = visibleActiveFormationMemberships.flatMap((membership) => {
       const snapshots = formationPolitySnapshotCache[membership.polityEntityId] ?? [];
       const snapshot = snapshots.find(
         (entry) => entry.snapshotYear === activeBasemapYear.year
@@ -1035,8 +1066,8 @@ const WorldHistoryPage: React.FC = () => {
     activeBasemapYear,
     activeFormation?.title,
     activeFormationId,
-    activeFormationMemberships,
     formationPolitySnapshotCache,
+    visibleActiveFormationMemberships,
   ]);
   const isActiveFormationOverlaySelected =
     activeFormationId !== null &&
@@ -1046,11 +1077,11 @@ const WorldHistoryPage: React.FC = () => {
     ? activeFormationMembersGeojson
     : EMPTY_FEATURE_COLLECTION;
   const activeFormationPeoplePresenceGeojson = useMemo<FeatureCollectionLike>(() => {
-    if (!isActiveFormationOverlaySelected || !activeBasemapYear || activeFormationMemberships.length === 0) {
+    if (!isActiveFormationOverlaySelected || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
       return EMPTY_FEATURE_COLLECTION;
     }
 
-    const features = activeFormationMemberships.flatMap((membership) => {
+    const features = visibleActiveFormationMemberships.flatMap((membership) => {
       const snapshots = formationPolitySnapshotCache[membership.polityEntityId] ?? [];
       const snapshot = snapshots.find((entry) => entry.snapshotYear === activeBasemapYear.year);
       if (!snapshot) return [];
@@ -1097,10 +1128,10 @@ const WorldHistoryPage: React.FC = () => {
   }, [
     activeBasemapYear,
     activeFormation?.title,
-    activeFormationMemberships,
     formationPolityPersonMembershipCache,
     formationPolitySnapshotCache,
     isActiveFormationOverlaySelected,
+    visibleActiveFormationMemberships,
     year,
   ]);
   const visiblePersonPresenceGeojson = isActiveFormationOverlaySelected
@@ -1453,11 +1484,13 @@ const WorldHistoryPage: React.FC = () => {
     });
     setFormationPlacementForm({
       formationEntityId: activeFormationId ? String(activeFormationId) : '',
-      startYear: '',
-      endYear: '',
+      startYear:
+        activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
+      endYear:
+        activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
       note: '',
     });
-  }, [activeFormationId, resolvedPolityReferenceEntityId]);
+  }, [activeBasemapYear, activeFormationId, activeFormationIsYearBound, resolvedPolityReferenceEntityId]);
 
   useEffect(() => {
     if (!activeFormationId) return;
@@ -1665,14 +1698,16 @@ const WorldHistoryPage: React.FC = () => {
       );
       setFormationPlacementForm({
         formationEntityId: '',
-        startYear: '',
-        endYear: '',
+        startYear:
+          activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
+        endYear:
+          activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
         note: '',
       });
       setShowFormationPlacementComposer(false);
     } catch (error) {
       setAtlasMembershipError(
-        error instanceof Error ? error.message : 'Failed to add this polity to the formation.'
+        error instanceof Error ? error.message : 'Failed to add this polity to the active formation scope.'
       );
     } finally {
       setSavingFormationPlacement(false);
@@ -1694,7 +1729,7 @@ const WorldHistoryPage: React.FC = () => {
       );
     } catch (error) {
       setAtlasMembershipError(
-        error instanceof Error ? error.message : 'Failed to remove this polity from the formation.'
+        error instanceof Error ? error.message : 'Failed to remove this polity from the active formation scope.'
       );
     } finally {
       setRemovingFormationMembershipId(null);
@@ -3163,6 +3198,10 @@ const WorldHistoryPage: React.FC = () => {
                         <strong>{activeFormationMemberships.length}</strong>
                       </div>
                       <div>
+                        <span className="world-history-panel__eyebrow">Visible now</span>
+                        <strong>{visibleActiveFormationMemberships.length}</strong>
+                      </div>
+                      <div>
                         <span className="world-history-panel__eyebrow">Map overlay</span>
                         <strong>
                           {formationOverlayError
@@ -3175,12 +3214,20 @@ const WorldHistoryPage: React.FC = () => {
                         </strong>
                       </div>
                       <div>
-                        <span className="world-history-panel__eyebrow">Selected region</span>
+                        <span className="world-history-panel__eyebrow">
+                          {activeFormationIsYearBound ? 'Current year' : 'Selected region'}
+                        </span>
                         <strong>
-                          {isActiveFormationOverlaySelected
+                          {activeFormationIsYearBound
+                            ? activeFormationVisibleNow
+                              ? `${formatYear(year)} is inside scope`
+                              : `${formatYear(year)} is outside scope`
+                            : isActiveFormationOverlaySelected
                             ? 'Formation overlay focused'
-                            : selectedPolityFormationMembership
+                            : selectedPolityVisibleFormationMembership
                             ? 'Already included'
+                            : selectedPolityHistoricalFormationMembership
+                              ? 'Recorded elsewhere'
                             : resolvedPolityMatch
                               ? 'Ready to add'
                               : 'Choose a polity'}
@@ -3215,22 +3262,24 @@ const WorldHistoryPage: React.FC = () => {
                         <span className="world-history-panel__eyebrow">Selected polity</span>
                         <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
                         <span className="world-history-hint">
-                          {selectedPolityFormationMembership
-                            ? selectedPolityFormationMembership.startYear !== undefined ||
-                              selectedPolityFormationMembership.endYear !== undefined
-                              ? `${selectedPolityFormationMembership.startYear !== undefined ? formatYear(selectedPolityFormationMembership.startYear) : 'Open'} - ${selectedPolityFormationMembership.endYear !== undefined ? formatYear(selectedPolityFormationMembership.endYear) : 'Open'}`
+                          {selectedPolityVisibleFormationMembership
+                            ? selectedPolityVisibleFormationMembership.startYear !== undefined ||
+                              selectedPolityVisibleFormationMembership.endYear !== undefined
+                              ? `${selectedPolityVisibleFormationMembership.startYear !== undefined ? formatYear(selectedPolityVisibleFormationMembership.startYear) : 'Open'} - ${selectedPolityVisibleFormationMembership.endYear !== undefined ? formatYear(selectedPolityVisibleFormationMembership.endYear) : 'Open'}`
                               : activeFormationUi.alreadyIncludedMessage
+                            : selectedPolityHistoricalFormationMembership
+                              ? `${formatMembershipTimespan(selectedPolityHistoricalFormationMembership)} · Recorded, but outside the current atlas year.`
                             : activeFormationUi.selectedRegionReadyMessage}
                         </span>
                         <div className="world-history-selected-card__actions">
-                          {selectedPolityFormationMembership ? (
+                          {selectedPolityVisibleFormationMembership ? (
                             <button
                               type="button"
                               className="is-destructive"
-                              onClick={() => void handleRemoveFormationPlacement(selectedPolityFormationMembership)}
-                              disabled={removingFormationMembershipId === selectedPolityFormationMembership.id}
+                              onClick={() => void handleRemoveFormationPlacement(selectedPolityVisibleFormationMembership)}
+                              disabled={removingFormationMembershipId === selectedPolityVisibleFormationMembership.id}
                             >
-                              {removingFormationMembershipId === selectedPolityFormationMembership.id
+                              {removingFormationMembershipId === selectedPolityVisibleFormationMembership.id
                                 ? 'Removing…'
                                 : activeFormationUi.removeActionLabel}
                             </button>
@@ -3251,7 +3300,7 @@ const WorldHistoryPage: React.FC = () => {
                       </div>
                     )}
 
-                    {showFormationPlacementComposer && resolvedPolityMatch && !selectedPolityFormationMembership ? (
+                    {showFormationPlacementComposer && resolvedPolityMatch && !selectedPolityVisibleFormationMembership ? (
                       <form
                         className="world-history-inline-form"
                         onSubmit={handleCreateFormationPlacement}
@@ -3285,6 +3334,11 @@ const WorldHistoryPage: React.FC = () => {
                             placeholder="End year"
                           />
                         </div>
+                        {activeFormationIsYearBound ? (
+                          <span className="world-history-hint">
+                            Year-bounded formations default new memberships to the current atlas year.
+                          </span>
+                        ) : null}
                         <input
                           value={formationPlacementForm.note}
                           onChange={(event) =>
@@ -3333,6 +3387,13 @@ const WorldHistoryPage: React.FC = () => {
                                 ? `${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`
                                 : 'Undated membership'}
                             </span>
+                            {activeBasemapYear ? (
+                              <span className="world-history-hint">
+                                {isMembershipVisibleInYear(membership, activeBasemapYear.year)
+                                  ? `Visible in ${formatYear(activeBasemapYear.year)}`
+                                  : `Outside ${formatYear(activeBasemapYear.year)}`}
+                              </span>
+                            ) : null}
                           </button>
                         ))}
                       </div>
