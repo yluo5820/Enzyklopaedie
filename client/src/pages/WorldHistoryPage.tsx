@@ -396,6 +396,16 @@ const getPresenceMarkerCoordinates = (
   ] as const;
 };
 
+const getPersonMembershipKey = (
+  membership: Pick<PersonPolityMembershipDetail, 'personEntityId' | 'personTitle'>
+) => {
+  if (typeof membership.personEntityId === 'number' && membership.personEntityId > 0) {
+    return `person:${membership.personEntityId}`;
+  }
+
+  return `title:${(membership.personTitle || 'untitled person').trim().toLowerCase()}`;
+};
+
 const getFeatureCollectionFeatures = (geojson: GeoJsonLike | null | undefined) => {
   if (!geojson || geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
     return [] as Array<Record<string, unknown>>;
@@ -962,17 +972,39 @@ const WorldHistoryPage: React.FC = () => {
     if (first === last) return formatYear(first);
     return `${formatYear(first)} - ${formatYear(last)}`;
   }, [selectedPolitySnapshotYears]);
-  const selectedPolityPeoplePreview = useMemo(
+  const selectedPolityVisiblePersonMemberships = useMemo(
     () =>
       [...selectedPolityPersonMemberships]
+        .filter((membership) => isMembershipVisibleInYear(membership, year))
         .sort(
           (left, right) =>
             (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
               sensitivity: 'base',
             }) || left.id - right.id
         )
-        .slice(0, 6),
-    [selectedPolityPersonMemberships]
+    ,
+    [selectedPolityPersonMemberships, year]
+  );
+  const selectedPolityHistoricalPersonMemberships = useMemo(
+    () =>
+      [...selectedPolityPersonMemberships]
+        .filter((membership) => !isMembershipVisibleInYear(membership, year))
+        .sort(
+          (left, right) =>
+            (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+              sensitivity: 'base',
+            }) || left.id - right.id
+        )
+    ,
+    [selectedPolityPersonMemberships, year]
+  );
+  const selectedPolityVisiblePeoplePreview = useMemo(
+    () => selectedPolityVisiblePersonMemberships.slice(0, 4),
+    [selectedPolityVisiblePersonMemberships]
+  );
+  const selectedPolityHistoricalPeoplePreview = useMemo(
+    () => selectedPolityHistoricalPersonMemberships.slice(0, 4),
+    [selectedPolityHistoricalPersonMemberships]
   );
   const selectedPolityFormationPreview = useMemo(
     () =>
@@ -986,6 +1018,73 @@ const WorldHistoryPage: React.FC = () => {
         .slice(0, 6),
     [selectedPolityFormationMemberships]
   );
+  const activeFormationPersonSummary = useMemo(() => {
+    const visiblePeople = new Map<
+      string,
+      PersonPolityMembershipDetail & { polityTitle?: string }
+    >();
+    const historicalPeople = new Map<
+      string,
+      PersonPolityMembershipDetail & { polityTitle?: string }
+    >();
+
+    const allFormationMemberships = activeFormationMemberships.map((membership) => ({
+      formationMembership: membership,
+      personMemberships: formationPolityPersonMembershipCache[membership.polityEntityId] ?? [],
+    }));
+
+    for (const { formationMembership, personMemberships } of allFormationMemberships) {
+      const formationMembershipVisible =
+        activeBasemapYear !== null &&
+        activeBasemapYear !== undefined &&
+        isMembershipVisibleInYear(formationMembership, activeBasemapYear.year);
+
+      for (const personMembership of personMemberships) {
+        const key = getPersonMembershipKey(personMembership);
+        const entry = {
+          ...personMembership,
+          polityTitle: formationMembership.polityTitle,
+        };
+        const personVisibleNow =
+          formationMembershipVisible && isMembershipVisibleInYear(personMembership, year);
+
+        if (personVisibleNow) {
+          visiblePeople.set(key, entry);
+          historicalPeople.delete(key);
+          continue;
+        }
+
+        if (!visiblePeople.has(key) && !historicalPeople.has(key)) {
+          historicalPeople.set(key, entry);
+        }
+      }
+    }
+
+    const sortEntries = (
+      entries: Array<PersonPolityMembershipDetail & { polityTitle?: string }>
+    ) =>
+      entries.sort(
+        (left, right) =>
+          (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+            sensitivity: 'base',
+          }) || left.id - right.id
+      );
+
+    const visible = sortEntries([...visiblePeople.values()]);
+    const historical = sortEntries([...historicalPeople.values()]);
+
+    return {
+      visible,
+      historical,
+      visiblePreview: visible.slice(0, 4),
+      historicalPreview: historical.slice(0, 4),
+    };
+  }, [
+    activeBasemapYear,
+    activeFormationMemberships,
+    formationPolityPersonMembershipCache,
+    year,
+  ]);
   const selectedPolityPeoplePresenceGeojson = useMemo<FeatureCollectionLike>(() => {
     if (
       !resolvedPolityMatch ||
@@ -2955,15 +3054,17 @@ const WorldHistoryPage: React.FC = () => {
 
                                       <article className="world-history-context-card">
                                         <span className="world-history-panel__eyebrow">People here</span>
-                                        <strong>{selectedPolityPersonMemberships.length}</strong>
+                                        <strong>{selectedPolityVisiblePersonMemberships.length} visible now</strong>
                                         <span>
                                           {selectedPolityPersonMemberships.length === 0
                                             ? 'No people are placed in this polity yet.'
-                                            : 'People currently attached to this polity.'}
+                                            : selectedPolityHistoricalPersonMemberships.length > 0
+                                              ? `${selectedPolityHistoricalPersonMemberships.length} more belong to this polity outside the current atlas year.`
+                                              : 'All recorded people here are visible in the current atlas year.'}
                                         </span>
-                                        {selectedPolityPeoplePreview.length > 0 ? (
+                                        {selectedPolityVisiblePeoplePreview.length > 0 ? (
                                           <div className="world-history-context-list">
-                                            {selectedPolityPeoplePreview.map((membership) => (
+                                            {selectedPolityVisiblePeoplePreview.map((membership) => (
                                               <button
                                                 key={`polity-person-${membership.id}`}
                                                 type="button"
@@ -2976,6 +3077,25 @@ const WorldHistoryPage: React.FC = () => {
                                               >
                                                 <strong>{membership.personTitle || 'Untitled person'}</strong>
                                                 <span>{formatMembershipTimespan(membership)}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                        {selectedPolityHistoricalPeoplePreview.length > 0 ? (
+                                          <div className="world-history-context-list">
+                                            {selectedPolityHistoricalPeoplePreview.map((membership) => (
+                                              <button
+                                                key={`polity-person-historical-${membership.id}`}
+                                                type="button"
+                                                className="world-history-context-list__item"
+                                                onClick={() =>
+                                                  membership.personEntityId
+                                                    ? openEntityPage(membership.personEntityId)
+                                                    : undefined
+                                                }
+                                              >
+                                                <strong>{membership.personTitle || 'Untitled person'}</strong>
+                                                <span>{`${formatMembershipTimespan(membership)} · broader history`}</span>
                                               </button>
                                             ))}
                                           </div>
@@ -3202,6 +3322,10 @@ const WorldHistoryPage: React.FC = () => {
                         <strong>{visibleActiveFormationMemberships.length}</strong>
                       </div>
                       <div>
+                        <span className="world-history-panel__eyebrow">People now</span>
+                        <strong>{activeFormationPersonSummary.visible.length}</strong>
+                      </div>
+                      <div>
                         <span className="world-history-panel__eyebrow">Map overlay</span>
                         <strong>
                           {formationOverlayError
@@ -3253,6 +3377,12 @@ const WorldHistoryPage: React.FC = () => {
                       Click a member region once to inspect that polity. Click the same member again, or use
                       “Select overlay,” to focus the whole formation footprint for the active snapshot.
                     </span>
+                    {activeFormationPersonSummary.historical.length > 0 ? (
+                      <span className="world-history-hint">
+                        {activeFormationPersonSummary.historical.length} more people belong somewhere in this
+                        formation’s broader history but are outside the current atlas year.
+                      </span>
+                    ) : null}
                     {formationOverlayError ? (
                       <div className="world-history-feedback is-error">{formationOverlayError}</div>
                     ) : null}
@@ -3398,6 +3528,52 @@ const WorldHistoryPage: React.FC = () => {
                         ))}
                       </div>
                     )}
+                    {activeFormationPersonSummary.visiblePreview.length > 0 ? (
+                      <div className="world-history-context-list">
+                        {activeFormationPersonSummary.visiblePreview.map((membership) => (
+                          <button
+                            key={`formation-visible-person-${membership.id}`}
+                            type="button"
+                            className="world-history-context-list__item"
+                            onClick={() =>
+                              membership.personEntityId
+                                ? openEntityPage(membership.personEntityId)
+                                : undefined
+                            }
+                          >
+                            <strong>{membership.personTitle || 'Untitled person'}</strong>
+                            <span>
+                              {membership.polityTitle
+                                ? `${membership.polityTitle} · ${formatMembershipTimespan(membership)}`
+                                : formatMembershipTimespan(membership)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {activeFormationPersonSummary.historicalPreview.length > 0 ? (
+                      <div className="world-history-context-list">
+                        {activeFormationPersonSummary.historicalPreview.map((membership) => (
+                          <button
+                            key={`formation-historical-person-${membership.id}`}
+                            type="button"
+                            className="world-history-context-list__item"
+                            onClick={() =>
+                              membership.personEntityId
+                                ? openEntityPage(membership.personEntityId)
+                                : undefined
+                            }
+                          >
+                            <strong>{membership.personTitle || 'Untitled person'}</strong>
+                            <span>
+                              {membership.polityTitle
+                                ? `${membership.polityTitle} · broader history`
+                                : 'Broader history'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </section>
