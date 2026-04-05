@@ -12,36 +12,22 @@ import {
 } from '../api';
 import './ReferenceEntitiesPage.css';
 
-const primaryKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
-const legacyKindOptions: ReferenceEntityKind[] = ['nation', 'civilization', 'era', 'place'];
-const browseKindOptions: ReferenceEntityKind[] = [...primaryKindOptions, ...legacyKindOptions];
+const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
 const creatableKindOptions: ReferenceEntityKind[] = ['person', 'formation'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'People',
   polity: 'Polities',
   formation: 'Formations',
-  nation: 'Nations',
-  civilization: 'Civilizations',
-  era: 'Eras',
-  place: 'Places',
 };
 const singularKindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
   polity: 'Polity',
   formation: 'Formation',
-  nation: 'Nation',
-  civilization: 'Civilization',
-  era: 'Era',
-  place: 'Place',
 };
 const kindAtlasLeads: Record<ReferenceEntityKind, string> = {
   person: 'Writers, thinkers, speakers, and other individual figures.',
   polity: 'Built-in historical-geographical units imported from the world-history basemap.',
   formation: 'User-curated groupings of polities across time and space.',
-  nation: 'Polities and historical nations that ground political context.',
-  civilization: 'Broad civilizational horizons spanning nations and eras.',
-  era: 'Chronological containers for historical understanding.',
-  place: 'Geographic anchors for topics, nations, and civilizations.',
 };
 
 type EntityWorkbenchPreset = {
@@ -57,13 +43,10 @@ type EntityWorkbenchPreset = {
   nextStep: string;
 };
 
-const legacyAtlasLead =
-  'Older atlas kinds are still readable during migration, but new historical modeling should prefer person, polity, and formation.';
-
 const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset> = {
   person: {
     lead:
-      'People anchor provenance. Start with identity and life dates here, then link nation, era, and influences on the detail page.',
+      'People anchor provenance. Start with identity and life dates here, then link polities, formations, and influences on the detail page.',
     startYearLabel: 'Birth Year',
     endYearLabel: 'Death Year',
     startYearPlaceholder: '384 for Aristotle',
@@ -72,7 +55,7 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
     summaryPlaceholder: 'Who is this person in one sentence?',
     descriptionPlaceholder: 'Biographical notes, role, major works, and why this person matters.',
     submitLabel: 'Add Person',
-    nextStep: 'After saving, connect this person to items through created_by and to entities like nation or era.',
+    nextStep: 'After saving, connect this person to items through created_by and to polities or formations.',
   },
   polity: {
     lead:
@@ -89,7 +72,7 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
   },
   formation: {
     lead:
-      'Formations are user-curated spatiotemporal groupings of polities. Use them for civilizational spans, regional eras, or broader historical continuities.',
+      'Formations are user-curated spatiotemporal groupings of polities. Use them for historical continuities, regional periods, and civilizational spans.',
     startYearLabel: 'Begin Year',
     endYearLabel: 'End Year',
     startYearPlaceholder: '-323',
@@ -100,61 +83,9 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
     submitLabel: 'Add Formation',
     nextStep: 'After saving, add polity memberships to define the formation directly.',
   },
-  nation: {
-    lead:
-      'Nations ground political and historical context. Start with the polity itself; broader civilizational placement can come after.',
-    startYearLabel: 'Begin Year',
-    endYearLabel: 'End Year',
-    startYearPlaceholder: '-27',
-    endYearPlaceholder: '476',
-    chronologyHint: 'Use the period during which this nation or polity meaningfully existed.',
-    summaryPlaceholder: 'What is this nation or polity in one sentence?',
-    descriptionPlaceholder: 'Notes on political form, territory, significance, and major historical context.',
-    submitLabel: 'Add Nation',
-    nextStep: 'After saving, connect the nation to civilizations, eras, places, and relevant topics.',
-  },
-  civilization: {
-    lead:
-      'Civilizations are broad spatial-temporal continuities. Start with the high-level record here; compose nations and eras on the detail page.',
-    startYearLabel: 'Rise Year',
-    endYearLabel: 'End Year',
-    startYearPlaceholder: '-3300',
-    endYearPlaceholder: '1453',
-    chronologyHint: 'Use rough bounding years if needed. This layer is allowed to stay interpretive.',
-    summaryPlaceholder: 'What defines this civilization at a high level?',
-    descriptionPlaceholder: 'Longer notes on scope, continuity, internal divisions, and historical character.',
-    submitLabel: 'Add Civilization',
-    nextStep: 'After saving, use the structure panel to attach nations, eras, and sub-civilizations.',
-  },
-  era: {
-    lead:
-      'Eras are chronological containers for historical understanding. Create the period first, then attach topics and entities that belong inside it.',
-    startYearLabel: 'Begins',
-    endYearLabel: 'Ends',
-    startYearPlaceholder: '-500',
-    endYearPlaceholder: '476',
-    chronologyHint: 'Use the span of the period itself, not the dates of later scholarship about it.',
-    summaryPlaceholder: 'How would you define this era in one sentence?',
-    descriptionPlaceholder: 'Notes on boundaries, major transitions, and what makes this period distinct.',
-    submitLabel: 'Add Era',
-    nextStep: 'After saving, use the detail page to build sub-eras and connect nations, civilizations, and topics.',
-  },
-  place: {
-    lead:
-      'Places anchor geography. If chronology matters, record the relevant span; otherwise treat time here as optional context.',
-    startYearLabel: 'Earliest Relevant Year',
-    endYearLabel: 'Latest Relevant Year',
-    startYearPlaceholder: '-800',
-    endYearPlaceholder: 'Present or blank',
-    chronologyHint: 'These dates are optional for places. Use them only when the place matters in a limited historical frame.',
-    summaryPlaceholder: 'What place is this, and why does it matter?',
-    descriptionPlaceholder: 'Notes on geography, historical role, and the entities or topics tied to this place.',
-    submitLabel: 'Add Place',
-    nextStep: 'After saving, connect the place to nations, civilizations, and historically situated topics.',
-  },
 };
 
-type EntityFilter = 'all' | 'legacy' | ReferenceEntityKind;
+type EntityFilter = 'all' | ReferenceEntityKind;
 type EntityWorkbenchView = 'create' | 'list';
 
 const createInitialFormState = (kind: ReferenceEntityKind = 'person') => ({
@@ -218,8 +149,6 @@ const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | '
   entity.metadata?.atlasSource === 'historical-basemaps' &&
   entity.metadata?.builtIn === true;
 
-const isLegacyEntityKind = (kind: ReferenceEntityKind) => legacyKindOptions.includes(kind);
-
 const ReferenceEntitiesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [entities, setEntities] = useState<ReferenceEntity[]>([]);
@@ -275,36 +204,17 @@ const ReferenceEntitiesPage: React.FC = () => {
 
   const filteredEntities = useMemo(() => {
     if (filter === 'all') return sortEntities(entities);
-    if (filter === 'legacy') {
-      return sortEntities(entities.filter((entity) => isLegacyEntityKind(entity.kind)));
-    }
     return sortEntities(entities.filter((entity) => entity.kind === filter));
   }, [entities, filter]);
-  const primaryGroups = useMemo(
+  const groupedEntities = useMemo(
     () =>
-      primaryKindOptions.map((kind) => ({
+      browseKindOptions.map((kind) => ({
         kind,
         title: kindLabels[kind],
         lead: kindAtlasLeads[kind],
         entities: sortEntities(entities.filter((entity) => entity.kind === kind)),
       })),
     [entities]
-  );
-  const legacyEntities = useMemo(
-    () => sortEntities(entities.filter((entity) => isLegacyEntityKind(entity.kind))),
-    [entities]
-  );
-  const groupedEntities = useMemo(
-    () => [
-      ...primaryGroups,
-      {
-        kind: 'legacy' as const,
-        title: 'Legacy Atlas Records',
-        lead: legacyAtlasLead,
-        entities: legacyEntities,
-      },
-    ],
-    [legacyEntities, primaryGroups]
   );
   const visibleGroups = useMemo(() => {
     if (filter === 'all') return groupedEntities.filter((group) => group.entities.length > 0);
@@ -499,7 +409,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             <div>
               <span className="reference-entities-eyebrow">Atlas Index</span>
               <h1>Reference Atlas</h1>
-              <p>Browse the primary atlas model first: people, built-in polities, and formations. Older kinds stay in a legacy shelf during migration.</p>
+              <p>Browse the atlas backbone directly: people, built-in polities, and formations.</p>
             </div>
             <button
               type="button"
@@ -517,18 +427,13 @@ const ReferenceEntitiesPage: React.FC = () => {
               <strong>{entities.length}</strong>
               <span>Total entities</span>
             </div>
-            {primaryGroups.map((group) => (
+            {groupedEntities.map((group) => (
               <div key={group.kind} className="reference-entities-stat reference-entities-stat-rich">
                 <strong>{counts[group.kind]}</strong>
                 <span>{group.title}</span>
                 <small>{previewTitles(group.entities)}</small>
               </div>
             ))}
-            <div className="reference-entities-stat reference-entities-stat-rich">
-              <strong>{legacyEntities.length}</strong>
-              <span>Legacy records</span>
-              <small>{legacyEntities.length > 0 ? previewTitles(legacyEntities) : 'No legacy atlas records'}</small>
-            </div>
           </div>
 
           <div className="reference-entities-filters">
@@ -539,7 +444,7 @@ const ReferenceEntitiesPage: React.FC = () => {
             >
               All
             </button>
-            {primaryKindOptions.map((kind) => (
+            {browseKindOptions.map((kind) => (
               <button
                 key={kind}
                 type="button"
@@ -551,13 +456,6 @@ const ReferenceEntitiesPage: React.FC = () => {
                 {kindLabels[kind]}
               </button>
             ))}
-            <button
-              type="button"
-              className={filter === 'legacy' ? 'reference-entities-filter is-active' : 'reference-entities-filter'}
-              onClick={() => setFilter('legacy')}
-            >
-              Legacy
-            </button>
           </div>
 
           {loading ? <div className="reference-entities-empty">Loading reference entities...</div> : null}
@@ -586,8 +484,6 @@ const ReferenceEntitiesPage: React.FC = () => {
                     {group.entities.map((entity) => {
                       const legacySource = getLegacySource(entity);
                       const isBuiltInPolity = isBuiltInPolityReferenceEntity(entity);
-                      const isLegacyEntity = isLegacyEntityKind(entity.kind);
-
                       return (
                         <article key={entity.id} className="reference-entities-item">
                           <div className="reference-entities-item-top">
@@ -602,11 +498,6 @@ const ReferenceEntitiesPage: React.FC = () => {
                                 {legacySource ? (
                                   <span className="reference-entities-badge reference-entities-badge-secondary">
                                     imported from {legacySource}
-                                  </span>
-                                ) : null}
-                                {isLegacyEntity ? (
-                                  <span className="reference-entities-badge reference-entities-badge-secondary">
-                                    legacy kind
                                   </span>
                                 ) : null}
                               </div>

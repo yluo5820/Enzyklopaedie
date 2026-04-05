@@ -97,10 +97,6 @@ const relationKindOrder: ReferenceEntity['kind'][] = [
   'person',
   'polity',
   'formation',
-  'era',
-  'nation',
-  'civilization',
-  'place',
 ];
 
 const formatDate = (value: string) =>
@@ -175,41 +171,25 @@ const getItemRelationPreset = (
     };
   }
 
-  if (targetEntityKind === 'era') {
-    return {
-      allowedRelationTypes: ['during', 'about', 'related_to'],
-      defaultRelationType: 'during',
-      helperText:
-        'Use eras for historical setting. Choose during when the item belongs to a period context, or about when the period is the explicit subject.',
-      notePlaceholder: 'Optional note about the period context',
-      targetPrompt: 'Choose an era',
-    };
-  }
-
-  if (targetEntityKind === 'nation' || targetEntityKind === 'place' || targetEntityKind === 'polity') {
+  if (targetEntityKind === 'polity') {
     return {
       allowedRelationTypes: ['located_in', 'about', 'related_to'],
       defaultRelationType: 'located_in',
       helperText:
-        'Use polities, nations, and places for geographic or political setting. Choose about only when the entity is itself the subject matter.',
+        'Use polities for geographic or political setting. Choose about only when the polity is itself the subject matter.',
       notePlaceholder: 'Optional note about this location or polity',
-      targetPrompt:
-        targetEntityKind === 'polity'
-          ? 'Choose a polity'
-          : targetEntityKind === 'nation'
-            ? 'Choose a nation'
-            : 'Choose a place',
+      targetPrompt: 'Choose a polity',
     };
   }
 
-  if (targetEntityKind === 'civilization' || targetEntityKind === 'formation') {
+  if (targetEntityKind === 'formation') {
     return {
       allowedRelationTypes: ['about', 'related_to', 'influenced_by'],
       defaultRelationType: 'about',
       helperText:
-        'Formations and civilizations usually enter as higher-order historical context or as an explicit subject of study.',
-      notePlaceholder: 'Optional note about this formation or civilizational context',
-      targetPrompt: targetEntityKind === 'formation' ? 'Choose a formation' : 'Choose a civilization',
+        'Formations usually enter as higher-order historical context or as an explicit subject of study.',
+      notePlaceholder: 'Optional note about this formation context',
+      targetPrompt: 'Choose a formation',
     };
   }
 
@@ -219,7 +199,7 @@ const getItemRelationPreset = (
     helperText:
       'Choose the entity first. The relation options will narrow once the target is specific.',
     notePlaceholder: 'Optional note about this context',
-    targetPrompt: 'Choose a person, polity, formation, era, nation, civilization, or place',
+    targetPrompt: 'Choose a person, polity, or formation',
   };
 };
 

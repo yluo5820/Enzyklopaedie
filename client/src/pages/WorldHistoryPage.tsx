@@ -54,12 +54,8 @@ const atlasKindOptions: HistoricalAtlasKind[] = [
 ];
 
 const referenceEntityKindLabels: Record<ReferenceEntity['kind'], string> = {
-  civilization: 'Civilization',
-  era: 'Era',
   formation: 'Formation',
-  nation: 'Nation',
   person: 'Person',
-  place: 'Place',
   polity: 'Polity',
 };
 
@@ -68,7 +64,7 @@ const DEFAULT_MIN_YEAR = -1200;
 const DEFAULT_MAX_YEAR = 2025;
 const DEFAULT_BASEMAP_CUTOFF_YEAR = -500;
 const MATCHABLE_ATLAS_ENTITY_KINDS = new Set(['nation', 'civilization', 'region', 'place']);
-const MATCHABLE_REFERENCE_ENTITY_KINDS = new Set(['nation', 'civilization', 'place', 'polity']);
+const MATCHABLE_REFERENCE_ENTITY_KINDS = new Set<ReferenceEntity['kind']>(['polity']);
 
 type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
   latitude: number;

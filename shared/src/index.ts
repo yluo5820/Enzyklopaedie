@@ -61,12 +61,8 @@ export interface TopicSummary extends Topic {
 
 export type ReferenceEntityKind =
   | 'person'
-  | 'formation'
-  | 'nation'
-  | 'civilization'
-  | 'era'
-  | 'place'
-  | 'polity';
+  | 'polity'
+  | 'formation';
 
 export interface ReferenceEntity {
   id: number;

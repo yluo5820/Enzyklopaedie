@@ -51,7 +51,7 @@ export interface TopicSummary extends Topic {
     subjectName: string;
     subjectSlug: string;
 }
-export type ReferenceEntityKind = 'person' | 'formation' | 'nation' | 'civilization' | 'era' | 'place' | 'polity';
+export type ReferenceEntityKind = 'person' | 'polity' | 'formation';
 export interface ReferenceEntity {
     id: number;
     kind: ReferenceEntityKind;

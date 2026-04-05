@@ -38,10 +38,6 @@ const relationKindOrder: ReferenceEntityKind[] = [
   'person',
   'polity',
   'formation',
-  'era',
-  'nation',
-  'civilization',
-  'place',
 ];
 
 const getStudyTopicRelationPreset = (
@@ -58,41 +54,25 @@ const getStudyTopicRelationPreset = (
     };
   }
 
-  if (targetEntityKind === 'era') {
-    return {
-      allowedRelationTypes: ['during', 'about', 'related_to'],
-      defaultRelationType: 'during',
-      helperText:
-        'Use eras to temporalize the topic. Choose during when the topic belongs to a period, or about when the period is itself the explicit object.',
-      notePlaceholder: 'Optional note about the period context',
-      targetPrompt: 'Choose an era',
-    };
-  }
-
-  if (targetEntityKind === 'nation' || targetEntityKind === 'place' || targetEntityKind === 'polity') {
+  if (targetEntityKind === 'polity') {
     return {
       allowedRelationTypes: ['located_in', 'about', 'related_to'],
       defaultRelationType: 'located_in',
       helperText:
-        'Use polities, nations, and places to localize the topic in geography or political space. Choose about only when the entity is itself the object of study.',
-      notePlaceholder: 'Optional note about this place or polity',
-      targetPrompt:
-        targetEntityKind === 'polity'
-          ? 'Choose a polity'
-          : targetEntityKind === 'nation'
-            ? 'Choose a nation'
-            : 'Choose a place',
+        'Use polities to localize the topic in geography or political space. Choose about only when the polity is itself the object of study.',
+      notePlaceholder: 'Optional note about this polity frame',
+      targetPrompt: 'Choose a polity',
     };
   }
 
-  if (targetEntityKind === 'civilization' || targetEntityKind === 'formation') {
+  if (targetEntityKind === 'formation') {
     return {
       allowedRelationTypes: ['part_of', 'about', 'related_to'],
       defaultRelationType: 'part_of',
       helperText:
-        'Use formations and civilizations as the broad spatial-temporal horizon around the topic, or as the explicit object of study.',
-      notePlaceholder: 'Optional note about this formation or civilizational frame',
-      targetPrompt: targetEntityKind === 'formation' ? 'Choose a formation' : 'Choose a civilization',
+        'Use formations as the broad spatial-temporal horizon around the topic, or as the explicit object of study.',
+      notePlaceholder: 'Optional note about this formation frame',
+      targetPrompt: 'Choose a formation',
     };
   }
 
@@ -102,7 +82,7 @@ const getStudyTopicRelationPreset = (
     helperText:
       'Choose the reference entity first. The relation verbs will narrow once the topic’s historical or geographic frame is clear.',
     notePlaceholder: 'Optional note about why this entity matters here',
-    targetPrompt: 'Choose a person, polity, formation, era, nation, civilization, or place',
+    targetPrompt: 'Choose a person, polity, or formation',
   };
 };
 
@@ -655,7 +635,7 @@ const TopicPage: React.FC = () => {
             <article className="topic-page-overview-card">
               <div className="topic-page-overview-label">
                 <span className="topic-page-eyebrow">Historical Frame</span>
-                <PageHint text="People, eras, nations, civilizations, and places linked to contextualize the topic." />
+                <PageHint text="People, polities, and formations linked to contextualize the topic." />
               </div>
               <strong>{relations.length} linked entit{relations.length === 1 ? 'y' : 'ies'}</strong>
               <span className="topic-page-overview-meta">
@@ -816,7 +796,7 @@ const TopicPage: React.FC = () => {
                 <span className="topic-page-eyebrow">Historical Frame</span>
                 <h2>
                   Context composition
-                  <PageHint text="Add people, eras, places, nations, or civilizations to make the topic historically or geographically specific." />
+                  <PageHint text="Add people, polities, or formations to make the topic historically or geographically specific." />
                   <span className="topic-page-count-badge">{relations.length}</span>
                 </h2>
               </div>

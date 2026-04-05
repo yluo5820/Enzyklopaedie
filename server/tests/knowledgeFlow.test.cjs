@@ -664,7 +664,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'era',
+        kind: 'formation',
         title: 'Late Antiquity',
         startYear: 250,
         endYear: 750,
@@ -672,16 +672,16 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     });
 
     assert.equal(referenceEntityResponse.status, 201);
-    const eraEntity = await referenceEntityResponse.json();
+    const formationEntity = await referenceEntityResponse.json();
 
     const entityRelationResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
-        relationType: 'during',
-        note: 'The source item belongs to this historical period.',
+        toEntityId: formationEntity.id,
+        relationType: 'about',
+        note: 'The source item belongs to this historical formation.',
       }),
     });
 
@@ -689,30 +689,30 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const entityRelation = await entityRelationResponse.json();
     assert.equal(entityRelation.toEntityType, 'reference_entity');
     assert.equal(entityRelation.toEntityTitle, 'Late Antiquity');
-    assert.equal(entityRelation.toEntityKind, 'era');
+    assert.equal(entityRelation.toEntityKind, 'formation');
 
     const relationsResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`);
     assert.equal(relationsResponse.status, 200);
     const relations = await relationsResponse.json();
     assert.equal(relations.length, 2);
     assert.ok(relations.some((entry) => entry.toEntityKind === 'book'));
-    assert.ok(relations.some((entry) => entry.toEntityKind === 'era'));
+    assert.ok(relations.some((entry) => entry.toEntityKind === 'formation'));
 
     const studyTopicRelationResponse = await request(`/api/topics/${studyTopic.id}/relations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'about',
-        note: 'This study topic is explicitly about the period.',
+        note: 'This study topic is explicitly about the formation.',
       }),
     });
 
     assert.equal(studyTopicRelationResponse.status, 201);
     const studyTopicRelation = await studyTopicRelationResponse.json();
     assert.equal(studyTopicRelation.toEntityTitle, 'Late Antiquity');
-    assert.equal(studyTopicRelation.toEntityKind, 'era');
+    assert.equal(studyTopicRelation.toEntityKind, 'formation');
 
     const studyTopicRelationsResponse = await request(`/api/topics/${studyTopic.id}/relations`);
     assert.equal(studyTopicRelationsResponse.status, 200);
@@ -725,7 +725,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'created_by',
       }),
     });
@@ -733,7 +733,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(invalidKnowledgeRelationResponse.status, 400);
     assert.match(
       (await invalidKnowledgeRelationResponse.json()).message,
-      /not allowed from book item to era/
+      /not allowed from book item to formation/
     );
 
     const invalidStudyTopicRelationResponse = await request(`/api/topics/${studyTopic.id}/relations`, {
@@ -741,7 +741,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'created_by',
       }),
     });
@@ -749,7 +749,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(invalidStudyTopicRelationResponse.status, 400);
     assert.match(
       (await invalidStudyTopicRelationResponse.json()).message,
-      /not allowed from topic to era/
+      /not allowed from topic to formation/
     );
 
     const personEntityResponse = await request('/api/reference-entities', {
@@ -770,7 +770,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'contains',
       }),
       }
@@ -779,10 +779,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(invalidReferenceRelationResponse.status, 400);
     assert.match(
       (await invalidReferenceRelationResponse.json()).message,
-      /not allowed from person to era/
+      /not allowed from person to formation/
     );
 
-    const referenceEntityRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    const referenceEntityRelationsResponse = await request(`/api/reference-entities/${formationEntity.id}/relations`);
     assert.equal(referenceEntityRelationsResponse.status, 200);
     const referenceEntityRelations = await referenceEntityRelationsResponse.json();
     assert.equal(referenceEntityRelations.length, 2);
@@ -945,7 +945,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'nation',
+        kind: 'polity',
         title: 'Byzantine Empire',
         summary: 'A test fixture for the reference atlas.',
         startYear: 330,
@@ -958,8 +958,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     assert.equal(createResponse.status, 201);
     const createdEntity = await createResponse.json();
-    assert.equal(createdEntity.kind, 'nation');
-    assert.equal(createdEntity.slug, 'nation-byzantine-empire');
+    assert.equal(createdEntity.kind, 'polity');
+    assert.equal(createdEntity.slug, 'polity-byzantine-empire');
     assert.deepEqual(createdEntity.metadata, {
       origin: 'server-test',
     });
@@ -968,7 +968,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'nation',
+        kind: 'polity',
         title: 'Byzantine Empire',
       }),
     });
@@ -977,10 +977,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const duplicateEntity = await duplicateResponse.json();
     assert.equal(duplicateEntity.id, createdEntity.id);
 
-    const nationsResponse = await request('/api/reference-entities?kind=nation');
-    assert.equal(nationsResponse.status, 200);
-    const nations = await nationsResponse.json();
-    assert.ok(nations.some((entity) => entity.id === createdEntity.id));
+    const politiesResponse = await request('/api/reference-entities?kind=polity');
+    assert.equal(politiesResponse.status, 200);
+    const polities = await politiesResponse.json();
+    assert.ok(polities.some((entity) => entity.id === createdEntity.id));
 
     const getResponse = await request(`/api/reference-entities/${createdEntity.id}`);
     assert.equal(getResponse.status, 200);
@@ -992,45 +992,48 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'civilization',
-        title: 'Eastern Roman Empire',
+        kind: 'formation',
+        title: 'Eastern Roman World',
         summary: 'Updated during the server test pass.',
         endYear: 1453,
+        metadata: {
+          subtype: 'civilization',
+        },
       }),
     });
 
     assert.equal(updateResponse.status, 200);
     const updatedEntity = await updateResponse.json();
-    assert.equal(updatedEntity.kind, 'civilization');
-    assert.equal(updatedEntity.title, 'Eastern Roman Empire');
-    assert.equal(updatedEntity.slug, 'civilization-eastern-roman-empire');
+    assert.equal(updatedEntity.kind, 'formation');
+    assert.equal(updatedEntity.title, 'Eastern Roman World');
+    assert.equal(updatedEntity.slug, 'formation-eastern-roman-world');
     assert.equal(updatedEntity.startYear, 330);
 
-    const eraResponse = await request('/api/reference-entities', {
+    const broaderFormationResponse = await request('/api/reference-entities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'era',
-        title: 'Middle Byzantine Period',
-        startYear: 843,
-        endYear: 1204,
+        kind: 'formation',
+        title: 'Mediterranean Antiquity',
+        startYear: -200,
+        endYear: 700,
       }),
     });
-    assert.equal(eraResponse.status, 201);
-    const eraEntity = await eraResponse.json();
+    assert.equal(broaderFormationResponse.status, 201);
+    const broaderFormationEntity = await broaderFormationResponse.json();
 
-    const nationResponse = await request('/api/reference-entities', {
+    const parallelFormationResponse = await request('/api/reference-entities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'nation',
-        title: 'Anatolian Theme',
-        startYear: 669,
-        endYear: 1077,
+        kind: 'formation',
+        title: 'Orthodox East',
+        startYear: 330,
+        endYear: 1453,
       }),
     });
-    assert.equal(nationResponse.status, 201);
-    const nationEntity = await nationResponse.json();
+    assert.equal(parallelFormationResponse.status, 201);
+    const parallelFormationEntity = await parallelFormationResponse.json();
 
     const personResponse = await request('/api/reference-entities', {
       method: 'POST',
@@ -1050,33 +1053,16 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kind: 'polity',
-        title: 'Byzantine Commonwealth',
+        title: 'Anatolian Theme',
         startYear: 330,
-        endYear: 1453,
+        endYear: 1077,
       }),
     });
     assert.equal(polityResponse.status, 201);
     const polityEntity = await polityResponse.json();
 
-    const formationResponse = await request('/api/reference-entities', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        kind: 'formation',
-        title: 'Orthodox East',
-        summary: 'A test formation spanning multiple historical polities.',
-        startYear: 330,
-        endYear: 1453,
-        metadata: {
-          subtype: 'civilization',
-        },
-      }),
-    });
-    assert.equal(formationResponse.status, 201);
-    const formationEntity = await formationResponse.json();
-
     const formationMembershipResponse = await request(
-      `/api/reference-entities/${formationEntity.id}/formation-memberships`,
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1090,10 +1076,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     );
     assert.equal(formationMembershipResponse.status, 201);
     const formationMembership = await formationMembershipResponse.json();
-    assert.equal(formationMembership.formationEntityId, formationEntity.id);
+    assert.equal(formationMembership.formationEntityId, updatedEntity.id);
     assert.equal(formationMembership.polityEntityId, polityEntity.id);
-    assert.equal(formationMembership.formationTitle, 'Orthodox East');
-    assert.equal(formationMembership.polityTitle, 'Byzantine Commonwealth');
+    assert.equal(formationMembership.formationTitle, 'Eastern Roman World');
+    assert.equal(formationMembership.polityTitle, 'Anatolian Theme');
 
     const authoredItemResponse = await request('/api/knowledge-items', {
       method: 'POST',
@@ -1118,37 +1104,37 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     });
     assert.equal(createdByResponse.status, 201);
 
-    const civilizationToEraResponse = await request(
+    const formationToBroaderResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toEntityId: eraEntity.id,
-          relationType: 'contains',
-          note: 'This civilization includes the middle Byzantine period.',
+          toEntityId: broaderFormationEntity.id,
+          relationType: 'part_of',
+          note: 'This formation belongs inside the broader Mediterranean frame.',
         }),
       }
     );
-    assert.equal(civilizationToEraResponse.status, 201);
-    const civilizationToEraRelation = await civilizationToEraResponse.json();
-    assert.equal(civilizationToEraRelation.toEntityTitle, 'Middle Byzantine Period');
+    assert.equal(formationToBroaderResponse.status, 201);
+    const formationToBroaderRelation = await formationToBroaderResponse.json();
+    assert.equal(formationToBroaderRelation.toEntityTitle, 'Mediterranean Antiquity');
 
-    const civilizationToNationResponse = await request(
+    const formationToParallelResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toEntityId: nationEntity.id,
-          relationType: 'contains',
-          note: 'This civilization includes the Anatolian Theme.',
+          toEntityId: parallelFormationEntity.id,
+          relationType: 'related_to',
+          note: 'This formation runs alongside the Orthodox East.',
         }),
       }
     );
-    assert.equal(civilizationToNationResponse.status, 201);
-    const civilizationToNationRelation = await civilizationToNationResponse.json();
-    assert.equal(civilizationToNationRelation.toEntityTitle, 'Anatolian Theme');
+    assert.equal(formationToParallelResponse.status, 201);
+    const formationToParallelRelation = await formationToParallelResponse.json();
+    assert.equal(formationToParallelRelation.toEntityTitle, 'Orthodox East');
 
     const outgoingRelationsResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`
@@ -1156,7 +1142,12 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(outgoingRelationsResponse.status, 200);
     const outgoingRelations = await outgoingRelationsResponse.json();
     assert.equal(outgoingRelations.length, 2);
-    assert.ok(outgoingRelations.every((relation) => relation.relationType === 'contains'));
+    assert.ok(
+      outgoingRelations.some((relation) => relation.relationType === 'part_of')
+    );
+    assert.ok(
+      outgoingRelations.some((relation) => relation.relationType === 'related_to')
+    );
 
     const personRelationsResponse = await request(`/api/reference-entities/${personEntity.id}/relations`);
     assert.equal(personRelationsResponse.status, 200);
@@ -1170,25 +1161,27 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       )
     );
 
-    const eraRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
-    assert.equal(eraRelationsResponse.status, 200);
-    const eraRelations = await eraRelationsResponse.json();
+    const broaderFormationRelationsResponse = await request(
+      `/api/reference-entities/${broaderFormationEntity.id}/relations`
+    );
+    assert.equal(broaderFormationRelationsResponse.status, 200);
+    const broaderFormationRelations = await broaderFormationRelationsResponse.json();
     assert.ok(
-      eraRelations.some(
+      broaderFormationRelations.some(
         (relation) =>
           relation.fromEntityType === 'reference_entity' &&
-          relation.relationType === 'contains' &&
-          relation.fromEntityTitle === 'Eastern Roman Empire'
+          relation.relationType === 'part_of' &&
+          relation.fromEntityTitle === 'Eastern Roman World'
         )
     );
 
     const formationMembershipListResponse = await request(
-      `/api/reference-entities/${formationEntity.id}/formation-memberships`
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships`
     );
     assert.equal(formationMembershipListResponse.status, 200);
     const formationMemberships = await formationMembershipListResponse.json();
     assert.equal(formationMemberships.length, 1);
-    assert.equal(formationMemberships[0].polityTitle, 'Byzantine Commonwealth');
+    assert.equal(formationMemberships[0].polityTitle, 'Anatolian Theme');
 
     const polityMembershipListResponse = await request(
       `/api/reference-entities/${polityEntity.id}/formation-memberships`
@@ -1196,7 +1189,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(polityMembershipListResponse.status, 200);
     const polityMemberships = await polityMembershipListResponse.json();
     assert.equal(polityMemberships.length, 1);
-    assert.equal(polityMemberships[0].formationTitle, 'Orthodox East');
+    assert.equal(polityMemberships[0].formationTitle, 'Eastern Roman World');
 
     const activityResponse = await request('/api/activity-events?limit=50');
     assert.equal(activityResponse.status, 200);
@@ -1218,7 +1211,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     );
 
     const deleteFormationMembershipResponse = await request(
-      `/api/reference-entities/${formationEntity.id}/formation-memberships/${formationMembership.id}`,
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships/${formationMembership.id}`,
       {
         method: 'DELETE',
       }
@@ -1226,7 +1219,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(deleteFormationMembershipResponse.status, 204);
 
     const formationMembershipListAfterDeleteResponse = await request(
-      `/api/reference-entities/${formationEntity.id}/formation-memberships`
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships`
     );
     assert.equal(formationMembershipListAfterDeleteResponse.status, 200);
     const formationMembershipsAfterDelete = await formationMembershipListAfterDeleteResponse.json();
@@ -1237,14 +1230,16 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     });
     assert.equal(deleteResponse.status, 204);
 
-    const danglingRelationResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    const danglingRelationResponse = await request(
+      `/api/reference-entities/${broaderFormationEntity.id}/relations`
+    );
     assert.equal(danglingRelationResponse.status, 200);
     const danglingRelations = await danglingRelationResponse.json();
     assert.ok(
       !danglingRelations.some(
         (relation) =>
           relation.fromEntityType === 'reference_entity' &&
-          relation.fromEntityTitle === 'Eastern Roman Empire'
+          relation.fromEntityTitle === 'Eastern Roman World'
       )
     );
 

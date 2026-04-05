@@ -26,45 +26,11 @@ import {
 import './ReferenceEntityPage.css';
 
 const primaryKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
-const legacyKindOptions: ReferenceEntityKind[] = ['nation', 'civilization', 'era', 'place'];
+
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
   polity: 'Polity',
   formation: 'Formation',
-  nation: 'Nation',
-  civilization: 'Civilization',
-  era: 'Era',
-  place: 'Place',
-};
-
-const isLegacyEntityKind = (kind: ReferenceEntityKind) => legacyKindOptions.includes(kind);
-
-const getLegacyMigrationCopy = (kind: ReferenceEntityKind) => {
-  if (kind === 'nation') {
-    return {
-      title: 'Legacy polity record',
-      body: 'New atlas work should usually use built-in polities instead of hand-made nation records. Keep this record for continuity or convert it into a polity when the basemap-backed equivalent exists.',
-    };
-  }
-
-  if (kind === 'civilization') {
-    return {
-      title: 'Legacy civilization record',
-      body: 'New atlas work should usually use formations for civilizational spans and historical continuities. Keep this record for compatibility or migrate it into a formation.',
-    };
-  }
-
-  if (kind === 'era') {
-    return {
-      title: 'Legacy era record',
-      body: 'New atlas work should usually express geographically bounded periods as formations. Keep this record for compatibility or migrate it into a formation when the polity membership is clear.',
-    };
-  }
-
-  return {
-    title: 'Legacy place record',
-    body: 'Places remain readable, but the atlas backbone is shifting toward people, polities, and formations. Keep this record when geography itself is the subject.',
-  };
 };
 
 type EntityStructurePreset = {
@@ -131,27 +97,17 @@ type OverviewCard = {
 const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset> = {
   person: {
     helperText:
-      'Use structure modes here for provenance and setting: where this person belongs, when they belong, and who influenced them.',
+      'Use structure modes here for provenance and setting: which polity this person belongs to, which formation they belong to, and who influenced them.',
     modes: [
       {
-        id: 'homeland',
-        label: 'Homeland',
-        description: 'Place the person in a polity, nation, or place.',
+        id: 'polity',
+        label: 'Polity',
+        description: 'Place the person in a polity.',
         allowedRelationTypes: ['located_in'],
         defaultRelationType: 'located_in',
-        notePlaceholder: 'Optional note about this homeland or place',
-        targetPrompt: 'Choose a polity, nation, or place',
-        targetKinds: ['polity', 'nation', 'place'],
-      },
-      {
-        id: 'era',
-        label: 'Era',
-        description: 'Attach the era this person belongs to.',
-        allowedRelationTypes: ['during'],
-        defaultRelationType: 'during',
-        notePlaceholder: 'Optional note about this historical period',
-        targetPrompt: 'Choose an era',
-        targetKinds: ['era'],
+        notePlaceholder: 'Optional note about this polity membership',
+        targetPrompt: 'Choose a polity',
+        targetKinds: ['polity'],
       },
       {
         id: 'formation',
@@ -177,7 +133,7 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
   },
   polity: {
     helperText:
-      'Polities are atlas-backed historical-geographical units. Use structure modes here to place the polity in formations, eras, or broader geography.',
+      'Polities are atlas-backed historical-geographical units. Use structure modes here for broader formations, sub-polities, and peer links.',
     modes: [
       {
         id: 'formation',
@@ -190,26 +146,6 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         targetKinds: ['formation'],
       },
       {
-        id: 'era',
-        label: 'Era',
-        description: 'Attach the period in which this polity belongs.',
-        allowedRelationTypes: ['during'],
-        defaultRelationType: 'during',
-        notePlaceholder: 'Optional note about this historical period',
-        targetPrompt: 'Choose an era',
-        targetKinds: ['era'],
-      },
-      {
-        id: 'geography',
-        label: 'Geography',
-        description: 'Place the polity inside a larger geographic container.',
-        allowedRelationTypes: ['located_in'],
-        defaultRelationType: 'located_in',
-        notePlaceholder: 'Optional note about this geography',
-        targetPrompt: 'Choose a place',
-        targetKinds: ['place'],
-      },
-      {
         id: 'sub-polity',
         label: 'Sub-polity',
         description: 'Record a contained polity or political subdivision.',
@@ -217,7 +153,7 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         defaultRelationType: 'contains',
         notePlaceholder: 'Optional note about this contained polity',
         targetPrompt: 'Choose another polity',
-        targetKinds: ['polity', 'nation'],
+        targetKinds: ['polity'],
       },
       {
         id: 'peer-link',
@@ -233,7 +169,7 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
   },
   formation: {
     helperText:
-      'Formations collect polities across time and space. Use explicit polity memberships below, then add broader formation or geographic links here when useful.',
+      'Formations collect polities across time and space. Use explicit polity memberships below, then add broader or parallel formation links here when useful.',
     modes: [
       {
         id: 'broader-formation',
@@ -254,190 +190,6 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
         notePlaceholder: 'Optional note about this parallel formation',
         targetPrompt: 'Choose another formation',
         targetKinds: ['formation'],
-      },
-      {
-        id: 'geography',
-        label: 'Geography',
-        description: 'Anchor the formation to a place when geography matters.',
-        allowedRelationTypes: ['located_in'],
-        defaultRelationType: 'located_in',
-        notePlaceholder: 'Optional note about this geography',
-        targetPrompt: 'Choose a place',
-        targetKinds: ['place'],
-      },
-    ],
-  },
-  nation: {
-    helperText:
-      'Use structure modes here to place the nation in a civilization, era, or geography, or to record sub-polities and peer links.',
-    modes: [
-      {
-        id: 'civilization',
-        label: 'Civilization',
-        description: 'Place the nation inside a broader civilization.',
-        allowedRelationTypes: ['part_of'],
-        defaultRelationType: 'part_of',
-        notePlaceholder: 'Optional note about this civilizational membership',
-        targetPrompt: 'Choose a civilization',
-        targetKinds: ['civilization'],
-      },
-      {
-        id: 'era',
-        label: 'Era',
-        description: 'Attach the period in which this polity belongs.',
-        allowedRelationTypes: ['during'],
-        defaultRelationType: 'during',
-        notePlaceholder: 'Optional note about this historical period',
-        targetPrompt: 'Choose an era',
-        targetKinds: ['era'],
-      },
-      {
-        id: 'geography',
-        label: 'Geography',
-        description: 'Place the nation inside a larger geographic container.',
-        allowedRelationTypes: ['located_in'],
-        defaultRelationType: 'located_in',
-        notePlaceholder: 'Optional note about this geography',
-        targetPrompt: 'Choose a place',
-        targetKinds: ['place'],
-      },
-      {
-        id: 'sub-polity',
-        label: 'Sub-polity',
-        description: 'Record a contained polity or political subdivision.',
-        allowedRelationTypes: ['contains'],
-        defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this contained polity',
-        targetPrompt: 'Choose another polity or nation',
-        targetKinds: ['polity', 'nation'],
-      },
-      {
-        id: 'peer-link',
-        label: 'Peer Link',
-        description: 'Record influence or affinity with another polity.',
-        allowedRelationTypes: ['influenced_by', 'related_to'],
-        defaultRelationType: 'related_to',
-        notePlaceholder: 'Optional note about this peer relation',
-        targetPrompt: 'Choose another polity, nation, or civilization',
-        targetKinds: ['polity', 'nation', 'civilization'],
-      },
-    ],
-  },
-  civilization: {
-    helperText:
-      'Civilizations usually contain nations and eras. Use the modes here to build that scope deliberately.',
-    modes: [
-      {
-        id: 'member-nation',
-        label: 'Member Nation',
-        description: 'Add a polity or nation contained within this civilization.',
-        allowedRelationTypes: ['contains'],
-        defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this member polity',
-        targetPrompt: 'Choose a polity or nation',
-        targetKinds: ['polity', 'nation'],
-      },
-      {
-        id: 'era-span',
-        label: 'Era Span',
-        description: 'Add an era that belongs inside this civilization.',
-        allowedRelationTypes: ['contains'],
-        defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this era span',
-        targetPrompt: 'Choose an era',
-        targetKinds: ['era'],
-      },
-      {
-        id: 'super-civilization',
-        label: 'Super-civilization',
-        description: 'Nest this civilization inside a broader one when useful.',
-        allowedRelationTypes: ['part_of'],
-        defaultRelationType: 'part_of',
-        notePlaceholder: 'Optional note about this broader frame',
-        targetPrompt: 'Choose another civilization',
-        targetKinds: ['civilization'],
-      },
-      {
-        id: 'geography',
-        label: 'Geography',
-        description: 'Anchor the civilization to a place.',
-        allowedRelationTypes: ['located_in'],
-        defaultRelationType: 'located_in',
-        notePlaceholder: 'Optional note about this geography',
-        targetPrompt: 'Choose a place',
-        targetKinds: ['place'],
-      },
-    ],
-  },
-  era: {
-    helperText:
-      'Eras work best as chronological containers. Use the modes here to build period hierarchy and parallels deliberately.',
-    modes: [
-      {
-        id: 'sub-era',
-        label: 'Sub-era',
-        description: 'Add a narrower period contained within this one.',
-        allowedRelationTypes: ['contains'],
-        defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this sub-era',
-        targetPrompt: 'Choose another era',
-        targetKinds: ['era'],
-      },
-      {
-        id: 'broader-era',
-        label: 'Broader Era',
-        description: 'Place this era inside a larger period.',
-        allowedRelationTypes: ['part_of'],
-        defaultRelationType: 'part_of',
-        notePlaceholder: 'Optional note about this broader period',
-        targetPrompt: 'Choose another era',
-        targetKinds: ['era'],
-      },
-      {
-        id: 'parallel-period',
-        label: 'Parallel Period',
-        description: 'Link a related or influencing period.',
-        allowedRelationTypes: ['related_to', 'influenced_by'],
-        defaultRelationType: 'related_to',
-        notePlaceholder: 'Optional note about this parallel period',
-        targetPrompt: 'Choose another era',
-        targetKinds: ['era'],
-      },
-    ],
-  },
-  place: {
-    helperText:
-      'Places usually nest inside other places, and they can also host polities, nations, or civilizations when geography matters.',
-    modes: [
-      {
-        id: 'contained-place',
-        label: 'Contained Place',
-        description: 'Add a smaller place inside this one.',
-        allowedRelationTypes: ['contains'],
-        defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this contained place',
-        targetPrompt: 'Choose another place',
-        targetKinds: ['place'],
-      },
-      {
-        id: 'broader-place',
-        label: 'Broader Place',
-        description: 'Place this location inside a larger geography.',
-        allowedRelationTypes: ['part_of'],
-        defaultRelationType: 'part_of',
-        notePlaceholder: 'Optional note about this larger geography',
-        targetPrompt: 'Choose another place',
-        targetKinds: ['place'],
-      },
-      {
-        id: 'hosted-polity',
-        label: 'Hosted Polity',
-        description: 'Attach a polity, nation, or civilization hosted by this geography.',
-        allowedRelationTypes: ['contains'],
-        defaultRelationType: 'contains',
-        notePlaceholder: 'Optional note about this hosted polity',
-        targetPrompt: 'Choose a polity, nation, or civilization',
-        targetKinds: ['polity', 'nation', 'civilization'],
       },
     ],
   },
@@ -495,7 +247,7 @@ const formatMetadataValue = (value: unknown) => {
   return JSON.stringify(value);
 };
 
-const isPolityLikeKind = (kind: ReferenceEntityKind) => kind === 'nation' || kind === 'polity';
+const isPolityLikeKind = (kind: ReferenceEntityKind) => kind === 'polity';
 const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | 'metadata'>) =>
   entity.kind === 'polity' &&
   entity.metadata?.atlasSource === 'historical-basemaps' &&
@@ -648,20 +400,13 @@ const getItemSectionLabel = (kind: ReferenceEntityKind) => {
 const getAtlasSectionLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'person') return 'Biographical coverage';
   if (kind === 'formation') return 'Formation framing';
-  if (kind === 'era') return 'Historical framing';
   if (kind === 'polity') return 'Polity framing';
-  if (kind === 'nation') return 'National framing';
-  if (kind === 'civilization') return 'Civilizational framing';
-  return 'Geographic framing';
+  return 'Atlas framing';
 };
 
 const getEntityStructureLabel = (kind: ReferenceEntityKind) => {
   if (kind === 'formation') return 'Formation structure';
-  if (kind === 'civilization') return 'Civilizational structure';
   if (kind === 'polity') return 'Polity structure';
-  if (kind === 'nation') return 'National structure';
-  if (kind === 'era') return 'Era structure';
-  if (kind === 'place') return 'Place structure';
   return 'Affiliations and influences';
 };
 
@@ -669,7 +414,7 @@ const getKindPriority = (kindOrder: ReferenceEntityKind[]) =>
   kindOrder.reduce<Record<ReferenceEntityKind, number>>((accumulator, kind, index) => {
     accumulator[kind] = index;
     return accumulator;
-  }, { person: 99, polity: 99, formation: 99, nation: 99, civilization: 99, era: 99, place: 99 });
+  }, { person: 99, polity: 99, formation: 99 });
 
 const ReferenceEntityPage: React.FC = () => {
   const { id } = useParams();
@@ -773,16 +518,12 @@ const ReferenceEntityPage: React.FC = () => {
 
   const legacySource = typeof entity?.metadata?.legacySource === 'string' ? entity.metadata.legacySource : null;
   const isBuiltInPolity = entity ? isBuiltInPolityReferenceEntity(entity) : false;
-  const isLegacyEntity = entity ? isLegacyEntityKind(entity.kind) : false;
-  const legacyMigrationCopy = entity && isLegacyEntity ? getLegacyMigrationCopy(entity.kind) : null;
   const editableKindOptions = useMemo(() => {
     if (!entity) return primaryKindOptions;
     if (isBuiltInPolity) return ['polity'] as ReferenceEntityKind[];
 
-    return isLegacyEntity
-      ? [...primaryKindOptions, entity.kind]
-      : primaryKindOptions;
-  }, [entity, isBuiltInPolity, isLegacyEntity]);
+    return primaryKindOptions;
+  }, [entity, isBuiltInPolity]);
   const metadataEntries = useMemo(
     () => (entity?.metadata ? Object.entries(entity.metadata) : []),
     [entity?.metadata]
@@ -892,9 +633,9 @@ const ReferenceEntityPage: React.FC = () => {
           sourceLabel: 'topic',
         })
       );
-    const legacyCoverage = subjectRelations.map((relation) =>
+    const subjectCoverage = subjectRelations.map((relation) =>
       createContextEntry(relation, {
-        sourceLabel: 'legacy subject',
+        sourceLabel: 'subject',
       })
     );
 
@@ -908,11 +649,11 @@ const ReferenceEntityPage: React.FC = () => {
           [...topicalCoverage, ...contextualCoverage]
         ),
         buildContextGroup(
-          'legacy-subjects',
-          'Legacy subject links',
-          'Older subject-level links that still point here.',
-          'No legacy subject links remain here.',
-          legacyCoverage
+          'subject-links',
+          'Subject links',
+          'Subject-level links that still point here.',
+          'No subject links point here yet.',
+          subjectCoverage
         ),
       ].filter((group) => group.entries.length > 0);
     }
@@ -933,11 +674,11 @@ const ReferenceEntityPage: React.FC = () => {
         contextualCoverage
       ),
       buildContextGroup(
-        'legacy-subjects',
-        'Legacy subject links',
-        'Older subject-level links that still point here.',
-        'No legacy subject links remain here.',
-        legacyCoverage
+        'subject-links',
+        'Subject links',
+        'Subject-level links that still point here.',
+        'No subject links point here yet.',
+        subjectCoverage
       ),
     ].filter((group) => group.entries.length > 0);
   }, [entity?.kind, subjectRelations, topicRelations]);
@@ -1020,12 +761,6 @@ const ReferenceEntityPage: React.FC = () => {
     const incomingLocatedIn = incomingEntityRelations
       .filter((relation) => relation.relationType === 'located_in')
       .map((relation) => createStructureEntry(relation, 'incoming', 'located here'));
-    const outgoingDuring = outgoingStructureRelations
-      .filter((relation) => relation.relationType === 'during')
-      .map((relation) => createStructureEntry(relation, 'outgoing', 'during'));
-    const incomingDuring = incomingEntityRelations
-      .filter((relation) => relation.relationType === 'during')
-      .map((relation) => createStructureEntry(relation, 'incoming', 'during this era'));
     const outgoingInfluencedBy = outgoingStructureRelations
       .filter((relation) => relation.relationType === 'influenced_by')
       .map((relation) => createStructureEntry(relation, 'outgoing', 'influenced by'));
@@ -1043,8 +778,6 @@ const ReferenceEntityPage: React.FC = () => {
     const broaderContainers = [...outgoingPartOf, ...incomingContains];
     const locationWithin = outgoingLocatedIn;
     const hostedHere = incomingLocatedIn;
-    const periodPlacement = outgoingDuring;
-    const inThisEra = incomingDuring;
     const influencedBy = outgoingInfluencedBy;
     const influences = incomingInfluencedBy;
     const peerLinks = [...outgoingRelatedTo, ...incomingRelatedTo];
@@ -1055,8 +788,6 @@ const ReferenceEntityPage: React.FC = () => {
         ...broaderContainers,
         ...locationWithin,
         ...hostedHere,
-        ...periodPlacement,
-        ...inThisEra,
         ...influencedBy,
         ...influences,
         ...peerLinks,
@@ -1091,9 +822,9 @@ const ReferenceEntityPage: React.FC = () => {
         buildStructureGroup(
           'belongs-in',
           'Belongs in',
-          'Homeland, era, place, and civilization links for this person.',
-          'No homeland, era, or civilization links yet.',
-          [...locationWithin, ...periodPlacement, ...broaderContainers]
+          'Polity and formation links that situate this person.',
+          'No polity or formation links yet.',
+          [...locationWithin, ...broaderContainers]
         ),
         buildStructureGroup(
           'influenced-by',
@@ -1131,21 +862,21 @@ const ReferenceEntityPage: React.FC = () => {
         buildStructureGroup(
           'placed-in',
           'Placed in',
-          `Civilization, era, and larger geography links for this ${entity.kind}.`,
-          'No broader civilization, geography, or era links yet.',
-          [...broaderContainers, ...locationWithin, ...periodPlacement]
+          `Formation links for this ${entity.kind}.`,
+          'No broader formation links yet.',
+          broaderContainers
         ),
         buildStructureGroup(
           'located-here',
           'Located here',
-          `People or other entities that are placed inside this ${entity.kind}.`,
+          `People that are placed inside this ${entity.kind}.`,
           'Nothing is located here yet.',
           hostedHere
         ),
         buildStructureGroup(
           'peer-links',
           'Peer links',
-          `Peer ${entity.kind === 'polity' ? 'polities' : 'nations'} or civilizations linked through influence or affinity.`,
+          'Peer polities linked through influence or affinity.',
           'No peer links recorded yet.',
           [...peerLinks, ...influencedBy, ...influences]
         ),
@@ -1162,13 +893,6 @@ const ReferenceEntityPage: React.FC = () => {
           broaderContainers
         ),
         buildStructureGroup(
-          'geography',
-          'Geography',
-          'Places that anchor this formation geographically.',
-          'No geographic anchor recorded yet.',
-          [...locationWithin, ...hostedHere]
-        ),
-        buildStructureGroup(
           'peer-links',
           'Peer links',
           'Related or influencing formations and adjacent atlas links.',
@@ -1177,103 +901,7 @@ const ReferenceEntityPage: React.FC = () => {
         ),
       ]);
     }
-
-    if (entity?.kind === 'civilization') {
-      return finalizeGroups([
-        buildStructureGroup(
-          'contained-scope',
-          'Contained scope',
-          'Member nations, eras, or sub-civilizations inside this civilization.',
-          'No contained scope recorded yet.',
-          containedScope
-        ),
-        buildStructureGroup(
-          'placed-in',
-          'Placed in',
-          'Broader civilization or geography links for this civilization.',
-          'No broader placement links yet.',
-          [...broaderContainers, ...locationWithin]
-        ),
-        buildStructureGroup(
-          'historical-links',
-          'Historical links',
-          'Era links and entities that are recorded as belonging in this civilizational horizon.',
-          'No historical links recorded yet.',
-          [...periodPlacement, ...inThisEra]
-        ),
-        buildStructureGroup(
-          'peer-links',
-          'Peer links',
-          'Civilizations linked through influence or historical affinity.',
-          'No peer links recorded yet.',
-          [...peerLinks, ...influencedBy, ...influences]
-        ),
-      ]);
-    }
-
-    if (entity?.kind === 'era') {
-      return finalizeGroups([
-        buildStructureGroup(
-          'contained-periods',
-          'Contained periods',
-          'Sub-eras or member entities recorded within this era.',
-          'No contained periods recorded yet.',
-          containedScope
-        ),
-        buildStructureGroup(
-          'broader-periods',
-          'Broader periods',
-          'Larger eras that this period belongs to.',
-          'No broader periods recorded yet.',
-          broaderContainers
-        ),
-        buildStructureGroup(
-          'in-this-era',
-          'In this era',
-          'Entities explicitly placed during this era.',
-          'No entities are placed in this era yet.',
-          inThisEra
-        ),
-        buildStructureGroup(
-          'parallel-links',
-          'Parallel links',
-          'Parallel or influencing era links.',
-          'No parallel links recorded yet.',
-          [...peerLinks, ...influencedBy, ...influences]
-        ),
-      ]);
-    }
-
-    return finalizeGroups([
-      buildStructureGroup(
-        'contained-places',
-        'Contained places',
-        'Places or hosted entities recorded inside this geography.',
-        'No contained places recorded yet.',
-        containedScope
-      ),
-      buildStructureGroup(
-        'broader-geography',
-        'Broader geography',
-        'Larger places that contain this one.',
-        'No broader geography recorded yet.',
-        broaderContainers
-      ),
-      buildStructureGroup(
-        'located-here',
-        'Located here',
-        'Entities that are placed in this geography.',
-        'Nothing is located here yet.',
-        hostedHere
-      ),
-      buildStructureGroup(
-        'period-links',
-        'Period links',
-        'Era links associated with this place.',
-        'No period links recorded yet.',
-        [...periodPlacement, ...inThisEra]
-      ),
-    ]);
+    return finalizeGroups([]);
   }, [entity?.kind, incomingEntityRelations, outgoingStructureRelations]);
   const topicContextCount = topicRelations.length + subjectRelations.length;
   const structureLinkCount = outgoingStructureRelations.length + incomingEntityRelations.length;
@@ -1308,8 +936,8 @@ const ReferenceEntityPage: React.FC = () => {
           key: 'belongs-in',
           eyebrow: 'Belongs In',
           value: `${belongsIn?.entries.length ?? 0} links`,
-          meta: getGroupPreview(belongsIn, 'No homeland, era, or civilization links yet.'),
-          hint: 'Homeland, polity, place, and formation links that situate this person.',
+          meta: getGroupPreview(belongsIn, 'No polity or formation links yet.'),
+          hint: 'Polity and formation links that situate this person.',
         },
         {
           key: 'works',
@@ -1363,8 +991,8 @@ const ReferenceEntityPage: React.FC = () => {
           key: 'placed-in',
           eyebrow: 'Placed In',
           value: `${placedIn?.entries.length ?? 0} links`,
-          meta: getGroupPreview(placedIn, 'No broader geography, formation, or era links yet.'),
-          hint: `Broader formation, geography, and era links for this ${entity.kind}.`,
+          meta: getGroupPreview(placedIn, 'No broader formation links yet.'),
+          hint: `Broader formation links for this ${entity.kind}.`,
         },
         {
           key: 'coverage',
@@ -1378,7 +1006,6 @@ const ReferenceEntityPage: React.FC = () => {
 
     if (entity.kind === 'formation') {
       const broaderFormations = getGroupByKey(structureGroups, 'broader-formations');
-      const geography = getGroupByKey(structureGroups, 'geography');
 
       return [
         chronologyCard,
@@ -1405,101 +1032,12 @@ const ReferenceEntityPage: React.FC = () => {
           key: 'coverage',
           eyebrow: 'Coverage',
           value: `${topicContextCount} topics`,
-          meta: geography?.entries.length
-            ? getGroupPreview(geography, `${itemRelations.length} linked items`)
-            : `${itemRelations.length} linked items`,
+          meta: `${itemRelations.length} linked items`,
           hint: 'How many topics and items currently use this formation in the atlas.',
         },
       ];
     }
-
-    if (entity.kind === 'civilization') {
-      const containedScope = getGroupByKey(structureGroups, 'contained-scope');
-      const historicalLinks = getGroupByKey(structureGroups, 'historical-links');
-
-      return [
-        chronologyCard,
-        {
-          key: 'contained-scope',
-          eyebrow: 'Contained Scope',
-          value: `${containedScope?.entries.length ?? 0} links`,
-          meta: getGroupPreview(containedScope, 'No member nations or eras yet.'),
-          hint: 'Member nations, eras, or sub-civilizations inside this civilization.',
-        },
-        {
-          key: 'historical-links',
-          eyebrow: 'Historical Links',
-          value: `${historicalLinks?.entries.length ?? 0} links`,
-          meta: getGroupPreview(historicalLinks, 'No historical links yet.'),
-          hint: 'Era links and entities associated with this civilizational horizon.',
-        },
-        {
-          key: 'coverage',
-          eyebrow: 'Coverage',
-          value: `${topicContextCount} topics`,
-          meta: `${itemRelations.length} linked items`,
-          hint: 'How many topics and items currently use this civilization in the atlas.',
-        },
-      ];
-    }
-
-    if (entity.kind === 'era') {
-      const containedPeriods = getGroupByKey(structureGroups, 'contained-periods');
-      const inThisEra = getGroupByKey(structureGroups, 'in-this-era');
-
-      return [
-        chronologyCard,
-        {
-          key: 'contained-periods',
-          eyebrow: 'Contained Periods',
-          value: `${containedPeriods?.entries.length ?? 0} links`,
-          meta: getGroupPreview(containedPeriods, 'No sub-eras recorded yet.'),
-          hint: 'Sub-eras or member entities recorded within this period.',
-        },
-        {
-          key: 'in-this-era',
-          eyebrow: 'In This Era',
-          value: `${inThisEra?.entries.length ?? 0} links`,
-          meta: getGroupPreview(inThisEra, 'No entities are placed in this era yet.'),
-          hint: 'Entities that are explicitly placed during this era.',
-        },
-        {
-          key: 'coverage',
-          eyebrow: 'Coverage',
-          value: `${topicContextCount} topics`,
-          meta: `${itemRelations.length} linked items`,
-          hint: 'How many topics and items currently use this era in the atlas.',
-        },
-      ];
-    }
-
-    const containedPlaces = getGroupByKey(structureGroups, 'contained-places');
-    const locatedHere = getGroupByKey(structureGroups, 'located-here');
-
-    return [
-      chronologyCard,
-      {
-        key: 'contained-places',
-        eyebrow: 'Contained Places',
-        value: `${containedPlaces?.entries.length ?? 0} links`,
-        meta: getGroupPreview(containedPlaces, 'No contained places recorded yet.'),
-        hint: 'Places or hosted entities recorded inside this geography.',
-      },
-      {
-        key: 'located-here',
-        eyebrow: 'Located Here',
-        value: `${locatedHere?.entries.length ?? 0} links`,
-        meta: getGroupPreview(locatedHere, 'Nothing is located here yet.'),
-        hint: 'Entities that are placed inside this geography.',
-      },
-      {
-        key: 'coverage',
-        eyebrow: 'Coverage',
-        value: `${topicContextCount} topics`,
-        meta: `${itemRelations.length} linked items`,
-        hint: 'How many topics and items currently use this place in the atlas.',
-      },
-    ];
+    return [chronologyCard];
   }, [
     authoredWorks.length,
     entity,
@@ -1846,11 +1384,9 @@ const ReferenceEntityPage: React.FC = () => {
             <span>{structureLinkCount} entity links</span>
             <span>Updated {formatDate(entity.updatedAt)}</span>
             {legacySource ? (
-              <span>Imported from legacy {legacySource}</span>
+              <span>Imported from {legacySource}</span>
             ) : isBuiltInPolity ? (
               <span>Built-in atlas record</span>
-            ) : isLegacyEntity ? (
-              <span>Legacy atlas record</span>
             ) : (
               <span>Primary atlas record</span>
             )}
@@ -1886,12 +1422,6 @@ const ReferenceEntityPage: React.FC = () => {
               </article>
             ))}
           </div>
-          {legacyMigrationCopy ? (
-            <div className="reference-entity-note reference-entity-migration-note">
-              <strong>{legacyMigrationCopy.title}</strong>
-              <span>{legacyMigrationCopy.body}</span>
-            </div>
-          ) : null}
           {showEditor ? (
             <section className="reference-entity-inline-panel">
               <form className="reference-entity-form" onSubmit={handleSubmit}>
@@ -1962,14 +1492,6 @@ const ReferenceEntityPage: React.FC = () => {
                       to enrich its summary, description, links, and contextual notes.
                     </span>
                   </div>
-                ) : isLegacyEntity ? (
-                  <div className="reference-entity-note">
-                    <strong>Legacy atlas kind</strong>
-                    <span>
-                      This record still works, but new atlas modeling should usually use people, built-in
-                      polities, and formations. You can keep this kind or migrate it here over time.
-                    </span>
-                  </div>
                 ) : null}
 
                 <div className="reference-entity-field">
@@ -2017,7 +1539,7 @@ const ReferenceEntityPage: React.FC = () => {
                 <span className="reference-entity-eyebrow">Atlas Context</span>
                 <h2>
                   {getAtlasSectionLabel(entity.kind)}
-                  <EntityHint text="Topics and legacy subject links that currently point to this entity." />
+                  <EntityHint text="Topics and subject links that currently point to this entity." />
                   <span className="reference-entity-count-badge">{topicRelations.length + subjectRelations.length}</span>
                 </h2>
               </div>

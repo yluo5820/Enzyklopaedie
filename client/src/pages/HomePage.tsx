@@ -100,13 +100,11 @@ const HomePage: React.FC = () => {
           accumulator[entity.kind] += 1;
           return accumulator;
         },
-        { person: 0, polity: 0, formation: 0, nation: 0, civilization: 0, era: 0, place: 0 }
+        { person: 0, polity: 0, formation: 0 }
       ),
     [referenceEntities]
   );
   const primaryEntityCount = entityCounts.person + entityCounts.polity + entityCounts.formation;
-  const legacyEntityCount =
-    entityCounts.nation + entityCounts.civilization + entityCounts.era + entityCounts.place;
   const topLevelTopics = useMemo(
     () => topics.filter((topic) => !topic.parentTopicId).length,
     [topics]
@@ -275,7 +273,6 @@ const HomePage: React.FC = () => {
             <span>{loading ? '...' : entityCounts.person} people</span>
             <span>{loading ? '...' : entityCounts.polity} built-in polities</span>
             <span>{loading ? '...' : entityCounts.formation} formations</span>
-            <span>{loading ? '...' : legacyEntityCount} legacy atlas records</span>
           </div>
           <p>Build the historical world around the knowledge tree with people, polities, and formations.</p>
           <div className="home-surface-actions">
@@ -344,10 +341,6 @@ const HomePage: React.FC = () => {
               <div className="home-stat">
                 <strong>{loading ? '...' : primaryEntityCount}</strong>
                 <span>Primary atlas records</span>
-              </div>
-              <div className="home-stat">
-                <strong>{loading ? '...' : legacyEntityCount}</strong>
-                <span>Legacy atlas records</span>
               </div>
               <div className="home-stat">
                 <strong>Prototype</strong>

@@ -29,12 +29,8 @@ const asyncErrorHandler = (fn: AsyncRoute) =>
 
 const isReferenceEntityKind = (value: unknown): value is ReferenceEntityKind =>
   value === 'person' ||
-  value === 'formation' ||
-  value === 'nation' ||
-  value === 'civilization' ||
-  value === 'era' ||
-  value === 'place' ||
-  value === 'polity';
+  value === 'polity' ||
+  value === 'formation';
 
 const parseId = (value: unknown) => {
   const parsed = Number(value);
