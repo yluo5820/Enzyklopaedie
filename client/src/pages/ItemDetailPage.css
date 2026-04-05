@@ -440,6 +440,22 @@
   cursor: default;
 }
 
+.knowledge-detail-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.knowledge-detail-atlas-fact-grid {
+  margin-bottom: 4px;
+}
+
+.knowledge-detail-atlas-stack {
+  margin-top: 16px;
+}
+
 .knowledge-detail-score {
   display: inline-flex;
   align-items: center;
@@ -498,6 +514,10 @@
   .knowledge-detail-section-head {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .knowledge-detail-card-actions {
+    justify-content: flex-start;
   }
 
   .knowledge-detail-inline-label-compact {

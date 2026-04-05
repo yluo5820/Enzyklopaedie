@@ -35,6 +35,7 @@ import {
   fetchKnowledgeTasks,
   fetchReferenceEntities,
   fetchSubjects as fetchTopics,
+  fetchTopicRelations,
   fetchTopics as fetchStudyTopics,
   removeTopicFromKnowledgeItem as removeStudyTopicFromKnowledgeItem,
   updateKnowledgeItem,
@@ -98,6 +99,8 @@ const relationKindOrder: ReferenceEntity['kind'][] = [
   'polity',
   'formation',
 ];
+
+const atlasKindOrder: ReferenceEntity['kind'][] = ['formation', 'polity', 'person'];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -240,6 +243,56 @@ const formatReferenceTimespan = (entity: ReferenceEntity) => {
   return start || end || null;
 };
 
+const formatAtlasHorizon = (entities: ReferenceEntity[]) => {
+  const datedEntities = entities.filter(
+    (entity) => entity.startYear !== undefined || entity.endYear !== undefined
+  );
+  if (datedEntities.length === 0) return null;
+
+  const starts = datedEntities
+    .map((entity) => entity.startYear)
+    .filter((value): value is number => value !== undefined);
+  const ends = datedEntities
+    .map((entity) => entity.endYear)
+    .filter((value): value is number => value !== undefined);
+
+  const earliest = starts.length > 0 ? Math.min(...starts) : undefined;
+  const latest = ends.length > 0 ? Math.max(...ends) : undefined;
+
+  if (earliest !== undefined && latest !== undefined) {
+    return earliest === latest ? formatYear(earliest) : `${formatYear(earliest)} - ${formatYear(latest)}`;
+  }
+
+  if (earliest !== undefined) return `From ${formatYear(earliest)}`;
+  if (latest !== undefined) return `Until ${formatYear(latest)}`;
+  return null;
+};
+
+const resolveAtlasFocusYear = (entity: ReferenceEntity) =>
+  entity.endYear ?? entity.startYear ?? 1862;
+
+const buildAtlasHref = (entity: ReferenceEntity) => {
+  const year = resolveAtlasFocusYear(entity);
+
+  if (entity.kind === 'formation') {
+    return `/world-history?year=${year}&formation=${entity.id}`;
+  }
+
+  if (entity.kind === 'polity') {
+    return `/world-history?year=${year}&polity=${entity.id}`;
+  }
+
+  return null;
+};
+
+type ItemAtlasFrameGroup = {
+  entity: ReferenceEntity;
+  sourceKinds: Array<'direct' | 'topic'>;
+  directRelationTypes: KnowledgeRelationType[];
+  topicRelationTypes: KnowledgeRelationType[];
+  topicTitles: string[];
+};
+
 const buildRelationHref = (relation: KnowledgeRelationDetail) => {
   if (relation.toEntityType === 'knowledge_item') return `/knowledge/${relation.toEntityId}`;
   if (relation.toEntityType === 'reference_entity') return `/entities/${relation.toEntityId}`;
@@ -369,11 +422,13 @@ const ItemDetailPage: React.FC = () => {
   const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [itemStudyTopics, setItemStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
+  const [topicRelationsById, setTopicRelationsById] = useState<Record<number, KnowledgeRelationDetail[]>>({});
   const [notes, setNotes] = useState<KnowledgeNote[]>([]);
   const [tasks, setTasks] = useState<KnowledgeTask[]>([]);
   const [reviews, setReviews] = useState<KnowledgeReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [atlasContextError, setAtlasContextError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
   const [savingRecord, setSavingRecord] = useState(false);
   const [savingTopicAssignment, setSavingTopicAssignment] = useState(false);
@@ -531,6 +586,10 @@ const ItemDetailPage: React.FC = () => {
       }),
     [referenceEntities]
   );
+  const referenceEntityMap = useMemo(
+    () => new Map(referenceEntities.map((entity) => [entity.id, entity])),
+    [referenceEntities]
+  );
   const completedTasks = useMemo(
     () => tasks.filter((task) => task.status === 'done').length,
     [tasks]
@@ -572,6 +631,90 @@ const ItemDetailPage: React.FC = () => {
       ),
     [itemFormKind, relationForm.toEntityType, selectedRelationReferenceTarget?.kind]
   );
+  const itemAtlasFrameGroups = useMemo(() => {
+    const grouped = new Map<number, ItemAtlasFrameGroup>();
+
+    const registerEntity = (
+      entity: ReferenceEntity,
+      sourceKind: 'direct' | 'topic',
+      relationType: KnowledgeRelationType,
+      topicTitle?: string
+    ) => {
+      const current = grouped.get(entity.id);
+      if (current) {
+        if (!current.sourceKinds.includes(sourceKind)) current.sourceKinds.push(sourceKind);
+        const relationBucket =
+          sourceKind === 'direct' ? current.directRelationTypes : current.topicRelationTypes;
+        if (!relationBucket.includes(relationType)) {
+          relationBucket.push(relationType);
+        }
+        if (topicTitle && !current.topicTitles.includes(topicTitle)) {
+          current.topicTitles.push(topicTitle);
+        }
+        return;
+      }
+
+      grouped.set(entity.id, {
+        entity,
+        sourceKinds: [sourceKind],
+        directRelationTypes: sourceKind === 'direct' ? [relationType] : [],
+        topicRelationTypes: sourceKind === 'topic' ? [relationType] : [],
+        topicTitles: topicTitle ? [topicTitle] : [],
+      });
+    };
+
+    for (const relation of relations) {
+      if (relation.toEntityType !== 'reference_entity') continue;
+      const entity = referenceEntityMap.get(relation.toEntityId);
+      if (!entity) continue;
+      registerEntity(entity, 'direct', relation.relationType);
+    }
+
+    for (const topic of itemStudyTopics) {
+      const topicRelations = topicRelationsById[topic.id] ?? [];
+      for (const relation of topicRelations) {
+        if (relation.toEntityType !== 'reference_entity') continue;
+        const entity = referenceEntityMap.get(relation.toEntityId);
+        if (!entity) continue;
+        registerEntity(entity, 'topic', relation.relationType, topic.name);
+      }
+    }
+
+    return [...grouped.values()].sort((left, right) => {
+      const kindDifference =
+        atlasKindOrder.indexOf(left.entity.kind) - atlasKindOrder.indexOf(right.entity.kind);
+      if (kindDifference !== 0) return kindDifference;
+
+      const titleDifference = left.entity.title.localeCompare(right.entity.title);
+      if (titleDifference !== 0) return titleDifference;
+
+      return left.entity.id - right.entity.id;
+    });
+  }, [itemStudyTopics, referenceEntityMap, relations, topicRelationsById]);
+  const itemAtlasHorizon = useMemo(
+    () => formatAtlasHorizon(itemAtlasFrameGroups.map((entry) => entry.entity)),
+    [itemAtlasFrameGroups]
+  );
+  const formationAtlasFrameGroups = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.entity.kind === 'formation'),
+    [itemAtlasFrameGroups]
+  );
+  const polityAtlasFrameGroups = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.entity.kind === 'polity'),
+    [itemAtlasFrameGroups]
+  );
+  const personAtlasFrameGroups = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.entity.kind === 'person'),
+    [itemAtlasFrameGroups]
+  );
+  const topicDrivenAtlasFrameCount = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.sourceKinds.includes('topic')).length,
+    [itemAtlasFrameGroups]
+  );
+  const directAtlasFrameCount = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.sourceKinds.includes('direct')).length,
+    [itemAtlasFrameGroups]
+  );
 
   useEffect(() => {
     setRelationForm((current) => {
@@ -589,6 +732,41 @@ const ItemDetailPage: React.FC = () => {
       };
     });
   }, [relationPreset]);
+
+  useEffect(() => {
+    if (itemStudyTopics.length === 0) {
+      setTopicRelationsById({});
+      setAtlasContextError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTopicAtlasContext = async () => {
+      try {
+        setAtlasContextError(null);
+        const entries = await Promise.all(
+          itemStudyTopics.map(async (topic) => [topic.id, await fetchTopicRelations(topic.id)] as const)
+        );
+
+        if (!cancelled) {
+          setTopicRelationsById(Object.fromEntries(entries));
+        }
+      } catch (loadError) {
+        console.error(loadError);
+        if (!cancelled) {
+          setTopicRelationsById({});
+          setAtlasContextError('Failed to load atlas context from the assigned topics.');
+        }
+      }
+    };
+
+    void loadTopicAtlasContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [itemStudyTopics]);
 
   const handleItemStatusChange = async (nextStatus: KnowledgeItemStatus) => {
     if (!item || nextStatus === item.status) return;
@@ -1357,6 +1535,89 @@ const ItemDetailPage: React.FC = () => {
               </button>
             </div>
 
+            {atlasContextError ? <div className="knowledge-detail-error">{atlasContextError}</div> : null}
+
+            <div className="knowledge-detail-overview">
+              <dl className="knowledge-detail-fact-grid knowledge-detail-atlas-fact-grid">
+                <div>
+                  <dt>Historical horizon</dt>
+                  <dd>{itemAtlasHorizon || 'Open'}</dd>
+                </div>
+                <div>
+                  <dt>Formations in frame</dt>
+                  <dd>{formationAtlasFrameGroups.length || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Polity scope</dt>
+                  <dd>{polityAtlasFrameGroups.length || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>People in frame</dt>
+                  <dd>{personAtlasFrameGroups.length || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Inherited through topics</dt>
+                  <dd>{topicDrivenAtlasFrameCount}</dd>
+                </div>
+                <div>
+                  <dt>Direct on this item</dt>
+                  <dd>{directAtlasFrameCount}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {itemAtlasFrameGroups.length > 0 ? (
+              <div className="knowledge-detail-stack knowledge-detail-atlas-stack">
+                {itemAtlasFrameGroups.map((entry) => (
+                  <article key={`atlas-frame-${entry.entity.id}`} className="knowledge-detail-card">
+                    <div className="knowledge-detail-card-top">
+                      <div>
+                        <div className="knowledge-detail-meta">
+                          <span>{entry.entity.kind}</span>
+                          {entry.sourceKinds.includes('direct') ? <span>direct</span> : null}
+                          {entry.sourceKinds.includes('topic') ? <span>through topics</span> : null}
+                          {formatReferenceTimespan(entry.entity) ? (
+                            <span>{formatReferenceTimespan(entry.entity)}</span>
+                          ) : null}
+                        </div>
+                        <Link to={`/entities/${entry.entity.id}`} className="knowledge-detail-card-link">
+                          <h3>{entry.entity.title}</h3>
+                        </Link>
+                      </div>
+                      <div className="knowledge-detail-card-actions">
+                        <Link to={`/entities/${entry.entity.id}`} className="knowledge-detail-secondary-link">
+                          Open entity
+                        </Link>
+                        {buildAtlasHref(entry.entity) ? (
+                          <Link to={buildAtlasHref(entry.entity)!} className="knowledge-detail-secondary-link">
+                            Open on atlas
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="knowledge-detail-meta">
+                      {entry.directRelationTypes.map((relationType) => (
+                        <span key={`direct-${entry.entity.id}-${relationType}`}>
+                          direct: {formatRelationType(relationType)}
+                        </span>
+                      ))}
+                      {entry.topicRelationTypes.map((relationType) => (
+                        <span key={`topic-${entry.entity.id}-${relationType}`}>
+                          topic: {formatRelationType(relationType)}
+                        </span>
+                      ))}
+                    </div>
+                    {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                    {entry.topicTitles.length > 0 ? (
+                      <div className="knowledge-detail-meta">
+                        <span>Through topics: {entry.topicTitles.join(', ')}</span>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
+
             {showRelationComposer ? (
               <div className="knowledge-detail-inline-panel">
                 <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
@@ -1449,7 +1710,9 @@ const ItemDetailPage: React.FC = () => {
             ) : null}
 
             {relations.length === 0 ? (
-              <div className="knowledge-detail-empty">No connections yet.</div>
+              itemAtlasFrameGroups.length === 0 ? (
+                <div className="knowledge-detail-empty">No connections yet.</div>
+              ) : null
             ) : (
               <div className="knowledge-detail-stack">
                 {relations.map((relation) => (
