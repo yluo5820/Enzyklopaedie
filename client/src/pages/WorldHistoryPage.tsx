@@ -9,6 +9,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   CanonicalHistoricalEntity,
   CanonicalHistoricalSearchMatch,
+  FormationSubtype,
   FormationMembershipDetail,
   HistoricalBasemapPolityMatchResponse,
   HistoricalBasemapLayerResponse,
@@ -67,6 +68,82 @@ const referenceEntityKindLabels: Record<ReferenceEntity['kind'], string> = {
   person: 'Person',
   polity: 'Polity',
 };
+const formationSubtypeLabels: Record<FormationSubtype, string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  tradition: 'Tradition',
+  world_frame: 'World Frame',
+  other: 'Formation',
+};
+
+type FormationWorkspaceUi = {
+  workspaceEyebrow: string;
+  memberCountLabel: string;
+  emptyMessage: string;
+  selectedRegionReadyMessage: string;
+  alreadyIncludedMessage: string;
+  addActionLabel: string;
+  confirmActionLabel: string;
+  removeActionLabel: string;
+};
+
+const formationWorkspaceUi: Record<FormationSubtype, FormationWorkspaceUi> = {
+  civilization: {
+    workspaceEyebrow: 'Civilization Workspace',
+    memberCountLabel: 'Member polities',
+    emptyMessage: 'No built-in polities are assigned to this civilization yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next member polity in this civilization.',
+    alreadyIncludedMessage: 'This polity is already part of this civilization.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to civilization',
+    removeActionLabel: 'Remove from civilization',
+  },
+  era: {
+    workspaceEyebrow: 'Era Workspace',
+    memberCountLabel: 'Polities in scope',
+    emptyMessage: 'No polities are in scope for this era yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next polity in scope for this era.',
+    alreadyIncludedMessage: 'This polity is already in scope for this era.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to era',
+    removeActionLabel: 'Remove from era',
+  },
+  tradition: {
+    workspaceEyebrow: 'Tradition Workspace',
+    memberCountLabel: 'Member polities',
+    emptyMessage: 'No built-in polities are assigned to this tradition yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next member polity in this tradition.',
+    alreadyIncludedMessage: 'This polity is already part of this tradition.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to tradition',
+    removeActionLabel: 'Remove from tradition',
+  },
+  world_frame: {
+    workspaceEyebrow: 'World Frame Workspace',
+    memberCountLabel: 'Polities in scope',
+    emptyMessage: 'No polities are in scope for this world frame yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next polity in scope for this world frame.',
+    alreadyIncludedMessage: 'This polity is already in scope for this world frame.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to frame',
+    removeActionLabel: 'Remove from frame',
+  },
+  other: {
+    workspaceEyebrow: 'Formation Workspace',
+    memberCountLabel: 'Member polities',
+    emptyMessage: 'No built-in polities are assigned to this formation yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next member of this formation.',
+    alreadyIncludedMessage: 'This polity is already part of the active formation.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Confirm membership',
+    removeActionLabel: 'Remove from formation',
+  },
+};
+
+const getFormationWorkspaceUi = (formation?: ReferenceEntity | null) =>
+  formationWorkspaceUi[
+    formation?.kind === 'formation' ? formation.formationSubtype ?? 'other' : 'other'
+  ];
 
 const DEFAULT_YEAR = 1862;
 const DEFAULT_MIN_YEAR = -1200;
@@ -824,6 +901,10 @@ const WorldHistoryPage: React.FC = () => {
   const activeFormation = useMemo(
     () => formationEntities.find((entity) => entity.id === activeFormationId) ?? null,
     [activeFormationId, formationEntities]
+  );
+  const activeFormationUi = useMemo(
+    () => getFormationWorkspaceUi(activeFormation),
+    [activeFormation]
   );
   const selectedPolityFormationMembership = useMemo(() => {
     if (!resolvedPolityMatch) return null;
@@ -3023,7 +3104,7 @@ const WorldHistoryPage: React.FC = () => {
               <section className="world-history-panel">
                 <div className="world-history-panel__header">
                   <div>
-                    <span className="world-history-panel__eyebrow">Formation Workspace</span>
+                    <span className="world-history-panel__eyebrow">{activeFormationUi.workspaceEyebrow}</span>
                     <h2>{activeFormation ? activeFormation.title : 'Choose a formation'}</h2>
                   </div>
                   {activeFormation ? (
@@ -3049,7 +3130,9 @@ const WorldHistoryPage: React.FC = () => {
                       <option value="">Choose a formation</option>
                       {formationEntities.map((entry) => (
                         <option key={entry.id} value={entry.id}>
-                          {entry.title}
+                          {entry.kind === 'formation' && entry.formationSubtype
+                            ? `${entry.title} · ${formationSubtypeLabels[entry.formationSubtype]}`
+                            : entry.title}
                         </option>
                       ))}
                     </select>
@@ -3076,7 +3159,7 @@ const WorldHistoryPage: React.FC = () => {
                         <strong>{formatTimespan(activeFormation)}</strong>
                       </div>
                       <div>
-                        <span className="world-history-panel__eyebrow">Member polities</span>
+                        <span className="world-history-panel__eyebrow">{activeFormationUi.memberCountLabel}</span>
                         <strong>{activeFormationMemberships.length}</strong>
                       </div>
                       <div>
@@ -3136,8 +3219,8 @@ const WorldHistoryPage: React.FC = () => {
                             ? selectedPolityFormationMembership.startYear !== undefined ||
                               selectedPolityFormationMembership.endYear !== undefined
                               ? `${selectedPolityFormationMembership.startYear !== undefined ? formatYear(selectedPolityFormationMembership.startYear) : 'Open'} - ${selectedPolityFormationMembership.endYear !== undefined ? formatYear(selectedPolityFormationMembership.endYear) : 'Open'}`
-                              : 'This polity is already part of the active formation.'
-                            : 'Use the selected region as the next member of this formation.'}
+                              : activeFormationUi.alreadyIncludedMessage
+                            : activeFormationUi.selectedRegionReadyMessage}
                         </span>
                         <div className="world-history-selected-card__actions">
                           {selectedPolityFormationMembership ? (
@@ -3149,7 +3232,7 @@ const WorldHistoryPage: React.FC = () => {
                             >
                               {removingFormationMembershipId === selectedPolityFormationMembership.id
                                 ? 'Removing…'
-                                : 'Remove from formation'}
+                                : activeFormationUi.removeActionLabel}
                             </button>
                           ) : (
                             <button
@@ -3157,7 +3240,7 @@ const WorldHistoryPage: React.FC = () => {
                               className="is-primary"
                               onClick={() => setShowFormationPlacementComposer(true)}
                             >
-                              Add selected polity
+                              {activeFormationUi.addActionLabel}
                             </button>
                           )}
                         </div>
@@ -3218,7 +3301,7 @@ const WorldHistoryPage: React.FC = () => {
                             className="is-primary"
                             disabled={savingFormationPlacement || !activeFormationId}
                           >
-                            {savingFormationPlacement ? 'Adding…' : 'Confirm membership'}
+                            {savingFormationPlacement ? 'Adding…' : activeFormationUi.confirmActionLabel}
                           </button>
                         </div>
                       </form>
@@ -3226,7 +3309,7 @@ const WorldHistoryPage: React.FC = () => {
 
                     {activeFormationMemberships.length === 0 ? (
                       <div className="world-history-empty">
-                        No built-in polities are assigned to this formation yet.
+                        {activeFormationUi.emptyMessage}
                       </div>
                     ) : (
                       <div className="world-history-shelf">

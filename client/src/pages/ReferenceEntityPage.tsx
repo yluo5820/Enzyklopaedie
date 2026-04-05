@@ -52,6 +52,129 @@ const formationSubtypeOptions: FormationSubtype[] = [
   'other',
 ];
 
+type FormationSubtypeUi = {
+  workspaceLabel: string;
+  membershipEyebrow: string;
+  membershipCountLabel: string;
+  membershipMetaEmpty: string;
+  membershipHint: string;
+  membershipSectionTitle: string;
+  membershipSectionHint: string;
+  membershipComposerLabel: string;
+  membershipComposerButton: string;
+  membershipComposerEmpty: string;
+  broaderTitle: string;
+  broaderHint: string;
+  helperText: string;
+  broaderModeLabel: string;
+  broaderModeDescription: string;
+  parallelModeLabel: string;
+  parallelModeDescription: string;
+};
+
+const formationSubtypeUi: Record<FormationSubtype, FormationSubtypeUi> = {
+  civilization: {
+    workspaceLabel: 'Civilization',
+    membershipEyebrow: 'Civilizational Scope',
+    membershipCountLabel: 'member polities',
+    membershipMetaEmpty: 'No member polities yet.',
+    membershipHint: 'Built-in polities explicitly included in this civilization.',
+    membershipSectionTitle: 'Member polities',
+    membershipSectionHint: 'Built-in polities explicitly assigned to this civilization.',
+    membershipComposerLabel: 'Manage scope',
+    membershipComposerButton: 'Add polity',
+    membershipComposerEmpty: 'No member polities have been recorded for this civilization yet.',
+    broaderTitle: 'Broader formations',
+    broaderHint: 'How this civilization sits inside larger historical groupings.',
+    helperText:
+      'Civilizations collect polities across a continuing historical tradition. Use explicit polity memberships below, then add broader or parallel formation links here when useful.',
+    broaderModeLabel: 'Broader Formation',
+    broaderModeDescription: 'Place this civilization inside a larger historical formation.',
+    parallelModeLabel: 'Parallel Formation',
+    parallelModeDescription: 'Link a related or influencing civilization or formation.',
+  },
+  era: {
+    workspaceLabel: 'Era',
+    membershipEyebrow: 'Era Scope',
+    membershipCountLabel: 'polities in scope',
+    membershipMetaEmpty: 'No polities are in scope yet.',
+    membershipHint: 'Built-in polities explicitly placed inside this era frame.',
+    membershipSectionTitle: 'Polities in scope',
+    membershipSectionHint: 'Built-in polities explicitly treated as falling inside this era.',
+    membershipComposerLabel: 'Manage scope',
+    membershipComposerButton: 'Add polity to era',
+    membershipComposerEmpty: 'No polities are in scope for this era yet.',
+    broaderTitle: 'Broader frames',
+    broaderHint: 'How this era sits inside larger historical frames.',
+    helperText:
+      'Eras define a bounded historical frame. Use explicit polity memberships below to say where this era applies, then add broader or parallel formation links here when useful.',
+    broaderModeLabel: 'Broader Frame',
+    broaderModeDescription: 'Place this era inside a larger historical frame.',
+    parallelModeLabel: 'Parallel Frame',
+    parallelModeDescription: 'Link a related or overlapping era or formation.',
+  },
+  tradition: {
+    workspaceLabel: 'Tradition',
+    membershipEyebrow: 'Tradition Scope',
+    membershipCountLabel: 'member polities',
+    membershipMetaEmpty: 'No member polities yet.',
+    membershipHint: 'Built-in polities explicitly included in this tradition.',
+    membershipSectionTitle: 'Member polities',
+    membershipSectionHint: 'Built-in polities explicitly assigned to this tradition.',
+    membershipComposerLabel: 'Manage scope',
+    membershipComposerButton: 'Add polity',
+    membershipComposerEmpty: 'No member polities have been recorded for this tradition yet.',
+    broaderTitle: 'Broader formations',
+    broaderHint: 'How this tradition sits inside larger historical groupings.',
+    helperText:
+      'Traditions collect polities across a continuing line of thought or practice. Use explicit polity memberships below, then add broader or parallel formation links here when useful.',
+    broaderModeLabel: 'Broader Formation',
+    broaderModeDescription: 'Place this tradition inside a larger historical formation.',
+    parallelModeLabel: 'Parallel Formation',
+    parallelModeDescription: 'Link a related or influencing tradition or formation.',
+  },
+  world_frame: {
+    workspaceLabel: 'World Frame',
+    membershipEyebrow: 'World Scope',
+    membershipCountLabel: 'polities in scope',
+    membershipMetaEmpty: 'No polities are in scope yet.',
+    membershipHint: 'Built-in polities explicitly included in this world frame.',
+    membershipSectionTitle: 'Polities in scope',
+    membershipSectionHint: 'Built-in polities explicitly treated as falling inside this world frame.',
+    membershipComposerLabel: 'Manage scope',
+    membershipComposerButton: 'Add polity to frame',
+    membershipComposerEmpty: 'No polities are in scope for this world frame yet.',
+    broaderTitle: 'Broader frames',
+    broaderHint: 'How this world frame sits inside larger historical groupings.',
+    helperText:
+      'World frames collect polities across a synchronizing historical frame. Use explicit polity memberships below to define that scope, then add broader or parallel links here when useful.',
+    broaderModeLabel: 'Broader Frame',
+    broaderModeDescription: 'Place this world frame inside a larger historical frame.',
+    parallelModeLabel: 'Parallel Frame',
+    parallelModeDescription: 'Link a related or overlapping world frame or formation.',
+  },
+  other: {
+    workspaceLabel: 'Formation',
+    membershipEyebrow: 'Membership',
+    membershipCountLabel: 'member polities',
+    membershipMetaEmpty: 'No polity memberships yet.',
+    membershipHint: 'Built-in polities explicitly assigned to this formation.',
+    membershipSectionTitle: 'Member polities',
+    membershipSectionHint: 'Built-in polities explicitly assigned to this formation.',
+    membershipComposerLabel: 'Manage polities',
+    membershipComposerButton: 'Add polity',
+    membershipComposerEmpty: 'No polity memberships have been recorded for this formation yet.',
+    broaderTitle: 'Broader formations',
+    broaderHint: 'How this formation sits inside larger historical groupings.',
+    helperText:
+      'Formations collect polities across time and space. Use explicit polity memberships below, then add broader or parallel formation links here when useful.',
+    broaderModeLabel: 'Broader Formation',
+    broaderModeDescription: 'Place this formation inside a larger historical formation.',
+    parallelModeLabel: 'Parallel Formation',
+    parallelModeDescription: 'Link a related or influencing formation.',
+  },
+};
+
 type EntityStructurePreset = {
   helperText: string;
   modes: Array<{
@@ -203,6 +326,9 @@ const entityStructurePresets: Record<ReferenceEntityKind, EntityStructurePreset>
     ],
   },
 };
+
+const getFormationSubtypeUi = (subtype?: FormationSubtype | null) =>
+  formationSubtypeUi[subtype ?? 'other'];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -600,7 +726,40 @@ const ReferenceEntityPage: React.FC = () => {
     () => incomingRelations.filter((relation) => relation.fromEntityType === 'reference_entity'),
     [incomingRelations]
   );
-  const structurePreset = entity ? entityStructurePresets[entity.kind] : entityStructurePresets.person;
+  const formationUi = useMemo(
+    () => getFormationSubtypeUi(entity?.kind === 'formation' ? entity.formationSubtype : undefined),
+    [entity?.formationSubtype, entity?.kind]
+  );
+  const structurePreset = useMemo(() => {
+    if (!entity) return entityStructurePresets.person;
+    if (entity.kind !== 'formation') return entityStructurePresets[entity.kind];
+
+    return {
+      helperText: formationUi.helperText,
+      modes: [
+        {
+          id: 'broader-formation',
+          label: formationUi.broaderModeLabel,
+          description: formationUi.broaderModeDescription,
+          allowedRelationTypes: ['part_of'],
+          defaultRelationType: 'part_of',
+          notePlaceholder: 'Optional note about this broader historical frame',
+          targetPrompt: 'Choose another formation',
+          targetKinds: ['formation'],
+        },
+        {
+          id: 'parallel-formation',
+          label: formationUi.parallelModeLabel,
+          description: formationUi.parallelModeDescription,
+          allowedRelationTypes: ['related_to', 'influenced_by'],
+          defaultRelationType: 'related_to',
+          notePlaceholder: 'Optional note about this parallel formation',
+          targetPrompt: 'Choose another formation',
+          targetKinds: ['formation'],
+        },
+      ],
+    } satisfies EntityStructurePreset;
+  }, [entity, formationUi]);
   const activeStructureMode =
     structurePreset.modes.find((mode) => mode.id === structureModeId) ?? structurePreset.modes[0];
   const selectableEntities = useMemo(() => {
@@ -1057,22 +1216,22 @@ const ReferenceEntityPage: React.FC = () => {
         chronologyCard,
         {
           key: 'membership',
-          eyebrow: 'Membership',
-          value: `${formationMembershipPolityEntries.length} polities`,
+          eyebrow: formationUi.membershipEyebrow,
+          value: `${formationMembershipPolityEntries.length} ${formationUi.membershipCountLabel}`,
           meta: formationMembershipPolityEntries.length
             ? formationMembershipPolityEntries
                 .slice(0, 2)
                 .map((membership) => membership.polityTitle || 'Untitled polity')
                 .join(' · ')
-            : 'No polity memberships yet.',
-          hint: 'Built-in polities explicitly assigned to this formation.',
+            : formationUi.membershipMetaEmpty,
+          hint: formationUi.membershipHint,
         },
         {
           key: 'broader-formations',
-          eyebrow: 'Broader Formations',
+          eyebrow: formationUi.broaderTitle,
           value: `${broaderFormations?.entries.length ?? 0} links`,
           meta: getGroupPreview(broaderFormations, 'No broader formation links yet.'),
-          hint: 'How this formation sits inside larger historical groupings.',
+          hint: formationUi.broaderHint,
         },
         {
           key: 'coverage',
@@ -1097,6 +1256,7 @@ const ReferenceEntityPage: React.FC = () => {
     relatedItems.length,
     structureGroups,
     topicContextCount,
+    formationUi,
   ]);
 
   useEffect(() => {
@@ -1494,7 +1654,9 @@ const ReferenceEntityPage: React.FC = () => {
           <h1>{entity.title}</h1>
           <p>
             {entity.summary ||
-              'This page holds the encyclopedic record for one person, polity, or formation in the atlas.'}
+              (entity.kind === 'formation'
+                ? `${formationUi.workspaceLabel} records collect built-in polities into one historical frame inside the atlas.`
+                : 'This page holds the encyclopedic record for one person, polity, or formation in the atlas.')}
           </p>
           <div className="reference-entity-hero-meta">
             <span>{formatTimespan(entity)}</span>
@@ -1866,10 +2028,10 @@ const ReferenceEntityPage: React.FC = () => {
             <section className="reference-entity-panel">
               <div className="reference-entity-section-head">
                 <div>
-                  <span className="reference-entity-eyebrow">Membership</span>
+                  <span className="reference-entity-eyebrow">{formationUi.membershipEyebrow}</span>
                   <h2>
-                    Member polities
-                    <EntityHint text="Built-in polities explicitly assigned to this formation." />
+                    {formationUi.membershipSectionTitle}
+                    <EntityHint text={formationUi.membershipSectionHint} />
                     <span className="reference-entity-count-badge">{formationMembershipPolityEntries.length}</span>
                   </h2>
                 </div>
@@ -1878,7 +2040,7 @@ const ReferenceEntityPage: React.FC = () => {
                   className="reference-entity-secondary-button"
                   onClick={() => setShowFormationMembershipComposer((current) => !current)}
                 >
-                  {showFormationMembershipComposer ? 'Close' : 'Manage polities'}
+                  {showFormationMembershipComposer ? 'Close' : formationUi.membershipComposerLabel}
                 </button>
               </div>
 
@@ -1958,7 +2120,7 @@ const ReferenceEntityPage: React.FC = () => {
                         type="submit"
                         disabled={savingFormationMembership || !formationMembershipForm.polityEntityId}
                       >
-                        {savingFormationMembership ? 'Adding…' : 'Add polity'}
+                        {savingFormationMembership ? 'Adding…' : formationUi.membershipComposerButton}
                       </button>
                     </div>
                   </form>
@@ -1969,7 +2131,7 @@ const ReferenceEntityPage: React.FC = () => {
                 <div className="reference-entity-error">{formationMembershipsError}</div>
               ) : formationMembershipPolityEntries.length === 0 ? (
                 <div className="reference-entity-empty">
-                  No polity memberships have been recorded for this formation yet.
+                  {formationUi.membershipComposerEmpty}
                 </div>
               ) : (
                 <div className="reference-entity-stack">
