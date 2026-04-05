@@ -365,6 +365,35 @@ const parseYearInput = (value: string) => {
   return Number.isInteger(parsed) ? parsed : null;
 };
 
+const isMembershipVisibleInYear = (
+  membership: Pick<FormationMembershipDetail | PersonPolityMembershipDetail, 'startYear' | 'endYear'>,
+  year: number
+) => {
+  if (membership.startYear !== undefined && membership.endYear !== undefined) {
+    return year >= membership.startYear && year <= membership.endYear;
+  }
+  if (membership.startYear !== undefined) {
+    return year >= membership.startYear;
+  }
+  if (membership.endYear !== undefined) {
+    return year <= membership.endYear;
+  }
+  return true;
+};
+
+const resolveAtlasFocusYear = (
+  availableYears: number[],
+  entity?: Pick<ReferenceEntity, 'startYear' | 'endYear'> | null
+) => {
+  if (availableYears.length === 0) return null;
+
+  const targetYear = entity?.endYear ?? entity?.startYear ?? availableYears[availableYears.length - 1];
+
+  return availableYears.reduce((closest, year) =>
+    Math.abs(year - targetYear) < Math.abs(closest - targetYear) ? year : closest
+  );
+};
+
 const toFormState = (entity: ReferenceEntity) => ({
   kind: entity.kind,
   formationSubtype: entity.formationSubtype ?? ('civilization' as FormationSubtype),
@@ -570,8 +599,12 @@ const ReferenceEntityPage: React.FC = () => {
   const [incomingRelations, setIncomingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [outgoingRelations, setOutgoingRelations] = useState<KnowledgeRelationDetail[]>([]);
   const [politySnapshots, setPolitySnapshots] = useState<PolitySnapshot[]>([]);
+  const [formationPolitySnapshotCache, setFormationPolitySnapshotCache] = useState<
+    Record<number, PolitySnapshot[]>
+  >({});
   const [formationMemberships, setFormationMemberships] = useState<FormationMembershipDetail[]>([]);
   const [personPolityMemberships, setPersonPolityMemberships] = useState<PersonPolityMembershipDetail[]>([]);
+  const [atlasFocusYear, setAtlasFocusYear] = useState<number | null>(null);
   const [formState, setFormState] = useState({
     kind: 'person' as ReferenceEntityKind,
     formationSubtype: 'civilization' as FormationSubtype,
@@ -613,6 +646,7 @@ const ReferenceEntityPage: React.FC = () => {
   const [politySnapshotsError, setPolitySnapshotsError] = useState<string | null>(null);
   const [formationMembershipsError, setFormationMembershipsError] = useState<string | null>(null);
   const [personPolityMembershipsError, setPersonPolityMembershipsError] = useState<string | null>(null);
+  const [formationPolitySnapshotsError, setFormationPolitySnapshotsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!Number.isInteger(entityId) || entityId <= 0) {
@@ -651,21 +685,25 @@ const ReferenceEntityPage: React.FC = () => {
         setIncomingRelations(fetchedIncomingRelations);
         setOutgoingRelations(fetchedOutgoingRelations);
         setPolitySnapshots(fetchedPolitySnapshots);
+        setFormationPolitySnapshotCache({});
         setFormationMemberships(fetchedFormationMemberships);
         setPersonPolityMemberships(fetchedPersonPolityMemberships);
         setPolitySnapshotsError(null);
         setFormationMembershipsError(null);
         setPersonPolityMembershipsError(null);
+        setFormationPolitySnapshotsError(null);
         setFormState(toFormState(fetchedEntity));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load reference entity.');
         setPolitySnapshots([]);
+        setFormationPolitySnapshotCache({});
         setFormationMemberships([]);
         setPersonPolityMemberships([]);
         setPolitySnapshotsError('Failed to load atlas snapshots.');
         setFormationMembershipsError('Failed to load formation memberships.');
         setPersonPolityMembershipsError('Failed to load person polity memberships.');
+        setFormationPolitySnapshotsError('Failed to load member polity snapshots.');
       } finally {
         setLoading(false);
       }
@@ -802,6 +840,51 @@ const ReferenceEntityPage: React.FC = () => {
       ),
     [formationMemberships]
   );
+  useEffect(() => {
+    if (entity?.kind !== 'formation') {
+      setFormationPolitySnapshotCache({});
+      setFormationPolitySnapshotsError(null);
+      return;
+    }
+
+    const polityIds = formationMembershipPolityEntries
+      .map((membership) => membership.polityEntityId)
+      .filter((value): value is number => Number.isInteger(value) && value > 0);
+    const missingIds = polityIds.filter((polityId) => !formationPolitySnapshotCache[polityId]);
+
+    if (missingIds.length === 0) {
+      setFormationPolitySnapshotsError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSnapshots = async () => {
+      try {
+        const entries = await Promise.all(
+          missingIds.map(async (polityId) => [polityId, await fetchReferenceEntityPolitySnapshots(polityId)] as const)
+        );
+        if (cancelled) return;
+
+        setFormationPolitySnapshotCache((current) => ({
+          ...current,
+          ...Object.fromEntries(entries),
+        }));
+        setFormationPolitySnapshotsError(null);
+      } catch (loadError) {
+        if (!cancelled) {
+          console.error(loadError);
+          setFormationPolitySnapshotsError('Failed to load member polity snapshots.');
+        }
+      }
+    };
+
+    void loadSnapshots();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entity?.kind, formationMembershipPolityEntries, formationPolitySnapshotCache]);
   const personMembershipPolityEntries = useMemo(
     () =>
       personPolityMemberships.filter(
@@ -1095,6 +1178,89 @@ const ReferenceEntityPage: React.FC = () => {
     () => politySnapshots.map((snapshot) => snapshot.snapshotYear).sort((left, right) => left - right),
     [politySnapshots]
   );
+  const formationSnapshotYears = useMemo(
+    () =>
+      [...new Set(
+        Object.values(formationPolitySnapshotCache)
+          .flat()
+          .map((snapshot) => snapshot.snapshotYear)
+      )].sort((left, right) => left - right),
+    [formationPolitySnapshotCache]
+  );
+  useEffect(() => {
+    const availableYears =
+      entity?.kind === 'polity'
+        ? politySnapshotYears
+        : entity?.kind === 'formation'
+          ? formationSnapshotYears
+          : [];
+
+    if (availableYears.length === 0) {
+      if (atlasFocusYear !== null) {
+        setAtlasFocusYear(null);
+      }
+      return;
+    }
+
+    if (atlasFocusYear !== null && availableYears.includes(atlasFocusYear)) {
+      return;
+    }
+
+    setAtlasFocusYear(resolveAtlasFocusYear(availableYears, entity));
+  }, [atlasFocusYear, entity, formationSnapshotYears, politySnapshotYears]);
+  const focusedPolitySnapshot = useMemo(() => {
+    if (entity?.kind !== 'polity' || atlasFocusYear === null) return null;
+    return politySnapshots.find((snapshot) => snapshot.snapshotYear === atlasFocusYear) ?? null;
+  }, [atlasFocusYear, entity?.kind, politySnapshots]);
+  const focusedFormationVisibleMemberships = useMemo(() => {
+    if (entity?.kind !== 'formation' || atlasFocusYear === null) return [];
+
+    return formationMembershipPolityEntries
+      .map((membership) => ({
+        membership,
+        snapshot:
+          (formationPolitySnapshotCache[membership.polityEntityId] ?? []).find(
+            (snapshot) => snapshot.snapshotYear === atlasFocusYear
+          ) ?? null,
+      }))
+      .filter(
+        (entry) => entry.snapshot && isMembershipVisibleInYear(entry.membership, atlasFocusYear)
+      );
+  }, [atlasFocusYear, entity?.kind, formationMembershipPolityEntries, formationPolitySnapshotCache]);
+  const focusedFormationHistoricalMemberships = useMemo(() => {
+    if (entity?.kind !== 'formation' || atlasFocusYear === null) return [];
+
+    return formationMembershipPolityEntries
+      .map((membership) => ({
+        membership,
+        snapshot:
+          (formationPolitySnapshotCache[membership.polityEntityId] ?? []).find(
+            (snapshot) => snapshot.snapshotYear === atlasFocusYear
+          ) ?? null,
+      }))
+      .filter(
+        (entry) => entry.snapshot && !isMembershipVisibleInYear(entry.membership, atlasFocusYear)
+      );
+  }, [atlasFocusYear, entity?.kind, formationMembershipPolityEntries, formationPolitySnapshotCache]);
+  const focusedFormationMissingSnapshotMemberships = useMemo(() => {
+    if (entity?.kind !== 'formation' || atlasFocusYear === null) return [];
+
+    return formationMembershipPolityEntries.filter(
+      (membership) =>
+        !(formationPolitySnapshotCache[membership.polityEntityId] ?? []).some(
+          (snapshot) => snapshot.snapshotYear === atlasFocusYear
+        )
+    );
+  }, [atlasFocusYear, entity?.kind, formationMembershipPolityEntries, formationPolitySnapshotCache]);
+  const atlasHref = useMemo(() => {
+    if (entity?.kind === 'formation' && atlasFocusYear !== null) {
+      return `/world-history?year=${atlasFocusYear}&formation=${entity.id}`;
+    }
+    if (entity?.kind === 'polity' && atlasFocusYear !== null) {
+      return `/world-history?year=${atlasFocusYear}`;
+    }
+    return '/world-history';
+  }, [atlasFocusYear, entity]);
   const overviewCards = useMemo<OverviewCard[]>(() => {
     if (!entity) return [];
 
@@ -1179,6 +1345,15 @@ const ReferenceEntityPage: React.FC = () => {
           hint: 'Year-specific geometries imported from the historical basemap dataset.',
         },
         {
+          key: 'atlas-focus',
+          eyebrow: 'Atlas Focus',
+          value: atlasFocusYear !== null ? formatYear(atlasFocusYear) ?? 'No focus year' : 'No focus year',
+          meta: focusedPolitySnapshot
+            ? `${focusedPolitySnapshot.titleAtSnapshot}${focusedPolitySnapshot.parentLabel ? ` · ${focusedPolitySnapshot.parentLabel}` : ''}`
+            : 'Choose a snapshot year below to inspect one imported atlas state.',
+          hint: 'The currently focused atlas snapshot year for this polity.',
+        },
+        {
           key: 'people',
           eyebrow: 'People Here',
           value: `${polityPersonMembershipEntries.length} memberships`,
@@ -1227,6 +1402,16 @@ const ReferenceEntityPage: React.FC = () => {
           hint: formationUi.membershipHint,
         },
         {
+          key: 'atlas-focus',
+          eyebrow: 'Atlas Focus',
+          value: atlasFocusYear !== null ? formatYear(atlasFocusYear) ?? 'No focus year' : 'No focus year',
+          meta:
+            atlasFocusYear === null
+              ? 'Choose a member snapshot year below to inspect this formation in atlas time.'
+              : `${focusedFormationVisibleMemberships.length} visible now · ${focusedFormationHistoricalMemberships.length} broader history`,
+          hint: 'The currently focused atlas year for this formation.',
+        },
+        {
           key: 'broader-formations',
           eyebrow: formationUi.broaderTitle,
           value: `${broaderFormations?.entries.length ?? 0} links`,
@@ -1252,6 +1437,10 @@ const ReferenceEntityPage: React.FC = () => {
     personMembershipPolityEntries,
     politySnapshotYears,
     politySnapshots.length,
+    atlasFocusYear,
+    focusedFormationHistoricalMemberships.length,
+    focusedFormationVisibleMemberships.length,
+    focusedPolitySnapshot,
     polityPersonMembershipEntries,
     relatedItems.length,
     structureGroups,
@@ -2028,6 +2217,83 @@ const ReferenceEntityPage: React.FC = () => {
             <section className="reference-entity-panel">
               <div className="reference-entity-section-head">
                 <div>
+                  <span className="reference-entity-eyebrow">Atlas Focus</span>
+                  <h2>
+                    Formation at a year
+                    <EntityHint text="Inspect which member polities are visible at one atlas year without leaving this page." />
+                    <span className="reference-entity-count-badge">{formationSnapshotYears.length}</span>
+                  </h2>
+                </div>
+                <Link to={atlasHref} className="reference-entity-secondary-button">
+                  Open on atlas
+                </Link>
+              </div>
+
+              {formationPolitySnapshotsError ? (
+                <div className="reference-entity-error">{formationPolitySnapshotsError}</div>
+              ) : formationSnapshotYears.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No member polity snapshots are loaded for this formation yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  <div className="reference-entity-year-strip">
+                    {formationSnapshotYears.map((snapshotYear) => (
+                      <button
+                        key={snapshotYear}
+                        type="button"
+                        className={`reference-entity-year-chip${atlasFocusYear === snapshotYear ? ' is-active' : ''}`}
+                        onClick={() => setAtlasFocusYear(snapshotYear)}
+                      >
+                        {formatYear(snapshotYear)}
+                      </button>
+                    ))}
+                  </div>
+                  <article className="reference-entity-card">
+                    <div className="reference-entity-card-top">
+                      <div>
+                        <div className="reference-entity-badges">
+                          <span>{atlasFocusYear !== null ? formatYear(atlasFocusYear) : 'No focus year'}</span>
+                          <span>{focusedFormationVisibleMemberships.length} visible</span>
+                          {focusedFormationHistoricalMemberships.length > 0 ? (
+                            <span>{focusedFormationHistoricalMemberships.length} broader history</span>
+                          ) : null}
+                          {focusedFormationMissingSnapshotMemberships.length > 0 ? (
+                            <span>{focusedFormationMissingSnapshotMemberships.length} without snapshot</span>
+                          ) : null}
+                        </div>
+                        <h3>{entity.title}</h3>
+                      </div>
+                    </div>
+                    {focusedFormationVisibleMemberships.length === 0 ? (
+                      <div className="reference-entity-empty">
+                        No member polities are visible at this atlas year.
+                      </div>
+                    ) : (
+                      <div className="reference-entity-card-grid">
+                        {focusedFormationVisibleMemberships.map(({ membership, snapshot }) => (
+                          <div key={`focused-formation-${membership.id}`}>
+                            <strong>{membership.polityTitle || snapshot?.titleAtSnapshot || 'Untitled polity'}</strong>
+                            <span>
+                              {membership.startYear !== undefined || membership.endYear !== undefined
+                                ? `${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`
+                                : 'Visible in formation at this year'}
+                            </span>
+                            <span>{snapshot?.parentLabel || 'Standalone polity'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {entity.kind === 'formation' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
                   <span className="reference-entity-eyebrow">{formationUi.membershipEyebrow}</span>
                   <h2>
                     {formationUi.membershipSectionTitle}
@@ -2403,6 +2669,77 @@ const ReferenceEntityPage: React.FC = () => {
               <div className="reference-entity-stack">{structureGroups.map(renderStructureGroup)}</div>
             )}
           </section>
+
+          {entity.kind === 'polity' ? (
+            <section className="reference-entity-panel">
+              <div className="reference-entity-section-head">
+                <div>
+                  <span className="reference-entity-eyebrow">Atlas Focus</span>
+                  <h2>
+                    Snapshot at a year
+                    <EntityHint text="Inspect one imported atlas snapshot directly from the polity page." />
+                    <span className="reference-entity-count-badge">{politySnapshotYears.length}</span>
+                  </h2>
+                </div>
+                <Link to={atlasHref} className="reference-entity-secondary-button">
+                  Open on atlas
+                </Link>
+              </div>
+
+              {politySnapshotsError ? (
+                <div className="reference-entity-error">{politySnapshotsError}</div>
+              ) : politySnapshotYears.length === 0 ? (
+                <div className="reference-entity-empty">
+                  No atlas snapshots have been imported for this polity yet.
+                </div>
+              ) : (
+                <div className="reference-entity-stack">
+                  <div className="reference-entity-year-strip">
+                    {politySnapshotYears.map((snapshotYear) => (
+                      <button
+                        key={snapshotYear}
+                        type="button"
+                        className={`reference-entity-year-chip${atlasFocusYear === snapshotYear ? ' is-active' : ''}`}
+                        onClick={() => setAtlasFocusYear(snapshotYear)}
+                      >
+                        {formatYear(snapshotYear)}
+                      </button>
+                    ))}
+                  </div>
+                  {focusedPolitySnapshot ? (
+                    <article className="reference-entity-card">
+                      <div className="reference-entity-card-top">
+                        <div>
+                          <div className="reference-entity-badges">
+                            <span>{formatYear(focusedPolitySnapshot.snapshotYear)}</span>
+                            <span>{focusedPolitySnapshot.source}</span>
+                            {focusedPolitySnapshot.borderPrecision !== undefined ? (
+                              <span>border {focusedPolitySnapshot.borderPrecision}</span>
+                            ) : null}
+                          </div>
+                          <h3>{focusedPolitySnapshot.titleAtSnapshot}</h3>
+                        </div>
+                      </div>
+                      <div className="reference-entity-card-grid">
+                        <div>
+                          <strong>Part of</strong>
+                          <span>{focusedPolitySnapshot.parentLabel || 'Standalone polity'}</span>
+                        </div>
+                        <div>
+                          <strong>Subject</strong>
+                          <span>{focusedPolitySnapshot.subjectLabel || 'No subject note'}</span>
+                        </div>
+                        <div>
+                          <strong>Updated</strong>
+                          <span>{formatDate(focusedPolitySnapshot.updatedAt)}</span>
+                        </div>
+                      </div>
+                    </article>
+                  ) : null}
+                </div>
+              )}
+            </section>
+          ) : null}
 
           {entity.kind === 'polity' ? (
             <section className="reference-entity-panel">
