@@ -14,7 +14,6 @@ import {
   type BookSearchFilters,
   type BookSearchProvider,
   createKnowledgeItem,
-  createKnowledgeRelation,
   createReferenceEntity,
   deleteKnowledgeItem,
   fetchKnowledgeItemTopics,
@@ -679,31 +678,6 @@ const ItemWorkbenchPage: React.FC = () => {
     }));
   };
 
-  const saveItemWithCreatorLink = async (payload: NewKnowledgeItem, creatorLabel?: string) => {
-    const createdItem = await createKnowledgeItem(payload);
-    const normalized = creatorLabel?.trim() ?? '';
-    const matchedCreator =
-      normalized
-        ? people.find((person) => person.title.trim().toLowerCase() === normalized.toLowerCase()) ?? null
-        : null;
-    let relationFailed = false;
-
-    if (matchedCreator) {
-      try {
-        await createKnowledgeRelation(createdItem.id, {
-          toEntityType: 'reference_entity',
-          toEntityId: matchedCreator.id,
-          relationType: 'created_by',
-        });
-      } catch (relationError) {
-        console.error(relationError);
-        relationFailed = true;
-      }
-    }
-
-    return { createdItem, relationFailed };
-  };
-
   const handleCreateCreatorEntity = async () => {
     if (!normalizedCreator || matchedPerson) return;
 
@@ -757,6 +731,7 @@ const ItemWorkbenchPage: React.FC = () => {
       kind: formState.kind,
       title: formState.title.trim(),
       creator: normalizedCreator || undefined,
+      creatorEntityId: matchedPerson?.id ?? undefined,
       sourceName: formState.sourceName.trim() || undefined,
       sourceUrl: formState.sourceUrl.trim() || undefined,
       summary: formState.summary.trim() || undefined,
@@ -767,14 +742,14 @@ const ItemWorkbenchPage: React.FC = () => {
 
     try {
       const savedKind = workbenchKind;
-      const { createdItem, relationFailed } = await saveItemWithCreatorLink(payload, normalizedCreator);
+      const createdItem = await createKnowledgeItem(payload);
 
       startTransition(() => {
         setItems((current) => [createdItem, ...current]);
       });
       setFormState(createInitialFormState(savedKind));
       setShowAdvancedDetails(false);
-      setNotice(relationFailed ? 'Item was created, but the creator entity link could not be saved.' : 'Item added.');
+      setNotice('Item added.');
     } catch (submitError) {
       console.error(submitError);
       setError('Failed to create item.');
@@ -857,21 +832,25 @@ const ItemWorkbenchPage: React.FC = () => {
       const savedEntries = await Promise.all(
         selectedBooks.map(async (book) => {
           const payload = buildKnowledgeItemFromSearchMatch(book);
-          return saveItemWithCreatorLink(payload, payload.creator);
+          return createKnowledgeItem({
+            ...payload,
+            creatorEntityId:
+              people.find(
+                (person) =>
+                  person.title.trim().toLowerCase() === (payload.creator?.trim().toLowerCase() ?? '')
+              )?.id ?? undefined,
+          });
         })
       );
 
-      const createdItems = savedEntries.map((entry) => entry.createdItem);
-      const relationFailures = savedEntries.some((entry) => entry.relationFailed);
+      const createdItems = savedEntries;
 
       startTransition(() => {
         setItems((current) => [...createdItems.reverse(), ...current]);
       });
       setSelectedBookIds([]);
       setNotice(
-        relationFailures
-          ? `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'}, but some creator links could not be saved.`
-          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchProvider)}.`
+        `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchProvider)}.`
       );
     } catch (importError) {
       console.error(importError);

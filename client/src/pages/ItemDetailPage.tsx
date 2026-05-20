@@ -6,6 +6,7 @@ import type {
   KnowledgeNote,
   KnowledgeRelationDetail,
   KnowledgeRelationType,
+  PersonSubjectMembershipDetail,
   KnowledgeReview,
   KnowledgeTask,
   KnowledgeTaskStatus,
@@ -34,6 +35,7 @@ import {
   fetchKnowledgeReviews,
   fetchKnowledgeTasks,
   fetchReferenceEntities,
+  fetchReferenceEntityPersonSubjectMemberships,
   fetchSubjects as fetchTopics,
   fetchTopicRelations,
   fetchTopics as fetchStudyTopics,
@@ -429,6 +431,7 @@ const ItemDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [atlasContextError, setAtlasContextError] = useState<string | null>(null);
+  const [creatorCoverageError, setCreatorCoverageError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
   const [savingRecord, setSavingRecord] = useState(false);
   const [savingTopicAssignment, setSavingTopicAssignment] = useState(false);
@@ -590,27 +593,75 @@ const ItemDetailPage: React.FC = () => {
     () => new Map(referenceEntities.map((entity) => [entity.id, entity])),
     [referenceEntities]
   );
+  const [creatorSubjectMembershipsByPersonId, setCreatorSubjectMembershipsByPersonId] = useState<
+    Record<number, PersonSubjectMembershipDetail[]>
+  >({});
+  const unknownAuthorEntity = useMemo(
+    () => referenceEntities.find((entity) => entity.slug === 'person-unknown-author') ?? null,
+    [referenceEntities]
+  );
+  const creatorRelations = useMemo(
+    () =>
+      relations.filter(
+        (relation) =>
+          relation.relationType === 'created_by' &&
+          relation.toEntityType === 'reference_entity' &&
+          relation.toEntityKind === 'person'
+      ),
+    [relations]
+  );
+  const creatorPeople = useMemo(() => {
+    const seen = new Set<number>();
+    const people: ReferenceEntity[] = [];
+
+    for (const relation of creatorRelations) {
+      const entity = referenceEntityMap.get(relation.toEntityId);
+      if (!entity || entity.kind !== 'person' || seen.has(entity.id)) continue;
+      seen.add(entity.id);
+      people.push(entity);
+    }
+
+    return people;
+  }, [creatorRelations, referenceEntityMap]);
   const completedTasks = useMemo(
     () => tasks.filter((task) => task.status === 'done').length,
     [tasks]
   );
   const creatorDisplay = useMemo(() => {
-    const creatorTitles = relations
-      .filter(
-        (relation) =>
-          relation.relationType === 'created_by' &&
-          relation.toEntityType === 'reference_entity' &&
-          relation.toEntityKind === 'person' &&
-          relation.toEntityTitle
-      )
+    const creatorTitles = creatorRelations
+      .filter((relation) => relation.toEntityId !== unknownAuthorEntity?.id && relation.toEntityTitle)
       .map((relation) => relation.toEntityTitle as string);
 
     if (creatorTitles.length > 0) {
       return creatorTitles.join(', ');
     }
 
-    return item?.creator || null;
-  }, [item?.creator, relations]);
+    return item?.creator || creatorRelations[0]?.toEntityTitle || null;
+  }, [creatorRelations, item?.creator, unknownAuthorEntity?.id]);
+  const creatorCoveragePending = useMemo(
+    () =>
+      creatorPeople.some(
+        (person) =>
+          person.id !== unknownAuthorEntity?.id &&
+          !Object.prototype.hasOwnProperty.call(creatorSubjectMembershipsByPersonId, person.id)
+      ),
+    [creatorPeople, creatorSubjectMembershipsByPersonId, unknownAuthorEntity?.id]
+  );
+  const creatorsMissingSubjectCoverage = useMemo(
+    () =>
+      creatorPeople.filter((person) => {
+        if (person.id === unknownAuthorEntity?.id) return false;
+        const memberships = creatorSubjectMembershipsByPersonId[person.id];
+        return Array.isArray(memberships) && memberships.length === 0;
+      }),
+    [creatorPeople, creatorSubjectMembershipsByPersonId, unknownAuthorEntity?.id]
+  );
+  const creatorNeedsResolution = useMemo(
+    () =>
+      Boolean(item?.creator) &&
+      creatorRelations.some((relation) => relation.toEntityId === unknownAuthorEntity?.id),
+    [creatorRelations, item?.creator, unknownAuthorEntity?.id]
+  );
   const itemFormKind = item ? getItemFormKind(item) : 'book';
   const recordPreset = itemRecordPresets[itemFormKind];
   const recordExtraFieldValue =
@@ -767,6 +818,47 @@ const ItemDetailPage: React.FC = () => {
       cancelled = true;
     };
   }, [itemStudyTopics]);
+
+  useEffect(() => {
+    const creatorPeopleNeedingCoverage = creatorPeople.filter(
+      (person) => person.id !== unknownAuthorEntity?.id
+    );
+
+    if (creatorPeopleNeedingCoverage.length === 0) {
+      setCreatorSubjectMembershipsByPersonId({});
+      setCreatorCoverageError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCreatorCoverage = async () => {
+      try {
+        const entries = await Promise.all(
+          creatorPeopleNeedingCoverage.map(async (person) => [
+            person.id,
+            await fetchReferenceEntityPersonSubjectMemberships(person.id),
+          ] as const)
+        );
+
+        if (!cancelled) {
+          setCreatorSubjectMembershipsByPersonId(Object.fromEntries(entries));
+          setCreatorCoverageError(null);
+        }
+      } catch (loadError) {
+        console.error(loadError);
+        if (!cancelled) {
+          setCreatorCoverageError('Failed to load creator subject coverage.');
+        }
+      }
+    };
+
+    void loadCreatorCoverage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [creatorPeople, unknownAuthorEntity?.id]);
 
   const handleItemStatusChange = async (nextStatus: KnowledgeItemStatus) => {
     if (!item || nextStatus === item.status) return;
@@ -1253,14 +1345,61 @@ const ItemDetailPage: React.FC = () => {
                 <dt>Form</dt>
                 <dd>{getItemFormLabel(item)}</dd>
               </div>
+              {creatorDisplay ? (
+                <div>
+                  <dt>Creator path</dt>
+                  <dd>{creatorDisplay}</dd>
+                </div>
+              ) : null}
               {itemRecordDetail ? (
                 <div>
                   <dt>Record detail</dt>
                   <dd>{itemRecordDetail}</dd>
                 </div>
               ) : null}
+              {(creatorNeedsResolution || creatorsMissingSubjectCoverage.length > 0) ? (
+                <div>
+                  <dt>Creator coverage</dt>
+                  <dd>
+                    {creatorNeedsResolution
+                      ? 'Needs person resolution'
+                      : creatorsMissingSubjectCoverage.length === 1
+                        ? 'Missing subject membership'
+                        : `${creatorsMissingSubjectCoverage.length} creators need subjects`}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </div>
+
+          {creatorNeedsResolution ? (
+            <div className="knowledge-detail-note">
+              <strong>Creator still points to Unknown Author</strong>
+              <span>
+                This item keeps the text fallback "{item.creator}", but its canonical creator relation still resolves
+                to Unknown Author. Match the creator to a person entity when you want the atlas and subject filters to
+                pick it up.
+              </span>
+            </div>
+          ) : null}
+
+          {creatorCoverageError ? <div className="knowledge-detail-error">{creatorCoverageError}</div> : null}
+
+          {!creatorCoverageError && !creatorCoveragePending && creatorsMissingSubjectCoverage.length > 0 ? (
+            <div className="knowledge-detail-note">
+              <strong>Creator subject coverage is incomplete</strong>
+              <span>
+                Add at least one subject to{' '}
+                {creatorsMissingSubjectCoverage.map((person, index) => (
+                  <React.Fragment key={person.id}>
+                    {index > 0 ? (index === creatorsMissingSubjectCoverage.length - 1 ? ' and ' : ', ') : null}
+                    <Link to={`/entities/${person.id}`}>{person.title}</Link>
+                  </React.Fragment>
+                ))}{' '}
+                so subject-filtered atlas views can surface this creator.
+              </span>
+            </div>
+          ) : null}
 
           {showRecordEditor ? (
             <div className="knowledge-detail-inline-panel">

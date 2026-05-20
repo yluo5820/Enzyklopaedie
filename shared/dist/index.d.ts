@@ -274,8 +274,12 @@ export interface KnowledgeProgressSummary {
 export declare const summarizeKnowledgeProgress: (items: Array<Pick<KnowledgeItem, "status">>) => KnowledgeProgressSummary;
 export declare const slugifyName: (value: string) => string;
 export declare const buildReferenceEntitySlug: (kind: ReferenceEntityKind, title: string) => string;
-export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'> & {
+    creatorEntityId?: number | null;
+};
+export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>> & {
+    creatorEntityId?: number | null;
+};
 export type NewSubject = Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateSubject = Partial<Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
 export type NewTopic = Omit<Topic, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;

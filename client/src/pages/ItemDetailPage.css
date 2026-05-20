@@ -159,6 +159,16 @@
   line-height: 1.6;
 }
 
+.knowledge-detail-note a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.knowledge-detail-note a:hover {
+  text-decoration: underline;
+}
+
 .knowledge-detail-badges,
 .knowledge-detail-meta {
   display: flex;

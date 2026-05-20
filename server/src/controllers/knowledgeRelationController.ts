@@ -12,6 +12,7 @@ import {
   listKnowledgeRelationsBySource,
   validateKnowledgeRelationEdge,
 } from '../lib/knowledgeRelations';
+import { syncKnowledgeItemCreatorRelation } from '../lib/knowledgeItemCreators';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -97,23 +98,31 @@ export const createKnowledgeRelation = asyncErrorHandler(async (req: Request, re
   );
 
   if (existingRelation) {
+    if (relationType === 'created_by' && toEntityType === 'reference_entity' && targetEntity.kind === 'person') {
+      await syncKnowledgeItemCreatorRelation(db, item.id, toEntityId, existingRelation.createdAt);
+    }
     return res.status(200).json(existingRelation);
   }
 
   const note = typeof req.body.note === 'string' && req.body.note.trim() ? req.body.note.trim() : null;
   const createdAt = new Date().toISOString();
-  const result = await db.run(
-    `INSERT INTO knowledge_relations
-      (fromEntityType, fromEntityId, toEntityType, toEntityId, relationType, note, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    'knowledge_item',
-    item.id,
-    toEntityType,
-    toEntityId,
-    relationType,
-    note,
-    createdAt
-  );
+  const result =
+    relationType === 'created_by' && toEntityType === 'reference_entity' && targetEntity.kind === 'person'
+      ? {
+          lastID: await syncKnowledgeItemCreatorRelation(db, item.id, toEntityId, createdAt),
+        }
+      : await db.run(
+          `INSERT INTO knowledge_relations
+            (fromEntityType, fromEntityId, toEntityType, toEntityId, relationType, note, createdAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          'knowledge_item',
+          item.id,
+          toEntityType,
+          toEntityId,
+          relationType,
+          note,
+          createdAt
+        );
 
   const relation = await getKnowledgeRelationById(result.lastID as number);
 

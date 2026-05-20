@@ -218,6 +218,13 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.ok(createdItem.createdAt);
     assert.ok(createdItem.updatedAt);
 
+    const relationsResponse = await request(`/api/knowledge-items/${createdItem.id}/relations`);
+    assert.equal(relationsResponse.status, 200);
+    const relations = await relationsResponse.json();
+    const createdByRelation = relations.find((relation) => relation.relationType === 'created_by');
+    assert.ok(createdByRelation);
+    assert.equal(createdByRelation.toEntityTitle, 'Unknown Author');
+
     const listResponse = await request('/api/knowledge-items');
     assert.equal(listResponse.status, 200);
 
@@ -236,6 +243,101 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const fetchedItem = await getResponse.json();
     assert.equal(fetchedItem.id, firstItemId);
     assert.equal(fetchedItem.creator, 'Thomas S. Kuhn');
+  });
+
+  await t.test('POST /api/knowledge-items resolves an explicit creator person into the canonical creator path', async () => {
+    const personResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Aristotle',
+      }),
+    });
+    assert.equal(personResponse.status, 201);
+    const person = await personResponse.json();
+
+    const createResponse = await request('/api/knowledge-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'book',
+        title: 'Metaphysics',
+        creator: 'Aristotle',
+        creatorEntityId: person.id,
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const createdItem = await createResponse.json();
+
+    const relationsResponse = await request(`/api/knowledge-items/${createdItem.id}/relations`);
+    assert.equal(relationsResponse.status, 200);
+    const relations = await relationsResponse.json();
+    const createdByRelations = relations.filter((relation) => relation.relationType === 'created_by');
+    assert.equal(createdByRelations.length, 1);
+    assert.equal(createdByRelations[0].toEntityId, person.id);
+    assert.equal(createdByRelations[0].toEntityTitle, 'Aristotle');
+  });
+
+  await t.test('PUT /api/knowledge-items/:id can repoint the canonical creator path', async () => {
+    const platoResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Plato',
+      }),
+    });
+    assert.equal(platoResponse.status, 201);
+    const plato = await platoResponse.json();
+
+    const socratesResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Socrates',
+      }),
+    });
+    assert.equal(socratesResponse.status, 201);
+    const socrates = await socratesResponse.json();
+
+    const createResponse = await request('/api/knowledge-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'book',
+        title: 'Republic',
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const createdItem = await createResponse.json();
+
+    const firstUpdateResponse = await request(`/api/knowledge-items/${createdItem.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creatorEntityId: plato.id,
+      }),
+    });
+    assert.equal(firstUpdateResponse.status, 200);
+
+    const secondUpdateResponse = await request(`/api/knowledge-items/${createdItem.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creatorEntityId: socrates.id,
+      }),
+    });
+    assert.equal(secondUpdateResponse.status, 200);
+
+    const relationsResponse = await request(`/api/knowledge-items/${createdItem.id}/relations`);
+    assert.equal(relationsResponse.status, 200);
+    const relations = await relationsResponse.json();
+    const createdByRelations = relations.filter((relation) => relation.relationType === 'created_by');
+    assert.equal(createdByRelations.length, 1);
+    assert.equal(createdByRelations[0].toEntityId, socrates.id);
+    assert.equal(createdByRelations[0].toEntityTitle, 'Socrates');
   });
 
   await t.test('PUT /api/knowledge-items/:id updates items and records recent activity', async () => {
@@ -694,9 +796,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const relationsResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`);
     assert.equal(relationsResponse.status, 200);
     const relations = await relationsResponse.json();
-    assert.equal(relations.length, 2);
+    assert.equal(relations.length, 3);
     assert.ok(relations.some((entry) => entry.toEntityKind === 'book'));
     assert.ok(relations.some((entry) => entry.toEntityKind === 'formation'));
+    assert.ok(relations.some((entry) => entry.relationType === 'created_by'));
 
     const studyTopicRelationResponse = await request(`/api/topics/${studyTopic.id}/relations`, {
       method: 'POST',
@@ -1121,7 +1224,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         relationType: 'created_by',
       }),
     });
-    assert.equal(createdByResponse.status, 201);
+    assert.equal(createdByResponse.status, 200);
 
     const formationToBroaderResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
@@ -1271,6 +1374,15 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const personSubjectMemberships = await personSubjectMembershipListResponse.json();
     assert.equal(personSubjectMemberships.length, 1);
     assert.equal(personSubjectMemberships[0].subjectName, 'Mathematics');
+
+    const atlasPersonSubjectMembershipsResponse = await request(
+      `/api/world-history/person-subject-memberships?personEntityIds=${personEntity.id},999999`
+    );
+    assert.equal(atlasPersonSubjectMembershipsResponse.status, 200);
+    const atlasPersonSubjectMemberships = await atlasPersonSubjectMembershipsResponse.json();
+    assert.equal(atlasPersonSubjectMemberships.length, 1);
+    assert.equal(atlasPersonSubjectMemberships[0].personEntityId, personEntity.id);
+    assert.equal(atlasPersonSubjectMemberships[0].subjectName, 'Mathematics');
 
     const invalidPersonPolityRelationResponse = await request(
       `/api/reference-entities/${personEntity.id}/outgoing-relations`,

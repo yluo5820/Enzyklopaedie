@@ -398,8 +398,12 @@ export const slugifyName = (value: string) =>
 export const buildReferenceEntitySlug = (kind: ReferenceEntityKind, title: string) =>
   `${kind}-${slugifyName(title)}`;
 
-export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'> & {
+  creatorEntityId?: number | null;
+};
+export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>> & {
+  creatorEntityId?: number | null;
+};
 
 export type NewSubject = Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateSubject = Partial<Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;

@@ -950,6 +950,9 @@ const ReferenceEntityPage: React.FC = () => {
       ),
     [personSubjectMemberships]
   );
+  const personNeedsSubjectCoverage = Boolean(
+    entity?.kind === 'person' && authoredWorks.length > 0 && personSubjectEntries.length === 0
+  );
 
   const outgoingStructureRelations = useMemo(
     () => outgoingRelations.filter((relation) => relation.toEntityType === 'reference_entity'),
@@ -2404,6 +2407,17 @@ const ReferenceEntityPage: React.FC = () => {
                     </div>
                   </form>
                 </section>
+              ) : null}
+
+              {personNeedsSubjectCoverage ? (
+                <div className="reference-entity-note">
+                  <strong>Subject coverage is still missing</strong>
+                  <span>
+                    This person already appears as the creator of {authoredWorks.length}{' '}
+                    item{authoredWorks.length === 1 ? '' : 's'}. Add at least one subject so future atlas subject
+                    filters can surface them.
+                  </span>
+                </div>
               ) : null}
 
               {personSubjectMembershipsError ? (

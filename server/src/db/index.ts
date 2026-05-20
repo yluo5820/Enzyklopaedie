@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
+import { backfillKnowledgeItemCreatorRelations } from '../lib/knowledgeItemCreators';
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data.db');
 let dbPromise: Promise<Database<sqlite3.Database, sqlite3.Statement>> | null = null;
@@ -405,6 +406,7 @@ export async function initializeDatabase() {
   `);
 
   await seedCoreRecords(db);
+  await backfillKnowledgeItemCreatorRelations(db);
 
   console.log('Database initialized successfully with new schema.');
   return db;
@@ -424,6 +426,7 @@ export const resetDatabase = async () => {
       DELETE FROM canonical_historical_entities;
       DELETE FROM formation_memberships;
       DELETE FROM person_polity_memberships;
+      DELETE FROM person_subject_memberships;
       DELETE FROM polity_snapshots;
       DELETE FROM knowledge_item_study_topics;
       DELETE FROM knowledge_notes;
