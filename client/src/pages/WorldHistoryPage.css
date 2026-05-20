@@ -216,6 +216,7 @@
 
 .world-history-search input,
 .world-history-search select,
+.world-history-filter-controls select,
 .world-history-region-search input {
   width: 100%;
   border-radius: 16px;
@@ -242,8 +243,14 @@
   padding: 0 14px;
 }
 
+.world-history-filter-controls select {
+  min-height: 46px;
+  padding: 0 14px;
+}
+
 .world-history-search input:focus,
 .world-history-search select:focus,
+.world-history-filter-controls select:focus,
 .world-history-region-search input:focus {
   outline: 2px solid rgba(123, 77, 42, 0.28);
   outline-offset: 2px;
@@ -255,8 +262,32 @@
   gap: 10px;
 }
 
+.world-history-filter-bar {
+  display: grid;
+  gap: 8px;
+}
+
+.world-history-filter-bar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.world-history-filter-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.world-history-filter-meta {
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+}
+
 .world-history-result-card__actions button,
 .world-history-search__controls button,
+.world-history-filter-controls button,
 .world-history-selected-card__actions button,
 .world-history-reconciliation-card__actions button {
   border: 0;
@@ -268,12 +299,20 @@
 }
 
 .world-history-search__controls button,
+.world-history-filter-controls button,
 .world-history-result-card__actions .is-primary,
 .world-history-selected-card__actions .is-primary,
 .world-history-reconciliation-card__actions .is-primary {
   background: linear-gradient(135deg, #986132, #7f4d23);
   color: #fff8ee;
   box-shadow: 0 10px 18px rgba(84, 44, 15, 0.18);
+}
+
+.world-history-filter-controls .world-history-clear-button {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(123, 77, 42, 0.18);
+  color: var(--accent-strong);
+  box-shadow: none;
 }
 
 .world-history-selected-card__actions .is-destructive {
@@ -289,6 +328,7 @@
 
 .world-history-result-card__actions button:hover,
 .world-history-search__controls button:hover,
+.world-history-filter-controls button:hover,
 .world-history-selected-card__actions button:hover,
 .world-history-reconciliation-card__actions button:hover,
 .world-history-result-card__actions a:hover,
@@ -298,6 +338,7 @@
 }
 
 .world-history-search__controls button:disabled,
+.world-history-filter-controls button:disabled,
 .world-history-result-card__actions button:disabled,
 .world-history-selected-card__actions button:disabled,
 .world-history-reconciliation-card__actions button:disabled {
@@ -920,6 +961,10 @@
   }
 
   .world-history-search__controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .world-history-filter-controls {
     grid-template-columns: minmax(0, 1fr);
   }
 

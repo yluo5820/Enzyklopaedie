@@ -26,6 +26,7 @@ import {
   hydrateReferenceEntity,
 } from '../lib/referenceEntities';
 import { findPolitySnapshotMatch } from '../lib/politySnapshots';
+import { listPersonSubjectMembershipsForPeople } from '../lib/personSubjectMemberships';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -111,6 +112,20 @@ const parseYear = (value: unknown) => {
   if (value === undefined) return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : null;
+};
+
+const parseIdList = (value: unknown) => {
+  const raw = Array.isArray(value) ? value.join(',') : typeof value === 'string' ? value : '';
+  if (!raw.trim()) {
+    return [];
+  }
+
+  return [...new Set(
+    raw
+      .split(',')
+      .map((entry) => Number(entry.trim()))
+      .filter((entry) => Number.isInteger(entry) && entry > 0)
+  )];
 };
 
 const parseMetadata = (value: unknown) => {
@@ -447,6 +462,19 @@ export const getCanonicalHistoricalEntities = asyncErrorHandler(async (req: Requ
 
   res.json(filtered);
 });
+
+export const getWorldHistoryPersonSubjectMemberships = asyncErrorHandler(
+  async (req: Request, res: Response) => {
+    const personEntityIds = parseIdList(req.query.personEntityIds);
+    if (personEntityIds.length === 0) {
+      return res.json([]);
+    }
+
+    const db = await getDb();
+    const memberships = await listPersonSubjectMembershipsForPeople(db, personEntityIds);
+    res.json(memberships);
+  }
+);
 
 export const getHistoricalBasemapManifestResponse = asyncErrorHandler(
   async (req: Request, res: Response) => {

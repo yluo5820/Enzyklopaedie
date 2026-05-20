@@ -62,6 +62,26 @@ export const listPersonSubjectMembershipsForPerson = async (
   return rows.map(hydratePersonSubjectMembership);
 };
 
+export const listPersonSubjectMembershipsForPeople = async (
+  db: DbConnection,
+  personEntityIds: number[]
+) => {
+  const uniquePersonEntityIds = [...new Set(personEntityIds.filter((value) => Number.isInteger(value) && value > 0))];
+  if (uniquePersonEntityIds.length === 0) {
+    return [] as PersonSubjectMembershipDetail[];
+  }
+
+  const placeholders = uniquePersonEntityIds.map(() => '?').join(', ');
+  const rows = await db.all<PersonSubjectMembershipDetailRow[]>(
+    `${detailSelect}
+     WHERE psm.personEntityId IN (${placeholders})
+     ORDER BY psm.personEntityId ASC, lower(subject.name) ASC, psm.id ASC`,
+    ...uniquePersonEntityIds
+  );
+
+  return rows.map(hydratePersonSubjectMembership);
+};
+
 export const getReferenceEntityById = async (db: DbConnection, id: number) => {
   const row = await db.get<ReferenceEntityRow>('SELECT * FROM reference_entities WHERE id = ?', id);
   return row ? hydrateReferenceEntity(row) : null;

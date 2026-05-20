@@ -224,6 +224,25 @@ export const fetchHistoricalAtlasEntities = async (
   return response.json();
 };
 
+export const fetchWorldHistoryPersonSubjectMemberships = async (
+  personEntityIds: number[]
+): Promise<PersonSubjectMembershipDetail[]> => {
+  const uniquePersonEntityIds = [...new Set(personEntityIds.filter((value) => Number.isInteger(value) && value > 0))];
+  if (uniquePersonEntityIds.length === 0) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    personEntityIds: uniquePersonEntityIds.join(','),
+  });
+
+  const response = await fetch(`${API_BASE_URL}/world-history/person-subject-memberships?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch atlas person subject memberships');
+  }
+  return response.json();
+};
+
 export const fetchHistoricalBasemapManifest = async (
   cutoffYear?: number
 ): Promise<HistoricalBasemapManifestResponse> => {

@@ -8,6 +8,7 @@ import {
   getHistoricalBasemapLayerResponse,
   getHistoricalBasemapManifestResponse,
   getHistoricalBasemapPolityMatchResponse,
+  getWorldHistoryPersonSubjectMemberships,
   promoteCanonicalHistoricalEntity,
   searchCanonicalHistoricalEntities,
 } from '../controllers/worldHistoryController';
@@ -17,6 +18,7 @@ const router = Router();
 router.get('/basemaps/manifest', getHistoricalBasemapManifestResponse);
 router.get('/basemaps/layer', getHistoricalBasemapLayerResponse);
 router.get('/basemaps/polity-match', getHistoricalBasemapPolityMatchResponse);
+router.get('/person-subject-memberships', getWorldHistoryPersonSubjectMemberships);
 router.get('/entities', getCanonicalHistoricalEntities);
 router.get('/entities/:id', getCanonicalHistoricalEntityById);
 router.get('/entities/:id/geometry', getCanonicalHistoricalEntityGeometry);

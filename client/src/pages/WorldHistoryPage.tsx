@@ -15,8 +15,10 @@ import type {
   HistoricalBasemapLayerResponse,
   HistoricalBasemapManifestResponse,
   PersonPolityMembershipDetail,
+  PersonSubjectMembershipDetail,
   PolitySnapshot,
   ReferenceEntity,
+  SubjectSummary,
 } from '@enzyklopaedie/shared';
 import {
   createFormationMembership,
@@ -32,6 +34,8 @@ import {
   fetchReferenceEntityFormationMemberships,
   fetchReferenceEntityPersonPolityMemberships,
   fetchReferenceEntityPolitySnapshots,
+  fetchSubjects,
+  fetchWorldHistoryPersonSubjectMemberships,
   promoteHistoricalAtlasEntity,
   saveHistoricalAtlasEntity,
   searchHistoricalAtlas,
@@ -464,6 +468,43 @@ const getPersonMembershipKey = (
   return `title:${(membership.personTitle || 'untitled person').trim().toLowerCase()}`;
 };
 
+const buildSubjectPathLabel = (
+  subject: Pick<SubjectSummary, 'id' | 'name' | 'parentSubjectId'>,
+  subjectById: Map<number, Pick<SubjectSummary, 'id' | 'name' | 'parentSubjectId'>>
+) => {
+  const lineage: string[] = [subject.name];
+  let currentParentId = subject.parentSubjectId;
+
+  while (currentParentId) {
+    const parent = subjectById.get(currentParentId);
+    if (!parent) break;
+    lineage.unshift(parent.name);
+    currentParentId = parent.parentSubjectId;
+  }
+
+  return lineage.join(' / ');
+};
+
+const filterPersonMembershipsBySubject = <T extends Pick<PersonPolityMembershipDetail, 'personEntityId'>>(
+  memberships: T[],
+  selectedSubjectScope: Set<number> | null,
+  personSubjectMembershipCache: Record<number, PersonSubjectMembershipDetail[]>
+) => {
+  if (!selectedSubjectScope) {
+    return memberships;
+  }
+
+  return memberships.filter((membership) => {
+    if (!membership.personEntityId) {
+      return false;
+    }
+
+    return (personSubjectMembershipCache[membership.personEntityId] ?? []).some((entry) =>
+      selectedSubjectScope.has(entry.subjectId)
+    );
+  });
+};
+
 const getFeatureCollectionFeatures = (geojson: GeoJsonLike | null | undefined) => {
   if (!geojson || geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
     return [] as Array<Record<string, unknown>>;
@@ -664,13 +705,16 @@ const WorldHistoryPage: React.FC = () => {
   });
   const [searchResults, setSearchResults] = useState<CanonicalHistoricalSearchMatch[]>([]);
   const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
+  const [subjects, setSubjects] = useState<SubjectSummary[]>([]);
   const [isLoadingAtlas, setIsLoadingAtlas] = useState(true);
   const [isLoadingReferenceEntities, setIsLoadingReferenceEntities] = useState(true);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
   const [isLoadingBasemapManifest, setIsLoadingBasemapManifest] = useState(true);
   const [isLoadingBasemapLayer, setIsLoadingBasemapLayer] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [atlasError, setAtlasError] = useState<string | null>(null);
   const [referenceEntitiesError, setReferenceEntitiesError] = useState<string | null>(null);
+  const [subjectsError, setSubjectsError] = useState<string | null>(null);
   const [basemapError, setBasemapError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -694,6 +738,10 @@ const WorldHistoryPage: React.FC = () => {
   });
   const [focusedPolityId, setFocusedPolityId] = useState<number | null>(() => {
     const parsed = Number(searchParams.get('polity'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
+  const [selectedSubjectFilterId, setSelectedSubjectFilterId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('subject'));
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   });
   const [selectedFormationOverlayId, setSelectedFormationOverlayId] = useState<number | null>(null);
@@ -732,12 +780,17 @@ const WorldHistoryPage: React.FC = () => {
   const [formationPolityPersonMembershipCache, setFormationPolityPersonMembershipCache] = useState<
     Record<number, PersonPolityMembershipDetail[]>
   >({});
+  const [personSubjectMembershipCache, setPersonSubjectMembershipCache] = useState<
+    Record<number, PersonSubjectMembershipDetail[]>
+  >({});
   const [formationWorkspaceError, setFormationWorkspaceError] = useState<string | null>(null);
   const [selectedPolityContextError, setSelectedPolityContextError] = useState<string | null>(null);
   const [formationOverlayError, setFormationOverlayError] = useState<string | null>(null);
+  const [personSubjectMembershipsError, setPersonSubjectMembershipsError] = useState<string | null>(null);
   const [isLoadingFormationWorkspace, setIsLoadingFormationWorkspace] = useState(false);
   const [isLoadingSelectedPolityContext, setIsLoadingSelectedPolityContext] = useState(false);
   const [isLoadingFormationOverlay, setIsLoadingFormationOverlay] = useState(false);
+  const [isLoadingPersonSubjectMemberships, setIsLoadingPersonSubjectMemberships] = useState(false);
   const [savingPersonPlacement, setSavingPersonPlacement] = useState(false);
   const [savingFormationPlacement, setSavingFormationPlacement] = useState(false);
   const [removingFormationMembershipId, setRemovingFormationMembershipId] = useState<number | null>(null);
@@ -1039,6 +1092,54 @@ const WorldHistoryPage: React.FC = () => {
     selectedBasemapFeature,
     selectedBasemapLabel,
   ]);
+  const subjectById = useMemo(
+    () => new Map(subjects.map((subject) => [subject.id, subject] as const)),
+    [subjects]
+  );
+  const selectedSubjectFilter = useMemo(
+    () => (selectedSubjectFilterId ? subjectById.get(selectedSubjectFilterId) ?? null : null),
+    [selectedSubjectFilterId, subjectById]
+  );
+  const selectedSubjectFilterScope = useMemo(() => {
+    if (!selectedSubjectFilterId) {
+      return null;
+    }
+
+    const scope = new Set<number>([selectedSubjectFilterId]);
+    const queue = [selectedSubjectFilterId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const subject of subjects) {
+        if (subject.parentSubjectId === currentId && !scope.has(subject.id)) {
+          scope.add(subject.id);
+          queue.push(subject.id);
+        }
+      }
+    }
+
+    return scope;
+  }, [selectedSubjectFilterId, subjects]);
+  const selectedSubjectFilterLabel = useMemo(
+    () =>
+      selectedSubjectFilter
+        ? buildSubjectPathLabel(selectedSubjectFilter, subjectById)
+        : selectedSubjectFilterId
+          ? 'Selected subject'
+        : 'All subjects',
+    [selectedSubjectFilter, selectedSubjectFilterId, subjectById]
+  );
+  const subjectFilterOptions = useMemo(
+    () =>
+      [...subjects]
+        .filter((subject) => subject.slug !== 'ontology')
+        .map((subject) => ({
+          id: subject.id,
+          label: buildSubjectPathLabel(subject, subjectById),
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    [subjectById, subjects]
+  );
   const personEntities = useMemo(
     () =>
       [...referenceEntities]
@@ -1115,29 +1216,35 @@ const WorldHistoryPage: React.FC = () => {
   }, [selectedPolitySnapshotYears]);
   const selectedPolityVisiblePersonMemberships = useMemo(
     () =>
-      [...selectedPolityPersonMemberships]
-        .filter((membership) => isMembershipVisibleInYear(membership, year))
-        .sort(
-          (left, right) =>
-            (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
-              sensitivity: 'base',
-            }) || left.id - right.id
-        )
-    ,
-    [selectedPolityPersonMemberships, year]
+      filterPersonMembershipsBySubject(
+        [...selectedPolityPersonMemberships]
+          .filter((membership) => isMembershipVisibleInYear(membership, year))
+          .sort(
+            (left, right) =>
+              (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+                sensitivity: 'base',
+              }) || left.id - right.id
+          ),
+        selectedSubjectFilterScope,
+        personSubjectMembershipCache
+      ),
+    [personSubjectMembershipCache, selectedPolityPersonMemberships, selectedSubjectFilterScope, year]
   );
   const selectedPolityHistoricalPersonMemberships = useMemo(
     () =>
-      [...selectedPolityPersonMemberships]
-        .filter((membership) => !isMembershipVisibleInYear(membership, year))
-        .sort(
-          (left, right) =>
-            (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
-              sensitivity: 'base',
-            }) || left.id - right.id
-        )
-    ,
-    [selectedPolityPersonMemberships, year]
+      filterPersonMembershipsBySubject(
+        [...selectedPolityPersonMemberships]
+          .filter((membership) => !isMembershipVisibleInYear(membership, year))
+          .sort(
+            (left, right) =>
+              (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+                sensitivity: 'base',
+              }) || left.id - right.id
+          ),
+        selectedSubjectFilterScope,
+        personSubjectMembershipCache
+      ),
+    [personSubjectMembershipCache, selectedPolityPersonMemberships, selectedSubjectFilterScope, year]
   );
   const selectedPolityVisiblePeoplePreview = useMemo(
     () => selectedPolityVisiblePersonMemberships.slice(0, 4),
@@ -1211,8 +1318,16 @@ const WorldHistoryPage: React.FC = () => {
           }) || left.id - right.id
       );
 
-    const visible = sortEntries([...visiblePeople.values()]);
-    const historical = sortEntries([...historicalPeople.values()]);
+    const visible = filterPersonMembershipsBySubject(
+      sortEntries([...visiblePeople.values()]),
+      selectedSubjectFilterScope,
+      personSubjectMembershipCache
+    );
+    const historical = filterPersonMembershipsBySubject(
+      sortEntries([...historicalPeople.values()]),
+      selectedSubjectFilterScope,
+      personSubjectMembershipCache
+    );
 
     return {
       visible,
@@ -1224,13 +1339,26 @@ const WorldHistoryPage: React.FC = () => {
     activeBasemapYear,
     activeFormationMemberships,
     formationPolityPersonMembershipCache,
+    personSubjectMembershipCache,
+    selectedSubjectFilterScope,
     year,
   ]);
+  const relevantPersonEntityIds = useMemo(
+    () =>
+      [
+        ...selectedPolityPersonMemberships,
+        ...Object.values(formationPolityPersonMembershipCache).flat(),
+      ]
+        .map((membership) => membership.personEntityId)
+        .filter((value): value is number => Number.isInteger(value) && value > 0)
+        .filter((value, index, array) => array.indexOf(value) === index),
+    [formationPolityPersonMembershipCache, selectedPolityPersonMemberships]
+  );
   const selectedPolityPeoplePresenceBundle = useMemo<PersonPresenceGeojsonBundle>(() => {
     if (
       !resolvedPolityMatch ||
       !selectedBasemapFeature ||
-      selectedPolityPersonMemberships.length === 0
+      selectedPolityVisiblePersonMemberships.length === 0
     ) {
       return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
     }
@@ -1243,25 +1371,20 @@ const WorldHistoryPage: React.FC = () => {
       return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
     }
 
-    const visibleMemberships = [...selectedPolityPersonMemberships]
-      .filter((membership) => isMembershipVisibleInYear(membership, year))
-      .sort(
-        (left, right) =>
-          (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
-            sensitivity: 'base',
-          }) || left.id - right.id
-      );
-
     return buildPersonPresenceGeojsonBundle({
       bounds,
-      memberships: visibleMemberships,
+      memberships: selectedPolityVisiblePersonMemberships,
       mode: 'polity',
       mapProperties: () => ({
         atlasPolityEntityId: resolvedPolityMatch.referenceEntity.id,
         atlasPolityTitle: resolvedPolityMatch.referenceEntity.title,
       }),
     });
-  }, [resolvedPolityMatch, selectedBasemapFeature, selectedPolityPersonMemberships, year]);
+  }, [
+    resolvedPolityMatch,
+    selectedBasemapFeature,
+    selectedPolityVisiblePersonMemberships,
+  ]);
   const activeFormationMembersGeojson = useMemo<FeatureCollectionLike>(() => {
     if (!activeFormationId || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
       return EMPTY_FEATURE_COLLECTION;
@@ -1328,13 +1451,19 @@ const WorldHistoryPage: React.FC = () => {
         .sort(
           (left, right) =>
             (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
-            sensitivity: 'base',
-          }) || left.id - right.id
+              sensitivity: 'base',
+            }) || left.id - right.id
         );
+      const filteredMemberships = filterPersonMembershipsBySubject(
+        visibleMemberships,
+        selectedSubjectFilterScope,
+        personSubjectMembershipCache
+      );
+      if (filteredMemberships.length === 0) continue;
 
       const bundle = buildPersonPresenceGeojsonBundle({
         bounds,
-        memberships: visibleMemberships,
+        memberships: filteredMemberships,
         mode: 'formation',
         mapProperties: () => ({
           atlasFormationEntityId: membership.formationEntityId,
@@ -1364,6 +1493,8 @@ const WorldHistoryPage: React.FC = () => {
     formationPolityPersonMembershipCache,
     formationPolitySnapshotCache,
     isActiveFormationOverlaySelected,
+    personSubjectMembershipCache,
+    selectedSubjectFilterScope,
     visibleActiveFormationMemberships,
     year,
   ]);
@@ -1400,6 +1531,9 @@ const WorldHistoryPage: React.FC = () => {
     if (focusedPolityId) nextParams.set('polity', String(focusedPolityId));
     else nextParams.delete('polity');
 
+    if (selectedSubjectFilterId) nextParams.set('subject', String(selectedSubjectFilterId));
+    else nextParams.delete('subject');
+
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
     }
@@ -1408,8 +1542,9 @@ const WorldHistoryPage: React.FC = () => {
     focusedPolityId,
     query,
     searchKind,
-    year,
     selectedAtlasEntityId,
+    selectedSubjectFilterId,
+    year,
     searchParams,
     setSearchParams,
   ]);
@@ -1485,6 +1620,24 @@ const WorldHistoryPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const loadSubjects = async () => {
+      setIsLoadingSubjects(true);
+      setSubjectsError(null);
+
+      try {
+        setSubjects(await fetchSubjects());
+      } catch (error) {
+        setSubjects([]);
+        setSubjectsError(error instanceof Error ? error.message : 'Failed to load subjects.');
+      } finally {
+        setIsLoadingSubjects(false);
+      }
+    };
+
+    void loadSubjects();
+  }, []);
+
+  useEffect(() => {
     if (!focusedPolityId) return;
 
     if (
@@ -1494,6 +1647,14 @@ const WorldHistoryPage: React.FC = () => {
       setFocusedPolityId(null);
     }
   }, [focusedPolityId, referenceEntities]);
+
+  useEffect(() => {
+    if (!selectedSubjectFilterId) return;
+
+    if (subjects.length > 0 && !subjects.some((subject) => subject.id === selectedSubjectFilterId)) {
+      setSelectedSubjectFilterId(null);
+    }
+  }, [selectedSubjectFilterId, subjects]);
 
   useEffect(() => {
     if (!activeFormationId && formationEntities[0]) {
@@ -1785,6 +1946,63 @@ const WorldHistoryPage: React.FC = () => {
     formationPolityPersonMembershipCache,
     formationPolitySnapshotCache,
   ]);
+
+  useEffect(() => {
+    const missingPersonEntityIds = relevantPersonEntityIds.filter(
+      (personEntityId) => personSubjectMembershipCache[personEntityId] === undefined
+    );
+
+    if (missingPersonEntityIds.length === 0) {
+      setIsLoadingPersonSubjectMemberships(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingPersonSubjectMemberships(true);
+    setPersonSubjectMembershipsError(null);
+
+    const loadPersonSubjectMemberships = async () => {
+      try {
+        const memberships = await fetchWorldHistoryPersonSubjectMemberships(missingPersonEntityIds);
+        if (cancelled) return;
+
+        setPersonSubjectMembershipCache((current) => {
+          const next: Record<number, PersonSubjectMembershipDetail[]> = { ...current };
+          for (const personEntityId of missingPersonEntityIds) {
+            next[personEntityId] = [];
+          }
+
+          for (const membership of memberships) {
+            if (!membership.personEntityId) continue;
+            if (!next[membership.personEntityId]) {
+              next[membership.personEntityId] = [];
+            }
+            next[membership.personEntityId].push(membership);
+          }
+
+          return next;
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setPersonSubjectMembershipsError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load subject memberships for the atlas people layer.'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPersonSubjectMemberships(false);
+        }
+      }
+    };
+
+    void loadPersonSubjectMemberships();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [personSubjectMembershipCache, relevantPersonEntityIds]);
 
   useEffect(() => {
     setAtlasMembershipError(null);
@@ -2941,6 +3159,53 @@ const WorldHistoryPage: React.FC = () => {
                         {isSearching ? 'Searching…' : 'Search authority'}
                       </button>
                     </div>
+                  </div>
+
+                  <div className="world-history-filter-bar">
+                    <div className="world-history-filter-bar__head">
+                      <span className="world-history-panel__eyebrow">People Filter</span>
+                      {selectedSubjectFilterId ? (
+                        <span className="world-history-count-chip">{visiblePersonPresenceCount}</span>
+                      ) : null}
+                    </div>
+                    <div className="world-history-filter-controls">
+                      <select
+                        value={selectedSubjectFilterId ? String(selectedSubjectFilterId) : ''}
+                        onChange={(event) =>
+                          setSelectedSubjectFilterId(
+                            event.target.value ? Number(event.target.value) : null
+                          )
+                        }
+                        disabled={isLoadingSubjects || subjectFilterOptions.length === 0}
+                      >
+                        <option value="">All subjects</option>
+                        {subjectFilterOptions.map((subject) => (
+                          <option key={subject.id} value={subject.id}>
+                            {subject.label}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedSubjectFilterId ? (
+                        <button
+                          type="button"
+                          className="world-history-clear-button"
+                          onClick={() => setSelectedSubjectFilterId(null)}
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+                    {selectedSubjectFilterId ? (
+                      <div className="world-history-filter-meta">
+                        {isLoadingPersonSubjectMemberships
+                          ? `Filtering people for ${selectedSubjectFilterLabel}…`
+                          : `Showing people for ${selectedSubjectFilterLabel}.`}
+                      </div>
+                    ) : null}
+                    {subjectsError && <div className="world-history-feedback is-error">{subjectsError}</div>}
+                    {personSubjectMembershipsError && (
+                      <div className="world-history-feedback is-error">{personSubjectMembershipsError}</div>
+                    )}
                   </div>
 
                   {searchError && <div className="world-history-feedback is-error">{searchError}</div>}
