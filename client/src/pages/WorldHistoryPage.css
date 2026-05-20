@@ -418,6 +418,51 @@
   inset: 0;
 }
 
+.world-history-map__labels {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.world-history-map__person-label {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 12px));
+  max-width: 188px;
+  padding: 5px 10px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(86, 55, 32, 0.16);
+  background: rgba(251, 245, 235, 0.92);
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  box-shadow: 0 8px 14px rgba(53, 33, 18, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.world-history-map__person-label::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-right: 1px solid rgba(86, 55, 32, 0.16);
+  border-bottom: 1px solid rgba(86, 55, 32, 0.16);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.world-history-map__person-label--formation {
+  background: rgba(238, 244, 249, 0.92);
+  border-color: rgba(47, 95, 118, 0.16);
+  color: #29566f;
+}
+
 .world-history-map__float {
   position: absolute;
   z-index: 3;
@@ -887,6 +932,10 @@
     max-width: none;
     width: auto;
     margin: 14px;
+  }
+
+  .world-history-map__labels {
+    display: none;
   }
 
   .world-history-result-card__head,

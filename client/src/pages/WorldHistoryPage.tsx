@@ -166,6 +166,14 @@ type FeatureCollectionLike = {
   type: 'FeatureCollection';
   features: Array<Record<string, unknown>>;
 };
+type PointFeatureLike = {
+  type: 'Feature';
+  properties?: Record<string, unknown>;
+  geometry?: {
+    type: 'Point';
+    coordinates: [number, number];
+  } | null;
+};
 type BasemapFeatureProperties = {
   atlasFeatureId: string;
   atlasLabel: string;
@@ -183,9 +191,44 @@ type BasemapFeature = {
   properties?: BasemapFeatureProperties;
   geometry?: Record<string, unknown> | null;
 };
+type PersonPresenceGeojsonBundle = {
+  points: FeatureCollectionLike;
+  spokes: FeatureCollectionLike;
+};
+type ProjectedPersonLabel = {
+  key: string;
+  left: number;
+  mode: 'formation' | 'polity';
+  title: string;
+  top: number;
+};
 const EMPTY_FEATURE_COLLECTION: FeatureCollectionLike = {
   type: 'FeatureCollection',
   features: [],
+};
+const EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE: PersonPresenceGeojsonBundle = {
+  points: EMPTY_FEATURE_COLLECTION,
+  spokes: EMPTY_FEATURE_COLLECTION,
+};
+
+const areProjectedLabelsEqual = (left: ProjectedPersonLabel[], right: ProjectedPersonLabel[]) => {
+  if (left.length !== right.length) return false;
+
+  for (const [index, entry] of left.entries()) {
+    const other = right[index];
+    if (!other) return false;
+    if (
+      entry.key !== other.key ||
+      entry.title !== other.title ||
+      entry.mode !== other.mode ||
+      entry.left !== other.left ||
+      entry.top !== other.top
+    ) {
+      return false;
+    }
+  }
+
+  return true;
 };
 
 const LOCAL_ATLAS_MAP_STYLE = {
@@ -365,7 +408,7 @@ const isMembershipVisibleInYear = (
   return true;
 };
 
-const getPresenceMarkerCoordinates = (
+const getPresenceMarkerPlacement = (
   bounds: {
     west: number;
     east: number;
@@ -376,24 +419,39 @@ const getPresenceMarkerCoordinates = (
   total: number
 ) => {
   const center = getBoundsCenter(bounds);
+  const anchor: [number, number] = [center.longitude, center.latitude];
   if (total <= 1) {
-    return [center.longitude, center.latitude] as const;
+    return {
+      anchor,
+      coordinates: anchor,
+      displaced: false,
+    };
   }
 
-  const steps = Math.min(Math.max(total, 2), 6);
-  const slot = index % steps;
-  const ring = Math.floor(index / steps) + 1;
-  const angle = (2 * Math.PI * slot) / steps + (ring % 2 === 0 ? Math.PI / steps : 0);
+  const ringCapacity = 8;
+  const ring = Math.floor(index / ringCapacity);
+  const slot = index - ring * ringCapacity;
+  const entriesInRing = Math.min(total - ring * ringCapacity, ringCapacity);
+  const angle =
+    entriesInRing <= 1
+      ? -Math.PI / 2
+      : (slot / entriesInRing) * 2 * Math.PI - Math.PI / 2;
   const horizontalSpan = Math.max(bounds.east - bounds.west, 1.2);
   const verticalSpan = Math.max(bounds.north - bounds.south, 0.8);
-  const radiusScale = 0.34 + (ring - 1) * 0.26;
-  const radiusLng = Math.min(Math.max(horizontalSpan * 0.16, 0.65), 6) * radiusScale;
-  const radiusLat = Math.min(Math.max(verticalSpan * 0.16, 0.45), 4) * radiusScale;
-
-  return [
+  const baseRadiusLng = Math.min(Math.max(horizontalSpan * 0.12, 0.7), 4.5);
+  const baseRadiusLat = Math.min(Math.max(verticalSpan * 0.12, 0.5), 3.2);
+  const radiusLng = baseRadiusLng + ring * Math.max(baseRadiusLng * 0.55, 0.55);
+  const radiusLat = baseRadiusLat + ring * Math.max(baseRadiusLat * 0.55, 0.45);
+  const coordinates: [number, number] = [
     center.longitude + Math.cos(angle) * radiusLng,
     center.latitude + Math.sin(angle) * radiusLat,
-  ] as const;
+  ];
+
+  return {
+    anchor,
+    coordinates,
+    displaced: true,
+  };
 };
 
 const getPersonMembershipKey = (
@@ -412,6 +470,84 @@ const getFeatureCollectionFeatures = (geojson: GeoJsonLike | null | undefined) =
   }
 
   return geojson.features as Array<Record<string, unknown>>;
+};
+
+const buildPersonPresenceGeojsonBundle = <T extends PersonPolityMembershipDetail>({
+  bounds,
+  memberships,
+  mode,
+  mapProperties,
+}: {
+  bounds: {
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+  };
+  mapProperties: (membership: T) => Record<string, unknown>;
+  memberships: T[];
+  mode: 'formation' | 'polity';
+}) => {
+  if (memberships.length === 0) {
+    return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
+  }
+
+  const pointFeatures: PointFeatureLike[] = [];
+  const spokeFeatures: Array<Record<string, unknown>> = [];
+
+  for (const [index, membership] of memberships.entries()) {
+    const placement = getPresenceMarkerPlacement(bounds, index, memberships.length);
+    const [anchorLongitude, anchorLatitude] = placement.anchor;
+    const [displayLongitude, displayLatitude] = placement.coordinates;
+
+    pointFeatures.push({
+      type: 'Feature',
+      properties: {
+        atlasAnchorLatitude: anchorLatitude,
+        atlasAnchorLongitude: anchorLongitude,
+        atlasDisplayIndex: index,
+        atlasDisplayLatitude: displayLatitude,
+        atlasDisplayLongitude: displayLongitude,
+        atlasDisplayTotal: memberships.length,
+        atlasMembershipId: membership.id,
+        atlasMembershipTimespan: formatMembershipTimespan(membership),
+        atlasPersonEntityId: membership.personEntityId,
+        atlasPersonTitle: membership.personTitle || 'Untitled person',
+        atlasPresenceId: `${mode}-${membership.id}`,
+        atlasPresenceMode: mode,
+        ...mapProperties(membership),
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: placement.coordinates,
+      },
+    });
+
+    if (placement.displaced) {
+      spokeFeatures.push({
+        type: 'Feature',
+        properties: {
+          atlasPresenceId: `${mode}-${membership.id}`,
+          atlasPresenceMode: mode,
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [placement.anchor, placement.coordinates],
+        },
+      });
+    }
+  }
+
+  return {
+    points: {
+      type: 'FeatureCollection',
+      features: pointFeatures,
+    },
+    spokes: {
+      type: 'FeatureCollection',
+      features: spokeFeatures,
+    },
+  } satisfies PersonPresenceGeojsonBundle;
 };
 
 const buildAtlasGeoJson = (entities: CanonicalHistoricalEntity[]) => ({
@@ -610,6 +746,7 @@ const WorldHistoryPage: React.FC = () => {
     const parsed = Number(searchParams.get('year'));
     return Number.isInteger(parsed) ? parsed : DEFAULT_YEAR;
   });
+  const [projectedPersonLabels, setProjectedPersonLabels] = useState<ProjectedPersonLabel[]>([]);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapLoadedRef = useRef(false);
@@ -1089,13 +1226,13 @@ const WorldHistoryPage: React.FC = () => {
     formationPolityPersonMembershipCache,
     year,
   ]);
-  const selectedPolityPeoplePresenceGeojson = useMemo<FeatureCollectionLike>(() => {
+  const selectedPolityPeoplePresenceBundle = useMemo<PersonPresenceGeojsonBundle>(() => {
     if (
       !resolvedPolityMatch ||
       !selectedBasemapFeature ||
       selectedPolityPersonMemberships.length === 0
     ) {
-      return EMPTY_FEATURE_COLLECTION;
+      return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
     }
 
     const bounds = getGeoJsonBounds({
@@ -1103,7 +1240,7 @@ const WorldHistoryPage: React.FC = () => {
       features: [selectedBasemapFeature],
     });
     if (!bounds) {
-      return EMPTY_FEATURE_COLLECTION;
+      return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
     }
 
     const visibleMemberships = [...selectedPolityPersonMemberships]
@@ -1115,26 +1252,15 @@ const WorldHistoryPage: React.FC = () => {
           }) || left.id - right.id
       );
 
-    return {
-      type: 'FeatureCollection',
-      features: visibleMemberships.map((membership, index) => ({
-        type: 'Feature',
-        properties: {
-          atlasPresenceId: `polity-${membership.id}`,
-          atlasPresenceMode: 'polity',
-          atlasMembershipId: membership.id,
-          atlasPersonEntityId: membership.personEntityId,
-          atlasPersonTitle: membership.personTitle || 'Untitled person',
-          atlasPolityEntityId: resolvedPolityMatch.referenceEntity.id,
-          atlasPolityTitle: resolvedPolityMatch.referenceEntity.title,
-          atlasMembershipTimespan: formatMembershipTimespan(membership),
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: getPresenceMarkerCoordinates(bounds, index, visibleMemberships.length),
-        },
-      })),
-    };
+    return buildPersonPresenceGeojsonBundle({
+      bounds,
+      memberships: visibleMemberships,
+      mode: 'polity',
+      mapProperties: () => ({
+        atlasPolityEntityId: resolvedPolityMatch.referenceEntity.id,
+        atlasPolityTitle: resolvedPolityMatch.referenceEntity.title,
+      }),
+    });
   }, [resolvedPolityMatch, selectedBasemapFeature, selectedPolityPersonMemberships, year]);
   const activeFormationMembersGeojson = useMemo<FeatureCollectionLike>(() => {
     if (!activeFormationId || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
@@ -1179,18 +1305,21 @@ const WorldHistoryPage: React.FC = () => {
   const selectedFormationOverlayGeojson = isActiveFormationOverlaySelected
     ? activeFormationMembersGeojson
     : EMPTY_FEATURE_COLLECTION;
-  const activeFormationPeoplePresenceGeojson = useMemo<FeatureCollectionLike>(() => {
+  const activeFormationPeoplePresenceBundle = useMemo<PersonPresenceGeojsonBundle>(() => {
     if (!isActiveFormationOverlaySelected || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
-      return EMPTY_FEATURE_COLLECTION;
+      return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
     }
 
-    const features = visibleActiveFormationMemberships.flatMap((membership) => {
+    const pointFeatures: Array<Record<string, unknown>> = [];
+    const spokeFeatures: Array<Record<string, unknown>> = [];
+
+    for (const membership of visibleActiveFormationMemberships) {
       const snapshots = formationPolitySnapshotCache[membership.polityEntityId] ?? [];
       const snapshot = snapshots.find((entry) => entry.snapshotYear === activeBasemapYear.year);
-      if (!snapshot) return [];
+      if (!snapshot) continue;
 
       const bounds = getGeoJsonBounds(snapshot.geometry);
-      if (!bounds) return [];
+      if (!bounds) continue;
 
       const visibleMemberships = [
         ...(formationPolityPersonMembershipCache[membership.polityEntityId] ?? []),
@@ -1199,34 +1328,35 @@ const WorldHistoryPage: React.FC = () => {
         .sort(
           (left, right) =>
             (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
-              sensitivity: 'base',
-            }) || left.id - right.id
+            sensitivity: 'base',
+          }) || left.id - right.id
         );
 
-      return visibleMemberships.map((entry, index) => ({
-        type: 'Feature',
-        properties: {
-          atlasPresenceId: `formation-${membership.id}-${entry.id}`,
-          atlasPresenceMode: 'formation',
-          atlasMembershipId: entry.id,
-          atlasPersonEntityId: entry.personEntityId,
-          atlasPersonTitle: entry.personTitle || 'Untitled person',
-          atlasPolityEntityId: membership.polityEntityId,
-          atlasPolityTitle: membership.polityTitle || snapshot.titleAtSnapshot,
+      const bundle = buildPersonPresenceGeojsonBundle({
+        bounds,
+        memberships: visibleMemberships,
+        mode: 'formation',
+        mapProperties: () => ({
           atlasFormationEntityId: membership.formationEntityId,
           atlasFormationTitle: membership.formationTitle || activeFormation?.title || '',
-          atlasMembershipTimespan: formatMembershipTimespan(entry),
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: getPresenceMarkerCoordinates(bounds, index, visibleMemberships.length),
-        },
-      }));
-    });
+          atlasPolityEntityId: membership.polityEntityId,
+          atlasPolityTitle: membership.polityTitle || snapshot.titleAtSnapshot,
+        }),
+      });
+
+      pointFeatures.push(...bundle.points.features);
+      spokeFeatures.push(...bundle.spokes.features);
+    }
 
     return {
-      type: 'FeatureCollection',
-      features,
+      points: {
+        type: 'FeatureCollection',
+        features: pointFeatures,
+      },
+      spokes: {
+        type: 'FeatureCollection',
+        features: spokeFeatures,
+      },
     };
   }, [
     activeBasemapYear,
@@ -1237,10 +1367,10 @@ const WorldHistoryPage: React.FC = () => {
     visibleActiveFormationMemberships,
     year,
   ]);
-  const visiblePersonPresenceGeojson = isActiveFormationOverlaySelected
-    ? activeFormationPeoplePresenceGeojson
-    : selectedPolityPeoplePresenceGeojson;
-  const visiblePersonPresenceCount = visiblePersonPresenceGeojson.features.length;
+  const visiblePersonPresenceBundle = isActiveFormationOverlaySelected
+    ? activeFormationPeoplePresenceBundle
+    : selectedPolityPeoplePresenceBundle;
+  const visiblePersonPresenceCount = visiblePersonPresenceBundle.points.features.length;
 
   const openEntityPage = (entityId: number) => {
     navigate(`/entities/${entityId}`, {
@@ -1993,6 +2123,11 @@ const WorldHistoryPage: React.FC = () => {
             data: EMPTY_FEATURE_COLLECTION as any,
           });
 
+          map.addSource('atlas-person-presence-spokes', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
           map.addLayer({
             id: 'atlas-historical-basemap-fill',
             type: 'fill',
@@ -2087,23 +2222,70 @@ const WorldHistoryPage: React.FC = () => {
           },
         });
 
-        map.addLayer({
-          id: 'atlas-hovered-basemap-feature-outline',
-          type: 'line',
-          source: 'atlas-hovered-basemap-feature',
-          paint: {
+          map.addLayer({
+            id: 'atlas-hovered-basemap-feature-outline',
+            type: 'line',
+            source: 'atlas-hovered-basemap-feature',
+            paint: {
             'line-color': '#f8f1e5',
             'line-width': 1.4,
             'line-opacity': 0.95,
-          },
-        });
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-person-presence-spokes',
+            type: 'line',
+            source: 'atlas-person-presence-spokes',
+            paint: {
+              'line-color': [
+                'match',
+                ['get', 'atlasPresenceMode'],
+                'formation',
+                '#6e5a8e',
+                '#8f6e43',
+              ],
+              'line-opacity': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                0.26,
+                3.5,
+                0.46,
+                6,
+                0.7,
+              ],
+              'line-width': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                0.7,
+                4,
+                1,
+                7,
+                1.4,
+              ],
+            },
+          });
 
           map.addLayer({
             id: 'atlas-person-presence',
             type: 'circle',
             source: 'atlas-person-presence',
             paint: {
-              'circle-radius': 7,
+              'circle-radius': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                4.5,
+                4,
+                6.2,
+                7,
+                8.5,
+              ],
               'circle-color': [
                 'match',
                 ['get', 'atlasPresenceMode'],
@@ -2112,7 +2294,17 @@ const WorldHistoryPage: React.FC = () => {
                 '#b57b36',
               ],
               'circle-opacity': 0.95,
-              'circle-stroke-width': 1.8,
+              'circle-stroke-width': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                1.1,
+                5,
+                1.6,
+                7,
+                2,
+              ],
               'circle-stroke-color': '#fff6ea',
             },
           });
@@ -2381,6 +2573,9 @@ const WorldHistoryPage: React.FC = () => {
     const selectedBasemapSource = map.getSource('atlas-selected-basemap-feature') as GeoJSONSource | undefined;
     const hoveredBasemapSource = map.getSource('atlas-hovered-basemap-feature') as GeoJSONSource | undefined;
     const personPresenceSource = map.getSource('atlas-person-presence') as GeoJSONSource | undefined;
+    const personPresenceSpokesSource = map.getSource(
+      'atlas-person-presence-spokes'
+    ) as GeoJSONSource | undefined;
     const source = map.getSource('atlas-entities') as GeoJSONSource | undefined;
     const geometrySource = map.getSource('atlas-selected-geometry') as GeoJSONSource | undefined;
     if (
@@ -2390,6 +2585,7 @@ const WorldHistoryPage: React.FC = () => {
       !selectedBasemapSource ||
       !hoveredBasemapSource ||
       !personPresenceSource ||
+      !personPresenceSpokesSource ||
       !source ||
       !geometrySource
     ) {
@@ -2416,7 +2612,8 @@ const WorldHistoryPage: React.FC = () => {
         : (EMPTY_FEATURE_COLLECTION as any)
     );
     source.setData(buildAtlasGeoJson(visibleAtlasEntities) as any);
-    personPresenceSource.setData(visiblePersonPresenceGeojson as any);
+    personPresenceSource.setData(visiblePersonPresenceBundle.points as any);
+    personPresenceSpokesSource.setData(visiblePersonPresenceBundle.spokes as any);
     geometrySource.setData(
       (selectedGeometry ?? EMPTY_FEATURE_COLLECTION) as any
     );
@@ -2436,10 +2633,127 @@ const WorldHistoryPage: React.FC = () => {
     selectedBasemapFeatureId,
     selectedFormationOverlayGeojson,
     selectedGeometry,
-    visiblePersonPresenceGeojson,
+    visiblePersonPresenceBundle,
     selectedVisibleAtlasEntity,
     visibleAtlasEntities,
   ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) {
+      setProjectedPersonLabels([]);
+      return;
+    }
+
+    let frameId = 0;
+
+    const updateLabels = () => {
+      frameId = 0;
+
+      const pointFeatures = visiblePersonPresenceBundle.points.features as PointFeatureLike[];
+      const zoom = map.getZoom();
+      if (zoom < 3.55 || pointFeatures.length === 0) {
+        setProjectedPersonLabels((current) => (current.length === 0 ? current : []));
+        return;
+      }
+
+      const container = map.getContainer();
+      const viewportWidth = container.clientWidth;
+      const viewportHeight = container.clientHeight;
+      const maxLabels = zoom >= 5.4 ? 24 : zoom >= 4.6 ? 16 : 9;
+      const collisionBoxes: Array<{
+        bottom: number;
+        left: number;
+        right: number;
+        top: number;
+      }> = [];
+
+      const orderedFeatures = [...pointFeatures].sort((left, right) => {
+        const leftMode = left.properties?.atlasPresenceMode === 'polity' ? 0 : 1;
+        const rightMode = right.properties?.atlasPresenceMode === 'polity' ? 0 : 1;
+        return (
+          leftMode - rightMode ||
+          String(left.properties?.atlasPersonTitle ?? '').localeCompare(
+            String(right.properties?.atlasPersonTitle ?? ''),
+            undefined,
+            { sensitivity: 'base' }
+          )
+        );
+      });
+
+      const nextLabels: ProjectedPersonLabel[] = [];
+
+      for (const feature of orderedFeatures) {
+        if (nextLabels.length >= maxLabels) break;
+
+        const title = String(feature.properties?.atlasPersonTitle ?? '').trim();
+        const coordinates = feature.geometry?.coordinates;
+        if (!title || !coordinates || coordinates.length < 2) continue;
+
+        const projected = map.project([coordinates[0], coordinates[1]]);
+        if (
+          projected.x < 20 ||
+          projected.y < 18 ||
+          projected.x > viewportWidth - 20 ||
+          projected.y > viewportHeight - 16
+        ) {
+          continue;
+        }
+
+        const width = Math.min(188, Math.max(72, title.length * 7.1 + 24));
+        const height = 24;
+        const box = {
+          left: projected.x - width / 2,
+          right: projected.x + width / 2,
+          top: projected.y - 34,
+          bottom: projected.y - 34 + height,
+        };
+        const overlaps = collisionBoxes.some(
+          (entry) =>
+            box.left < entry.right &&
+            box.right > entry.left &&
+            box.top < entry.bottom &&
+            box.bottom > entry.top
+        );
+        if (overlaps) continue;
+
+        collisionBoxes.push(box);
+        nextLabels.push({
+          key: String(
+            feature.properties?.atlasPresenceId ??
+              `${feature.properties?.atlasPresenceMode ?? 'presence'}-${title}`
+          ),
+          left: Math.round(projected.x),
+          top: Math.round(projected.y),
+          mode: feature.properties?.atlasPresenceMode === 'formation' ? 'formation' : 'polity',
+          title,
+        });
+      }
+
+      setProjectedPersonLabels((current) =>
+        areProjectedLabelsEqual(current, nextLabels) ? current : nextLabels
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(updateLabels);
+    };
+
+    scheduleUpdate();
+    map.on('move', scheduleUpdate);
+    map.on('zoom', scheduleUpdate);
+    map.on('resize', scheduleUpdate);
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      map.off('move', scheduleUpdate);
+      map.off('zoom', scheduleUpdate);
+      map.off('resize', scheduleUpdate);
+    };
+  }, [visiblePersonPresenceBundle]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -2579,6 +2893,19 @@ const WorldHistoryPage: React.FC = () => {
           <section className="world-history-main">
             <section className="world-history-map">
               <div ref={mapContainerRef} className="world-history-map__canvas" />
+              {projectedPersonLabels.length > 0 && (
+                <div className="world-history-map__labels" aria-hidden="true">
+                  {projectedPersonLabels.map((label) => (
+                    <div
+                      key={label.key}
+                      className={`world-history-map__person-label world-history-map__person-label--${label.mode}`}
+                      style={{ left: label.left, top: label.top }}
+                    >
+                      {label.title}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="world-history-map__float world-history-map__float--left">
                 <section className="world-history-panel world-history-panel--floating">
                   <div className="world-history-panel__header">
