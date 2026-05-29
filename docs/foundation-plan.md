@@ -54,7 +54,13 @@ Status:
 
 1. Add person-to-polity membership.
 2. Make the world-history map open directly into built-in polity records and formation composition.
-3. Add exhibition and publishing layers.
+3. Add subject filtering and richer people overlays to the atlas.
+4. Canonicalize item creators through `created_by` person relations.
+5. Add exhibition and publishing layers.
+
+Status:
+- implemented through the atlas and creator-canonicalization work in the current branch
+- exhibition and publishing layers remain future work
 
 Detailed atlas refactor notes live in [world-history-polity-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/world-history-polity-plan.md).
 

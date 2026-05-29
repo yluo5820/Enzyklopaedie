@@ -42,11 +42,13 @@ npm run test --prefix server
 That test currently covers:
 
 - creating an item
+- resolving explicit and fallback item creators through canonical `created_by` person relations
 - fetching it back with parsed metadata
 - updating it
 - verifying the activity feed records both create and update events
 - creating, updating, filtering, and deleting atlas entities
 - formation memberships and atlas relation flows
+- person polity and subject membership flows
 - world-history search, basemap, and polity import routes
 
 ## Suggested Manual Pass
@@ -66,6 +68,7 @@ That test currently covers:
   - creator: `Codex`
   - status: `active`
 - Confirm it appears in the list immediately
+- Open the item and confirm the creator appears as canonical provenance when a person record is selected or resolved
 - Confirm the counts update
 - Remove it again and confirm it disappears
 
@@ -106,6 +109,7 @@ That test currently covers:
 - Open `/entities`
 - Confirm the page loads and shows `person`, `polity`, and `formation`
 - Confirm built-in polities are browseable but not removable
+- Create a `person`, add one subject membership, then place that person inside a polity
 - Create a new `formation` and confirm it appears in the list immediately
 - Open that formation and add one polity membership
 - Confirm linked items and linked topics/subjects appear on the entity page when relations exist
@@ -119,6 +123,8 @@ That test currently covers:
 - Drag the timeline and confirm the basemap snapshot changes
 - Search a canonical record and pin it
 - Click a named basemap region and confirm the snapshot panel updates
+- Confirm people placed in the selected polity appear in the current or historical people sections
+- Use the subject filter and confirm unrelated placed people are hidden from the people overlay
 - If `data/historical-basemaps` is present, confirm built-in polity resolution works for selected regions
 
 ## Notes

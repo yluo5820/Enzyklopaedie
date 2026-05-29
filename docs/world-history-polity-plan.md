@@ -350,20 +350,23 @@ Completed:
 4. The historical-basemaps importer seeds built-in `polity` records and snapshots.
 5. The atlas UI now centers on the three active kinds.
 6. The old `nation / civilization / era / place` local atlas kinds have been removed from the active UI and model.
+7. `person_polity_memberships` place people inside built-in polities with optional year bounds.
+8. Person memberships project back onto the world-history map and polity/entity pages.
+9. Subject memberships let the atlas filter visible people by study context.
+10. Item creators canonicalize into `created_by` relations to person entities, with free-text creator values retained as an import/display fallback.
 
 Still open:
 
-1. add explicit `person_polity_memberships`
-2. make people use those memberships directly in the atlas UI
-3. let the world-history page open directly into built-in polity records and formation composition
-4. decide whether a later dedicated `site` layer is needed for cities, battle sites, and other true places
+1. make duplicate imported polity identities easier to reconcile when conservative label grouping splits a historical unit
+2. decide whether a later dedicated `site` layer is needed for cities, battle sites, and other true places
+3. add exhibition and publishing layers after the atlas workflows settle
 
 ## Next Implementation Slice
 
-The next meaningful implementation step is:
+The next meaningful implementation step after this branch is:
 
-1. add `person_polity_memberships`
-2. surface them on person pages
-3. let selected world-history regions bridge directly into polity membership and formation workflows
+1. review real imported basemap data for duplicated or overly broad polity identities
+2. add a lightweight reconciliation workflow only if the data shows enough duplication to justify it
+3. start the exhibition/publishing layer once the canonical atlas model is stable in day-to-day use
 
-That is the next step that materially deepens the atlas after the current migration cleanup.
+That keeps the branch focused on the canonical atlas V1 instead of stretching it into later publishing work.
