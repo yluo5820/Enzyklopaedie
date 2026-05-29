@@ -83,6 +83,7 @@ The current automated coverage is intentionally focused on the new foundation:
 - shared domain helpers
 - item create/update API flow
 - atlas entity create/update/delete API flow
+- Wikidata authority search/import flow for reference entities
 - formation membership and atlas relation flow
 - person polity and subject membership flow
 - canonical item creator resolution through `created_by` person relations
@@ -104,18 +105,19 @@ After `npm start`, use this path:
 3. Open `Items` and add an item
 4. Confirm the item creator resolves to a linked person when possible, while the creator text remains available as fallback display
 5. Open `Entities` and confirm the atlas loads with `person`, `polity`, and `formation`
-6. Create a new person, add a subject membership, then place that person inside a polity
-7. Create a new formation, add a polity membership, open it, update it, and delete it again
-8. Open `Subjects` and confirm the tree loads with `Ontology` as the root
-9. Open a subject page from the tree, create a child subject, and create a topic inside that subject
-10. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
-11. Open an item, attach or create a topic, then link it to an entity such as a person, polity, or formation
-12. Open that entity page and confirm the linked topic and item appear in its context sections
-13. Add an entity-to-entity structural link such as a formation containing a polity or a formation belonging to a broader formation
-14. Add a note, a task, and a review on the item page
-15. Return to `Home` and confirm recent activity entries appear
-16. Open `World History` and confirm the map, basemap snapshot, timeline, people overlays, and subject filter render
-17. If `data/historical-basemaps` is present, confirm local boundary snapshots and built-in polity resolution load too
+6. Search Wikidata from `Entities`, import a person or polity, and open the created entity
+7. Create a new person manually, add a subject membership, then place that person inside a polity
+8. Create a new formation, add a polity membership, open it, update it, and delete it again
+9. Open `Subjects` and confirm the tree loads with `Ontology` as the root
+10. Open a subject page from the tree, create a child subject, and create a topic inside that subject
+11. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
+12. Open an item, attach or create a topic, then link it to an entity such as a person, polity, or formation
+13. Open that entity page and confirm the linked topic and item appear in its context sections
+14. Add an entity-to-entity structural link such as a formation containing a polity or a formation belonging to a broader formation
+15. Add a note, a task, and a review on the item page
+16. Return to `Home` and confirm recent activity entries appear
+17. Open `World History` and confirm the map, basemap snapshot, timeline, people overlays, and subject filter render
+18. If `data/historical-basemaps` is present, confirm local boundary snapshots and built-in polity resolution load too
 
 ## Working Notes
 

@@ -1816,6 +1816,200 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     }
   });
 
+  await t.test('reference entity authority routes search and import Wikidata records', async () => {
+    const originalFetch = global.fetch;
+    let callCount = 0;
+
+    global.fetch = async (input) => {
+      callCount += 1;
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      const parsedUrl = new URL(url);
+
+      if (callCount === 1) {
+        assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
+        assert.equal(parsedUrl.searchParams.get('action'), 'wbsearchentities');
+        assert.equal(parsedUrl.searchParams.get('search'), 'Hypatia');
+
+        return new Response(
+          JSON.stringify({
+            search: [
+              {
+                id: 'Q102875',
+                label: 'Hypatia',
+                description: 'Greek Neoplatonist philosopher, astronomer, and mathematician',
+                concepturi: 'https://www.wikidata.org/wiki/Q102875',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      if (callCount === 2) {
+        assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
+        assert.equal(parsedUrl.searchParams.get('action'), 'wbgetentities');
+        assert.equal(parsedUrl.searchParams.get('ids'), 'Q102875');
+
+        return new Response(
+          JSON.stringify({
+            entities: {
+              Q102875: {
+                id: 'Q102875',
+                labels: {
+                  en: {
+                    value: 'Hypatia',
+                  },
+                },
+                descriptions: {
+                  en: {
+                    value: 'Greek Neoplatonist philosopher, astronomer, and mathematician',
+                  },
+                },
+                sitelinks: {
+                  enwiki: {
+                    title: 'Hypatia',
+                  },
+                },
+                claims: {
+                  P31: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            id: 'Q5',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P569: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            time: '-0350-01-01T00:00:00Z',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P570: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            time: '-0415-01-01T00:00:00Z',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P18: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: 'Hypatia portrait.jpg',
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      assert.match(parsedUrl.toString(), /en\.wikipedia\.org\/api\/rest_v1\/page\/summary\/Hypatia/);
+      return new Response(
+        JSON.stringify({
+          extract: 'Hypatia was a Greek Neoplatonist philosopher, astronomer, and mathematician.',
+          content_urls: {
+            desktop: {
+              page: 'https://en.wikipedia.org/wiki/Hypatia',
+            },
+          },
+          thumbnail: {
+            source: 'https://upload.wikimedia.org/hypatia.jpg',
+          },
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const searchResponse = await requestThroughHttp(
+        '/api/reference-entities/authority-search?q=Hypatia&kind=person'
+      );
+      assert.equal(searchResponse.status, 200);
+      const matches = await searchResponse.json();
+      assert.equal(matches.length, 1);
+      assert.equal(matches[0].authorityId, 'Q102875');
+      assert.equal(matches[0].kind, 'person');
+      assert.equal(matches[0].title, 'Hypatia');
+      assert.equal(matches[0].startYear, -350);
+      assert.equal(matches[0].endYear, -415);
+      assert.equal(matches[0].description, 'Hypatia was a Greek Neoplatonist philosopher, astronomer, and mathematician.');
+      assert.equal(matches[0].metadata.wikipediaTitle, 'Hypatia');
+      assert.equal(
+        matches[0].imageUrl,
+        'https://commons.wikimedia.org/wiki/Special:FilePath/Hypatia%20portrait.jpg?width=480'
+      );
+
+      const importResponse = await requestThroughHttp('/api/reference-entities/authority-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(matches[0]),
+      });
+      assert.equal(importResponse.status, 201);
+      const imported = await importResponse.json();
+      assert.equal(imported.created, true);
+      assert.equal(imported.referenceEntity.kind, 'person');
+      assert.equal(imported.referenceEntity.title, 'Hypatia');
+      assert.equal(imported.referenceEntity.summary, 'Greek Neoplatonist philosopher, astronomer, and mathematician');
+      assert.equal(imported.referenceEntity.description, 'Hypatia was a Greek Neoplatonist philosopher, astronomer, and mathematician.');
+      assert.equal(imported.referenceEntity.startYear, -350);
+      assert.equal(imported.referenceEntity.endYear, -415);
+      assert.equal(imported.referenceEntity.metadata.authorityId, 'Q102875');
+      assert.equal(imported.referenceEntity.metadata.atlasAuthorityId, 'Q102875');
+
+      const importAgainResponse = await requestThroughHttp('/api/reference-entities/authority-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(matches[0]),
+      });
+      assert.equal(importAgainResponse.status, 200);
+      const importedAgain = await importAgainResponse.json();
+      assert.equal(importedAgain.created, false);
+      assert.equal(importedAgain.referenceEntity.id, imported.referenceEntity.id);
+      assert.equal(callCount, 3);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   await t.test('world history routes search, cache, promote, list, and delete canonical atlas entities', async () => {
     const originalFetch = global.fetch;
     let callCount = 0;

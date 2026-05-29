@@ -28,6 +28,9 @@ import {
   PersonPolityMembershipDetail,
   PersonSubjectMembershipDetail,
   PolitySnapshot,
+  ReferenceAuthorityImportResult,
+  ReferenceAuthoritySearchKind,
+  ReferenceAuthoritySearchMatch,
   ReferenceEntity,
   Subject,
   SubjectSummary,
@@ -395,6 +398,50 @@ export const fetchReferenceEntities = async (kind?: string): Promise<ReferenceEn
   if (!response.ok) {
     throw new Error('Failed to fetch reference entities');
   }
+  return response.json();
+};
+
+export const searchReferenceEntityAuthority = async (
+  query: string,
+  kind: ReferenceAuthoritySearchKind = 'all',
+  limit = 10
+): Promise<ReferenceAuthoritySearchMatch[]> => {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    q: trimmedQuery,
+    kind,
+    limit: String(Math.min(Math.max(limit, 1), 20)),
+  });
+
+  const response = await fetch(`${API_BASE_URL}/reference-entities/authority-search?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to search Wikidata authority records');
+  }
+
+  return response.json();
+};
+
+export const importReferenceEntityAuthority = async (
+  match: ReferenceAuthoritySearchMatch
+): Promise<ReferenceAuthorityImportResult> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/authority-import`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(match),
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to import Wikidata authority record');
+  }
+
   return response.json();
 };
 

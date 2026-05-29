@@ -6,6 +6,8 @@ import {
   getPolitySnapshotsByReferenceEntity,
   getReferenceEntityById,
   getRelationsByReferenceEntity,
+  importReferenceEntityAuthority,
+  searchReferenceEntityAuthority,
   updateReferenceEntity,
 } from '../controllers/referenceEntityController';
 import {
@@ -32,6 +34,7 @@ import {
 const router = Router();
 
 router.get('/', getAllReferenceEntities);
+router.get('/authority-search', searchReferenceEntityAuthority);
 router.get('/:id/formation-memberships', getFormationMembershipsByReferenceEntity);
 router.get('/:id/person-polity-memberships', getPersonPolityMembershipsByReferenceEntity);
 router.get('/:id/person-subject-memberships', getPersonSubjectMembershipsByReferenceEntity);
@@ -40,6 +43,7 @@ router.get('/:id/polity-snapshots', getPolitySnapshotsByReferenceEntity);
 router.get('/:id/outgoing-relations', getOutgoingRelationsByReferenceEntity);
 router.get('/:id', getReferenceEntityById);
 router.post('/', createReferenceEntity);
+router.post('/authority-import', importReferenceEntityAuthority);
 router.post('/:id/formation-memberships', createFormationMembership);
 router.post('/:id/person-polity-memberships', createPersonPolityMembership);
 router.post('/:id/person-subject-memberships', createPersonSubjectMembership);

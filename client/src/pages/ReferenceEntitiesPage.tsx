@@ -2,6 +2,8 @@ import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   FormationSubtype,
   NewReferenceEntity,
+  ReferenceAuthoritySearchKind,
+  ReferenceAuthoritySearchMatch,
   ReferenceEntity,
   ReferenceEntityKind,
 } from '@enzyklopaedie/shared';
@@ -10,11 +12,14 @@ import {
   createReferenceEntity,
   deleteReferenceEntity,
   fetchReferenceEntities,
+  importReferenceEntityAuthority,
+  searchReferenceEntityAuthority,
 } from '../api';
 import './ReferenceEntitiesPage.css';
 
 const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
 const creatableKindOptions: ReferenceEntityKind[] = ['person', 'formation'];
+const authorityKindOptions: ReferenceAuthoritySearchKind[] = ['all', 'person', 'polity', 'formation'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'People',
   polity: 'Polities',
@@ -24,6 +29,12 @@ const singularKindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
   polity: 'Polity',
   formation: 'Formation',
+};
+const authorityKindLabels: Record<ReferenceAuthoritySearchKind, string> = {
+  all: 'All Importable',
+  person: 'People',
+  polity: 'Polities',
+  formation: 'Formations',
 };
 const formationSubtypeLabels: Record<FormationSubtype, string> = {
   civilization: 'Civilization',
@@ -130,13 +141,15 @@ const formatYear = (value?: number) => {
   return 'Year 0';
 };
 
-const formatTimespan = (entity: ReferenceEntity) => {
-  const start = formatYear(entity.startYear);
-  const end = formatYear(entity.endYear);
+const formatYearSpan = (startYear?: number, endYear?: number) => {
+  const start = formatYear(startYear);
+  const end = formatYear(endYear);
 
   if (start && end) return `${start} - ${end}`;
   return start || end || 'No chronology yet';
 };
+
+const formatTimespan = (entity: ReferenceEntity) => formatYearSpan(entity.startYear, entity.endYear);
 
 const parseYearInput = (value: string) => {
   const trimmed = value.trim();
@@ -165,6 +178,9 @@ const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | '
   entity.metadata?.atlasSource === 'historical-basemaps' &&
   entity.metadata?.builtIn === true;
 
+const getAuthorityImportKey = (match: ReferenceAuthoritySearchMatch) =>
+  `${match.authority}:${match.authorityId}:${match.kind}`;
+
 const ReferenceEntitiesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [entities, setEntities] = useState<ReferenceEntity[]>([]);
@@ -174,6 +190,12 @@ const ReferenceEntitiesPage: React.FC = () => {
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
   const [filter, setFilter] = useState<EntityFilter>('all');
   const [formState, setFormState] = useState(createInitialFormState());
+  const [authorityQuery, setAuthorityQuery] = useState('');
+  const [authorityKind, setAuthorityKind] = useState<ReferenceAuthoritySearchKind>('person');
+  const [authorityMatches, setAuthorityMatches] = useState<ReferenceAuthoritySearchMatch[]>([]);
+  const [authoritySearching, setAuthoritySearching] = useState(false);
+  const [authorityImportingKey, setAuthorityImportingKey] = useState<string | null>(null);
+  const [authorityStatus, setAuthorityStatus] = useState<string | null>(null);
   const viewMode: EntityWorkbenchView = searchParams.get('view') === 'list' ? 'list' : 'create';
 
   const setViewMode = (nextViewMode: EntityWorkbenchView) => {
@@ -247,6 +269,74 @@ const ReferenceEntitiesPage: React.FC = () => {
       ...current,
       [name]: value,
     }));
+  };
+
+  const handleAuthoritySearch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmedQuery = authorityQuery.trim();
+    if (!trimmedQuery) return;
+
+    setAuthoritySearching(true);
+    setAuthorityStatus(null);
+    setError(null);
+
+    try {
+      const matches = await searchReferenceEntityAuthority(trimmedQuery, authorityKind, 8);
+      setAuthorityMatches(matches);
+      if (matches.length === 0) {
+        setAuthorityStatus('No Wikidata authority records matched that search.');
+      }
+    } catch (searchError) {
+      console.error(searchError);
+      setAuthorityStatus(null);
+      setError(searchError instanceof Error ? searchError.message : 'Failed to search Wikidata.');
+    } finally {
+      setAuthoritySearching(false);
+    }
+  };
+
+  const handleAuthorityImport = async (match: ReferenceAuthoritySearchMatch) => {
+    const importKey = getAuthorityImportKey(match);
+    setAuthorityImportingKey(importKey);
+    setAuthorityStatus(null);
+    setError(null);
+
+    try {
+      const result = await importReferenceEntityAuthority(match);
+      startTransition(() => {
+        setEntities((current) => {
+          const existingIndex = current.findIndex((entity) => entity.id === result.referenceEntity.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = result.referenceEntity;
+            return next;
+          }
+
+          return [...current, result.referenceEntity];
+        });
+        setAuthorityMatches((current) =>
+          current.map((entry) =>
+            getAuthorityImportKey(entry) === importKey
+              ? {
+                  ...entry,
+                  existingReferenceEntityId: result.referenceEntity.id,
+                  existingReferenceEntitySlug: result.referenceEntity.slug,
+                }
+              : entry
+          )
+        );
+      });
+      setAuthorityStatus(
+        result.created
+          ? `Imported "${result.referenceEntity.title}".`
+          : `Updated existing "${result.referenceEntity.title}" from Wikidata.`
+      );
+    } catch (importError) {
+      console.error(importError);
+      setError(importError instanceof Error ? importError.message : 'Failed to import authority record.');
+    } finally {
+      setAuthorityImportingKey(null);
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -325,6 +415,119 @@ const ReferenceEntitiesPage: React.FC = () => {
           </div>
 
           {error ? <div className="reference-entities-error">{error}</div> : null}
+
+          <section className="reference-entities-authority-panel">
+            <div className="reference-entities-authority-head">
+              <div>
+                <span className="reference-entities-eyebrow">Wikidata Import</span>
+                <h2>Search authority records</h2>
+              </div>
+              <span className="reference-entities-authority-note">
+                Imports names, dates, summaries, images, and source metadata.
+              </span>
+            </div>
+
+            <form className="reference-entities-authority-form" onSubmit={handleAuthoritySearch}>
+              <div className="reference-entities-field">
+                <label htmlFor="authorityKind">Record Type</label>
+                <select
+                  id="authorityKind"
+                  value={authorityKind}
+                  onChange={(event) => setAuthorityKind(event.target.value as ReferenceAuthoritySearchKind)}
+                >
+                  {authorityKindOptions.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {authorityKindLabels[kind]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="reference-entities-field">
+                <label htmlFor="authorityQuery">Search</label>
+                <input
+                  id="authorityQuery"
+                  value={authorityQuery}
+                  onChange={(event) => setAuthorityQuery(event.target.value)}
+                  placeholder="Aristotle, Ibn Sina, Ottoman Empire"
+                />
+              </div>
+
+              <button type="submit" disabled={authoritySearching || !authorityQuery.trim()}>
+                {authoritySearching ? 'Searching...' : 'Search Wiki'}
+              </button>
+            </form>
+
+            {authorityStatus ? (
+              <div className="reference-entities-authority-status">{authorityStatus}</div>
+            ) : null}
+
+            {authorityMatches.length > 0 ? (
+              <div className="reference-entities-authority-results">
+                {authorityMatches.map((match) => {
+                  const importKey = getAuthorityImportKey(match);
+                  const isImporting = authorityImportingKey === importKey;
+                  return (
+                    <article key={importKey} className="reference-entities-authority-card">
+                      {match.imageUrl ? (
+                        <img
+                          src={match.imageUrl}
+                          alt=""
+                          className="reference-entities-authority-thumb"
+                        />
+                      ) : null}
+                      <div className="reference-entities-authority-body">
+                        <div className="reference-entities-meta">
+                          <span className="reference-entities-badge">{singularKindLabels[match.kind]}</span>
+                          {match.formationSubtype ? (
+                            <span className="reference-entities-badge reference-entities-badge-secondary">
+                              {formationSubtypeLabels[match.formationSubtype]}
+                            </span>
+                          ) : null}
+                          {match.existingReferenceEntityId ? (
+                            <span className="reference-entities-badge reference-entities-badge-secondary">
+                              already local
+                            </span>
+                          ) : null}
+                        </div>
+                        <h3>{match.title}</h3>
+                        <div className="reference-entities-meta">
+                          <span>{formatYearSpan(match.startYear, match.endYear)}</span>
+                          <span>{match.authorityId}</span>
+                        </div>
+                        {match.summary ? <p>{match.summary}</p> : null}
+                        {match.description && match.description !== match.summary ? (
+                          <p>{match.description}</p>
+                        ) : null}
+                      </div>
+                      <div className="reference-entities-authority-actions">
+                        {match.existingReferenceEntityId ? (
+                          <Link
+                            to={`/entities/${match.existingReferenceEntityId}`}
+                            state={{ returnTo: '/entities' }}
+                            className="reference-entities-secondary-link"
+                          >
+                            Open
+                          </Link>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => handleAuthorityImport(match)}
+                          disabled={isImporting}
+                        >
+                          {isImporting
+                            ? 'Importing...'
+                            : match.existingReferenceEntityId
+                              ? 'Refresh'
+                              : 'Import'}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
 
           <div className="reference-entities-create-toolbar">
             <button

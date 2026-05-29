@@ -93,6 +93,30 @@ export interface ReferenceEntity {
   updatedAt: string;
 }
 
+export type ReferenceAuthoritySearchKind = ReferenceEntityKind | 'all';
+
+export interface ReferenceAuthoritySearchMatch {
+  authority: CanonicalHistoricalEntityAuthority;
+  authorityId: string;
+  kind: ReferenceEntityKind;
+  formationSubtype?: FormationSubtype;
+  title: string;
+  summary?: string;
+  description?: string;
+  startYear?: number;
+  endYear?: number;
+  imageUrl?: string;
+  sourceUrl?: string;
+  existingReferenceEntityId?: number;
+  existingReferenceEntitySlug?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ReferenceAuthorityImportResult {
+  created: boolean;
+  referenceEntity: ReferenceEntity;
+}
+
 export const isBuiltInPolityEntity = (
   entity: Pick<ReferenceEntity, 'kind' | 'metadata'>
 ) =>

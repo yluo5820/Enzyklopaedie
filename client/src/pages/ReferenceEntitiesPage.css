@@ -170,6 +170,7 @@
 .reference-entities-form button,
 .reference-entities-actions button,
 .reference-entities-link,
+.reference-entities-secondary-link,
 .reference-entities-filter,
 .reference-entities-secondary-button {
   border: none;
@@ -190,11 +191,19 @@
 }
 
 .reference-entities-actions button,
+.reference-entities-secondary-link,
 .reference-entities-filter,
 .reference-entities-secondary-button {
   background: rgba(255, 255, 255, 0.84);
   border: 1px solid var(--line);
   color: var(--accent-dark);
+}
+
+.reference-entities-secondary-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reference-entities-secondary-button.is-active {
@@ -216,6 +225,112 @@
 .reference-entities-summary,
 .reference-entities-list-panel {
   padding: 22px;
+}
+
+.reference-entities-authority-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.reference-entities-authority-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.reference-entities-authority-head h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.reference-entities-authority-note {
+  max-width: 360px;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 0.92rem;
+}
+
+.reference-entities-authority-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(240px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.reference-entities-authority-form button,
+.reference-entities-authority-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #8a572d, #694121);
+  color: white;
+  font: inherit;
+  cursor: pointer;
+}
+
+.reference-entities-authority-form button:disabled,
+.reference-entities-authority-actions button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.reference-entities-authority-status {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(54, 95, 76, 0.1);
+  color: #365f4c;
+}
+
+.reference-entities-authority-results {
+  display: grid;
+  gap: 12px;
+}
+
+.reference-entities-authority-card {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 252, 246, 0.9);
+}
+
+.reference-entities-authority-thumb {
+  width: 76px;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.reference-entities-authority-body {
+  min-width: 0;
+}
+
+.reference-entities-authority-body h3 {
+  margin: 8px 0 6px;
+  font-size: 1.1rem;
+}
+
+.reference-entities-authority-body p {
+  margin: 8px 0 0;
+  color: #423428;
+  line-height: 1.55;
+}
+
+.reference-entities-authority-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
 }
 
 .reference-entities-stats {
@@ -414,6 +529,22 @@
 
   .reference-entities-create-toolbar {
     justify-content: stretch;
+  }
+
+  .reference-entities-authority-head,
+  .reference-entities-authority-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reference-entities-authority-form,
+  .reference-entities-authority-card {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-entities-authority-thumb {
+    width: 100%;
+    max-width: 180px;
   }
 
   .reference-entities-grid,

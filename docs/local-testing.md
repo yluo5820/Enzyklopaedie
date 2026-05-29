@@ -47,6 +47,7 @@ That test currently covers:
 - updating it
 - verifying the activity feed records both create and update events
 - creating, updating, filtering, and deleting atlas entities
+- Wikidata authority search/import for people, polities, and formations
 - formation memberships and atlas relation flows
 - person polity and subject membership flows
 - world-history search, basemap, and polity import routes
@@ -108,6 +109,7 @@ That test currently covers:
 
 - Open `/entities`
 - Confirm the page loads and shows `person`, `polity`, and `formation`
+- Search Wikidata for a person or polity, import one result, and confirm the created entity opens with dates, summary, image/source metadata, and description populated when available
 - Confirm built-in polities are browseable but not removable
 - Create a `person`, add one subject membership, then place that person inside a polity
 - Create a new `formation` and confirm it appears in the list immediately

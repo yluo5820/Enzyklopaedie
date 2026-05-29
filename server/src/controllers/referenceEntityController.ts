@@ -4,6 +4,8 @@ import {
   isBuiltInPolityEntity,
   type NewReferenceEntity,
   type PolitySnapshot,
+  type ReferenceAuthoritySearchKind,
+  type ReferenceAuthoritySearchMatch,
   type ReferenceEntity,
   type ReferenceEntityKind,
   type UpdateReferenceEntity,
@@ -16,6 +18,11 @@ import {
   hydrateReferenceEntity,
 } from '../lib/referenceEntities';
 import { listPolitySnapshotsByReferenceEntity } from '../lib/politySnapshots';
+import {
+  localEntityKindMap,
+  localFormationSubtypeMap,
+  searchWikidataCanonicalEntities,
+} from '../lib/wikidataAuthority';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -33,9 +40,21 @@ const isReferenceEntityKind = (value: unknown): value is ReferenceEntityKind =>
   value === 'polity' ||
   value === 'formation';
 
+const isReferenceAuthoritySearchKind = (value: unknown): value is ReferenceAuthoritySearchKind =>
+  value === 'all' || isReferenceEntityKind(value);
+
 const parseId = (value: unknown) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const parseLimit = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 10;
+  }
+
+  return Math.min(Math.max(Math.trunc(parsed), 1), 20);
 };
 
 const parseOptionalYear = (value: unknown) => {
@@ -68,6 +87,14 @@ const parseFormationSubtype = (value: unknown, kind: ReferenceEntityKind) => {
   }
 
   return { provided: true as const, value };
+};
+
+const parseMetadata = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value as Record<string, unknown>;
 };
 
 const findExistingReferenceEntityByIdentity = async (
@@ -103,6 +130,145 @@ const findExistingReferenceEntityByIdentity = async (
      LIMIT 1`,
     ...(excludeId ? [kind, title, excludeId] : [kind, title])
   );
+};
+
+const buildReferenceAuthorityMetadata = (match: ReferenceAuthoritySearchMatch) => ({
+  ...(match.metadata ?? {}),
+  atlasAuthority: match.authority,
+  atlasAuthorityId: match.authorityId,
+  atlasKind: match.kind,
+  ...(match.sourceUrl ? { atlasSourceUrl: match.sourceUrl } : {}),
+  ...(match.imageUrl ? { atlasImageUrl: match.imageUrl } : {}),
+  authorityId: match.authorityId,
+  authorityImageUrl: match.imageUrl,
+  authorityKind: match.kind,
+  authoritySource: match.authority,
+  authoritySourceUrl: match.sourceUrl,
+  importedFrom: 'reference-authority-search',
+  wikidataId: match.authorityId,
+});
+
+const findExistingReferenceEntityByAuthorityOrIdentity = async (
+  db: Awaited<ReturnType<typeof getDb>>,
+  match: Pick<ReferenceAuthoritySearchMatch, 'authorityId' | 'formationSubtype' | 'kind' | 'title'>
+) => {
+  const candidateRows = await db.all<ReferenceEntityRow[]>(
+    'SELECT * FROM reference_entities WHERE kind = ? ORDER BY lower(title) ASC, createdAt ASC',
+    match.kind
+  );
+
+  for (const row of candidateRows) {
+    const candidate = hydrateReferenceEntity(row);
+    const metadata = candidate.metadata ?? {};
+    if (
+      metadata.authorityId === match.authorityId ||
+      metadata.wikidataId === match.authorityId ||
+      metadata.atlasAuthorityId === match.authorityId
+    ) {
+      return candidate;
+    }
+  }
+
+  const row = await findExistingReferenceEntityByIdentity(
+    db,
+    match.kind,
+    match.title,
+    match.kind === 'formation' ? match.formationSubtype ?? null : null
+  );
+
+  return row ? hydrateReferenceEntity(row) : null;
+};
+
+const syncReferenceEntityAuthorityData = async (
+  db: Awaited<ReturnType<typeof getDb>>,
+  entity: ReferenceEntity,
+  match: ReferenceAuthoritySearchMatch
+) => {
+  const metadata = {
+    ...(entity.metadata ?? {}),
+    ...buildReferenceAuthorityMetadata(match),
+  };
+  const summary = entity.summary ?? match.summary;
+  const description = entity.description ?? match.description;
+  const startYear = entity.startYear ?? match.startYear;
+  const endYear = entity.endYear ?? match.endYear;
+  const updatedAt = new Date().toISOString();
+
+  await db.run(
+    `UPDATE reference_entities
+     SET summary = ?, description = ?, startYear = ?, endYear = ?, metadata = ?, updatedAt = ?
+     WHERE id = ?`,
+    summary ?? null,
+    description ?? null,
+    startYear ?? null,
+    endYear ?? null,
+    JSON.stringify(metadata),
+    updatedAt,
+    entity.id
+  );
+
+  return {
+    ...entity,
+    summary,
+    description,
+    startYear,
+    endYear,
+    metadata,
+    updatedAt,
+  } satisfies ReferenceEntity;
+};
+
+const getReferenceAuthoritySearchMatches = async (
+  db: Awaited<ReturnType<typeof getDb>>,
+  query: string,
+  kind: ReferenceAuthoritySearchKind,
+  limit: number
+) => {
+  const canonicalMatches = await searchWikidataCanonicalEntities({
+    includeWikipediaSummary: true,
+    kind: 'all',
+    limit: Math.min(limit * 2, 20),
+    query,
+  });
+  const matches: ReferenceAuthoritySearchMatch[] = [];
+
+  for (const canonicalMatch of canonicalMatches) {
+    const localKind = localEntityKindMap[canonicalMatch.kind];
+    if (!localKind || (kind !== 'all' && localKind !== kind)) {
+      continue;
+    }
+
+    const match: ReferenceAuthoritySearchMatch = {
+      authority: canonicalMatch.authority,
+      authorityId: canonicalMatch.authorityId,
+      kind: localKind,
+      formationSubtype: localFormationSubtypeMap[canonicalMatch.kind],
+      title: canonicalMatch.title,
+      summary: canonicalMatch.summary,
+      description: canonicalMatch.description,
+      startYear: canonicalMatch.startYear,
+      endYear: canonicalMatch.endYear,
+      imageUrl: canonicalMatch.imageUrl,
+      sourceUrl: canonicalMatch.sourceUrl,
+      metadata: {
+        ...(canonicalMatch.metadata ?? {}),
+        canonicalAtlasKind: canonicalMatch.kind,
+      },
+    };
+
+    const existing = await findExistingReferenceEntityByAuthorityOrIdentity(db, match);
+    matches.push({
+      ...match,
+      existingReferenceEntityId: existing?.id,
+      existingReferenceEntitySlug: existing?.slug,
+    });
+
+    if (matches.length >= limit) {
+      break;
+    }
+  }
+
+  return matches;
 };
 
 export const getAllReferenceEntities = asyncErrorHandler(async (req: Request, res: Response) => {
@@ -176,6 +342,137 @@ export const getPolitySnapshotsByReferenceEntity = asyncErrorHandler(async (req:
   }
 
   res.json(await listPolitySnapshotsByReferenceEntity(db, id));
+});
+
+export const searchReferenceEntityAuthority = asyncErrorHandler(async (req: Request, res: Response) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const requestedKind = req.query.kind;
+
+  if (!query) {
+    return res.status(400).json({ message: 'A search query is required.' });
+  }
+
+  if (requestedKind !== undefined && !isReferenceAuthoritySearchKind(requestedKind)) {
+    return res.status(400).json({ message: 'Invalid reference authority kind' });
+  }
+
+  const db = await getDb();
+  const kind = requestedKind === undefined ? 'all' : requestedKind;
+  const limit = parseLimit(req.query.limit);
+
+  try {
+    res.json(await getReferenceAuthoritySearchMatches(db, query, kind, limit));
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status ?? 502;
+    const message = error instanceof Error ? error.message : 'Failed to search Wikidata.';
+    res.status(status).json({ message });
+  }
+});
+
+export const importReferenceEntityAuthority = asyncErrorHandler(async (req: Request, res: Response) => {
+  const payload = req.body as Partial<ReferenceAuthoritySearchMatch>;
+
+  if (payload.authority !== 'wikidata') {
+    return res.status(400).json({ message: 'A supported authority is required.' });
+  }
+
+  if (!isReferenceEntityKind(payload.kind)) {
+    return res.status(400).json({ message: 'A valid reference entity kind is required.' });
+  }
+
+  if (
+    payload.kind === 'formation' &&
+    payload.formationSubtype !== undefined &&
+    payload.formationSubtype !== null &&
+    !isFormationSubtype(payload.formationSubtype)
+  ) {
+    return res.status(400).json({ message: 'Invalid formation subtype' });
+  }
+
+  const authorityId = typeof payload.authorityId === 'string' ? payload.authorityId.trim() : '';
+  const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+  if (!authorityId || !title) {
+    return res.status(400).json({ message: 'Authority id and title are required.' });
+  }
+
+  const match: ReferenceAuthoritySearchMatch = {
+    authority: 'wikidata',
+    authorityId,
+    kind: payload.kind,
+    formationSubtype: payload.kind === 'formation' ? payload.formationSubtype ?? undefined : undefined,
+    title,
+    summary: typeof payload.summary === 'string' ? payload.summary.trim() || undefined : undefined,
+    description:
+      typeof payload.description === 'string' ? payload.description.trim() || undefined : undefined,
+    startYear: Number.isInteger(payload.startYear) ? payload.startYear : undefined,
+    endYear: Number.isInteger(payload.endYear) ? payload.endYear : undefined,
+    imageUrl: typeof payload.imageUrl === 'string' ? payload.imageUrl.trim() || undefined : undefined,
+    sourceUrl: typeof payload.sourceUrl === 'string' ? payload.sourceUrl.trim() || undefined : undefined,
+    metadata: parseMetadata(payload.metadata),
+  };
+
+  const db = await getDb();
+  const existing = await findExistingReferenceEntityByAuthorityOrIdentity(db, match);
+  if (existing) {
+    const referenceEntity = await syncReferenceEntityAuthorityData(db, existing, match);
+    return res.json({
+      created: false,
+      referenceEntity,
+    });
+  }
+
+  const slug = await generateUniqueReferenceEntitySlug(db, match.kind, match.title);
+  const now = new Date().toISOString();
+  const metadata = buildReferenceAuthorityMetadata(match);
+  const result = await db.run(
+    `INSERT INTO reference_entities
+      (kind, formationSubtype, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    match.kind,
+    match.kind === 'formation' ? match.formationSubtype ?? null : null,
+    match.title,
+    slug,
+    match.summary ?? null,
+    match.description ?? null,
+    match.startYear ?? null,
+    match.endYear ?? null,
+    JSON.stringify(metadata),
+    now,
+    now
+  );
+
+  const referenceEntity: ReferenceEntity = {
+    id: result.lastID as number,
+    kind: match.kind,
+    formationSubtype: match.kind === 'formation' ? match.formationSubtype : undefined,
+    title: match.title,
+    slug,
+    summary: match.summary,
+    description: match.description,
+    startYear: match.startYear,
+    endYear: match.endYear,
+    metadata,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await recordActivityEvent({
+    type: 'reference_entity_created',
+    entityType: 'reference_entity',
+    entityId: referenceEntity.id,
+    message: `Imported ${referenceEntity.kind} "${referenceEntity.title}" from Wikidata`,
+    metadata: {
+      authority: match.authority,
+      authorityId: match.authorityId,
+      kind: referenceEntity.kind,
+      slug: referenceEntity.slug,
+    },
+  });
+
+  res.status(201).json({
+    created: true,
+    referenceEntity,
+  });
 });
 
 export const createReferenceEntity = asyncErrorHandler(async (req: Request, res: Response) => {
