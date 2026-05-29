@@ -233,6 +233,18 @@ export const listWorldHistoryPolitySnapshotsByReferenceEntity = async (
   return rows.map(hydrateWorldHistoryPolitySnapshot);
 };
 
+export const getWorldHistoryPolityById = async (
+  db: DbConnection,
+  id: number
+) => {
+  const row = await db.get<WorldHistoryPolityRow>(
+    `SELECT * FROM world_history_polities WHERE id = ?`,
+    id
+  );
+
+  return row ? hydrateWorldHistoryPolity(row) : null;
+};
+
 export const listWorldHistoryPolitySnapshotsByFeature = async (
   db: DbConnection,
   source: WorldHistoryPolitySnapshot['source'],

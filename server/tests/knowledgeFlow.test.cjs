@@ -2520,6 +2520,11 @@ test('historical polity import seeds built-in polity entities and snapshots from
   assert.equal(polityMatch.referenceEntity.kind, 'polity');
   assert.equal(polityMatch.snapshot.referenceEntityId, romanPolity.id);
   assert.equal(polityMatch.snapshot.snapshotYear, 100);
+  assert.equal(polityMatch.worldHistoryPolity.id, romanWorldHistoryPolity.id);
+  assert.equal(polityMatch.worldHistoryPolity.title, 'Roman Empire');
+  assert.equal(polityMatch.worldHistoryPolity.sourceKey, 'roman empire');
+  assert.equal(polityMatch.worldHistoryPolitySnapshot.worldHistoryPolityId, romanWorldHistoryPolity.id);
+  assert.equal(polityMatch.worldHistoryPolitySnapshot.sourceFeatureId, '100-0');
 
   const politySnapshotsResponse = await request(`/api/reference-entities/${romanPolity.id}/polity-snapshots`);
   assert.equal(politySnapshotsResponse.status, 200);

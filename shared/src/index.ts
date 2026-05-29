@@ -322,6 +322,8 @@ export interface PersonSubjectMembershipDetail extends PersonSubjectMembership {
 export interface HistoricalBasemapPolityMatchResponse {
   referenceEntity: ReferenceEntity;
   snapshot: PolitySnapshot;
+  worldHistoryPolity?: WorldHistoryPolity;
+  worldHistoryPolitySnapshot?: WorldHistoryPolitySnapshot;
 }
 
 export type CanonicalHistoricalEntityAuthority = 'wikidata';

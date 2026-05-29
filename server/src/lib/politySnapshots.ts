@@ -3,6 +3,7 @@ import type sqlite3 from 'sqlite3';
 import type { Database } from 'sqlite';
 import { hydrateReferenceEntity } from './referenceEntities';
 import {
+  getWorldHistoryPolityById,
   listWorldHistoryPolitySnapshotsByFeature,
   listWorldHistoryPolitySnapshotsByReferenceEntity,
   toLegacyPolitySnapshot,
@@ -103,9 +104,13 @@ export const findPolitySnapshotMatch = async (
       return null;
     }
 
+    const worldHistoryPolity = await getWorldHistoryPolityById(db, snapshot.worldHistoryPolityId);
+
     return {
       referenceEntity: hydrateReferenceEntity(referenceEntityRow),
       snapshot: toLegacyPolitySnapshot(snapshot, snapshot.referenceEntityId),
+      ...(worldHistoryPolity ? { worldHistoryPolity } : {}),
+      worldHistoryPolitySnapshot: snapshot,
     };
   }
 

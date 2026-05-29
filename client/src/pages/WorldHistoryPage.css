@@ -1,7 +1,15 @@
+.app-main:has(.world-history-page) {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+
 .world-history-page {
   width: 100%;
-  max-width: 1600px;
-  padding: 8px 18px 36px;
+  max-width: none;
+  height: calc(100vh - 84px);
+  min-height: 680px;
+  padding: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, "Times New Roman", serif;
   color: #2f241b;
   box-sizing: border-box;
@@ -25,15 +33,18 @@
 .world-history-frame {
   position: relative;
   background: linear-gradient(180deg, #fbf2e3 0%, #f1e2cb 100%);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  padding: 14px;
-  box-shadow: 0 18px 42px var(--shadow);
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
   overflow: hidden;
   animation: world-history-reveal 0.45s ease-out;
 }
 
 .world-history-frame::before {
+  display: none;
   content: "";
   position: absolute;
   inset: 0;
@@ -52,7 +63,7 @@
 }
 
 .world-history-header {
-  display: grid;
+  display: none;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -120,11 +131,15 @@
 
 .world-history-layout {
   display: block;
+  height: 100%;
+  min-height: 0;
 }
 
 .world-history-main {
-  display: grid;
-  gap: 12px;
+  position: relative;
+  display: block;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
 }
 
@@ -138,6 +153,8 @@
   background: rgba(251, 245, 235, 0.92);
   backdrop-filter: blur(10px);
   box-shadow: 0 18px 34px rgba(53, 33, 18, 0.16);
+  max-height: calc(100vh - 136px);
+  overflow: auto;
 }
 
 .world-history-panel__header {
@@ -283,6 +300,12 @@
 .world-history-filter-meta {
   color: var(--ink-muted);
   font-size: 0.88rem;
+}
+
+.world-history-region-jump {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(123, 77, 42, 0.12);
 }
 
 .world-history-result-card__actions button,
@@ -446,12 +469,13 @@
 
 .world-history-map {
   position: relative;
-  min-height: min(76vh, 920px);
-  border-radius: 20px;
+  height: 100%;
+  min-height: 0;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 0;
   background: linear-gradient(180deg, #ede1cf, #e3d1bb);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58), 0 14px 30px rgba(53, 33, 18, 0.14);
+  box-shadow: none;
 }
 
 .world-history-map__canvas {
@@ -569,10 +593,18 @@
 }
 
 .world-history-timeline {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
+  max-width: min(760px, calc(100% - 32px));
   border-radius: 18px;
   border: 1px solid rgba(215, 195, 171, 0.92);
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.82);
   padding: 14px 16px 18px;
+  box-shadow: 0 16px 32px rgba(53, 33, 18, 0.15);
+  backdrop-filter: blur(10px);
 }
 
 .world-history-range {
@@ -637,14 +669,83 @@
 }
 
 .world-history-details-grid {
+  display: none;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  width: min(424px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  overflow: auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.world-history-details-grid.is-open {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  gap: 16px;
+}
+
+.world-history-details-grid .world-history-panel--browse,
+.world-history-details-grid .world-history-panel.is-empty-inspector {
+  display: none;
+}
+
+.world-history-details-grid .world-history-panel--inspector {
+  border-radius: 18px;
+  background: rgba(251, 245, 235, 0.94);
+  backdrop-filter: blur(10px);
 }
 
 .world-history-selected-card {
   display: grid;
   gap: 14px;
+}
+
+.world-history-panel--snapshot-inspector .world-history-selected-card > :not(.world-history-compact-inspector) {
+  display: none;
+}
+
+.world-history-compact-inspector {
+  display: grid;
+  gap: 16px;
+}
+
+.world-history-compact-inspector__hero {
+  display: grid;
+  gap: 8px;
+}
+
+.world-history-compact-inspector__hero h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.18;
+  color: var(--ink);
+}
+
+.world-history-compact-inspector__span {
+  color: var(--ink-muted);
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.world-history-compact-inspector__hero p {
+  margin: 0;
+  color: var(--ink-muted);
+  line-height: 1.52;
+}
+
+.world-history-compact-inspector__section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(123, 77, 42, 0.12);
+}
+
+.world-history-compact-inspector__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .world-history-selected-card p {
@@ -849,6 +950,10 @@
   padding-right: 4px;
 }
 
+.world-history-region-results--floating {
+  max-height: 220px;
+}
+
 .world-history-region-result {
   width: 100%;
   display: grid;
@@ -948,11 +1053,13 @@
 
 @media (max-width: 820px) {
   .world-history-page {
-    padding-inline: 12px;
+    height: calc(100vh - 72px);
+    min-height: 620px;
+    padding: 0;
   }
 
   .world-history-frame {
-    padding: 12px;
+    padding: 0;
   }
 
   .world-history-meta {
@@ -969,14 +1076,39 @@
   }
 
   .world-history-map {
-    min-height: 78vh;
+    height: 100%;
+    min-height: 0;
   }
 
   .world-history-map__float {
-    position: static;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
     max-width: none;
     width: auto;
-    margin: 14px;
+    margin: 0;
+  }
+
+  .world-history-panel--floating {
+    max-height: 42vh;
+  }
+
+  .world-history-details-grid.is-open {
+    top: auto;
+    right: 12px;
+    bottom: 104px;
+    left: 12px;
+    width: auto;
+    max-height: 42vh;
+  }
+
+  .world-history-timeline,
+  .world-history-page.has-inspector .world-history-timeline {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
   }
 
   .world-history-map__labels {
@@ -1005,6 +1137,10 @@
   .world-history-timeline__meta {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .world-history-timeline__meta span {
+    display: none;
   }
 }
 

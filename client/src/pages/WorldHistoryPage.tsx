@@ -1254,6 +1254,23 @@ const WorldHistoryPage: React.FC = () => {
     () => selectedPolityHistoricalPersonMemberships.slice(0, 4),
     [selectedPolityHistoricalPersonMemberships]
   );
+  const selectedPolityPeoplePreview = useMemo(() => {
+    const seen = new Set<number | string>();
+    const people: PersonPolityMembershipDetail[] = [];
+
+    for (const membership of [
+      ...selectedPolityVisiblePersonMemberships,
+      ...selectedPolityHistoricalPersonMemberships,
+    ]) {
+      const key = membership.personEntityId || membership.personTitle || membership.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      people.push(membership);
+      if (people.length >= 5) break;
+    }
+
+    return people;
+  }, [selectedPolityHistoricalPersonMemberships, selectedPolityVisiblePersonMemberships]);
   const selectedPolityFormationPreview = useMemo(
     () =>
       [...selectedPolityFormationMemberships]
@@ -1265,6 +1282,10 @@ const WorldHistoryPage: React.FC = () => {
         )
         .slice(0, 6),
     [selectedPolityFormationMemberships]
+  );
+  const selectedPolityTopicPreview = useMemo(
+    () => selectedPolityFormationPreview.slice(0, 5),
+    [selectedPolityFormationPreview]
   );
   const activeFormationPersonSummary = useMemo(() => {
     const visiblePeople = new Map<
@@ -3062,8 +3083,12 @@ const WorldHistoryPage: React.FC = () => {
     selectedVisibleAtlasEntity,
   ]);
 
+  const hasWorldHistoryInspector = Boolean(selectedAtlasEntity || selectedBasemapFeature);
+  const regionJumpQuery = basemapQuery.trim();
+  const floatingRegionResults = regionJumpQuery ? filteredBasemapFeatures.slice(0, 6) : [];
+
   return (
-    <div className="world-history-page">
+    <div className={`world-history-page${hasWorldHistoryInspector ? ' has-inspector' : ''}`}>
       <div className="world-history-frame">
         <header className="world-history-header">
           <div className="world-history-title">
@@ -3208,6 +3233,62 @@ const WorldHistoryPage: React.FC = () => {
                     )}
                   </div>
 
+                  <div className="world-history-filter-bar world-history-region-jump">
+                    <div className="world-history-filter-bar__head">
+                      <span className="world-history-panel__eyebrow">Map Regions</span>
+                      <span className="world-history-count-chip">{searchableBasemapFeatures.length}</span>
+                    </div>
+                    <div className="world-history-region-search">
+                      <input
+                        type="text"
+                        value={basemapQuery}
+                        onChange={(event) => setBasemapQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && filteredBasemapFeatures[0]) {
+                            event.preventDefault();
+                            setFocusedPolityId(null);
+                            setSelectedBasemapFeatureId(
+                              filteredBasemapFeatures[0].properties?.atlasFeatureId ?? null
+                            );
+                          }
+                        }}
+                        placeholder={`Find ${activeBasemapYear ? formatYear(activeBasemapYear.year) : 'snapshot'} polity`}
+                      />
+                    </div>
+                    {regionJumpQuery ? (
+                      floatingRegionResults.length === 0 ? (
+                        <div className="world-history-empty">
+                          No named regions in this snapshot match that search.
+                        </div>
+                      ) : (
+                        <div className="world-history-region-results world-history-region-results--floating">
+                          {floatingRegionResults.map((feature) => {
+                            const featureId = feature.properties?.atlasFeatureId;
+                            const isSelected = featureId === selectedBasemapFeatureId;
+                            return (
+                              <button
+                                key={`floating-${featureId}`}
+                                type="button"
+                                className={`world-history-region-result ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => {
+                                  setFocusedPolityId(null);
+                                  setSelectedBasemapFeatureId(featureId ?? null);
+                                }}
+                              >
+                                <strong>{getBasemapLabel(feature)}</strong>
+                                <span>
+                                  {feature.properties?.atlasParent ||
+                                    feature.properties?.atlasSubject ||
+                                    'Standalone region'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )
+                    ) : null}
+                  </div>
+
                   {searchError && <div className="world-history-feedback is-error">{searchError}</div>}
                   {statusMessage && <div className="world-history-feedback">{statusMessage}</div>}
 
@@ -3311,8 +3392,8 @@ const WorldHistoryPage: React.FC = () => {
               </div>
             </section>
 
-            <div className="world-history-details-grid">
-              <section className="world-history-panel">
+            <div className={`world-history-details-grid${hasWorldHistoryInspector ? ' is-open' : ''}`}>
+              <section className={`world-history-panel world-history-panel--inspector${selectedAtlasEntity && !selectedBasemapFeature ? '' : ' is-empty-inspector'}`}>
                 <div className="world-history-panel__header">
                   <div>
                     <span className="world-history-panel__eyebrow">Selected</span>
@@ -3416,10 +3497,12 @@ const WorldHistoryPage: React.FC = () => {
                 )}
               </section>
 
-              <section className="world-history-panel">
+              <section className={`world-history-panel world-history-panel--inspector world-history-panel--snapshot-inspector${selectedBasemapFeature ? '' : ' is-empty-inspector'}`}>
                 <div className="world-history-panel__header">
                   <div>
-                    <span className="world-history-panel__eyebrow">Snapshot</span>
+                    <span className="world-history-panel__eyebrow">
+                      {selectedBasemapFeature ? 'Polity' : 'Selection'}
+                    </span>
                     <h2>
                       {resolvedPolityMatch
                         ? resolvedPolityMatch.referenceEntity.title
@@ -3448,36 +3531,174 @@ const WorldHistoryPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="world-history-selected-card">
+                    <div className="world-history-compact-inspector">
+                      <div className="world-history-compact-inspector__hero">
+                        <span className="world-history-compact-inspector__span">
+                          {resolvedPolityMatch?.worldHistoryPolity
+                            ? formatEntityBounds(resolvedPolityMatch.worldHistoryPolity)
+                            : activeBasemapYear
+                              ? formatYear(activeBasemapYear.year)
+                              : 'Undated'}
+                        </span>
+                        <p>
+                          {resolvedPolityMatch?.worldHistoryPolity?.summary ||
+                            resolvedPolityMatch?.worldHistoryPolity?.description ||
+                            resolvedPolityMatch?.referenceEntity.summary ||
+                            resolvedPolityMatch?.referenceEntity.description ||
+                            selectedBasemapFeature.properties?.atlasSubject ||
+                            'No description is stored for this map polity yet.'}
+                        </p>
+                      </div>
+
+                      {resolvedPolityMatch ? (
+                        <div className="world-history-selected-card__actions">
+                          <button
+                            type="button"
+                            className="is-primary"
+                            onClick={() => openEntityPage(resolvedPolityMatch.referenceEntity.id)}
+                          >
+                            Open detail page
+                          </button>
+                        </div>
+                      ) : resolvedPolityMatchError ? (
+                        <div className="world-history-feedback is-error">{resolvedPolityMatchError}</div>
+                      ) : null}
+
+                      {isLoadingSelectedPolityContext ? (
+                        <div className="world-history-empty">Loading polity context...</div>
+                      ) : selectedPolityContextError ? (
+                        <div className="world-history-feedback is-error">{selectedPolityContextError}</div>
+                      ) : (
+                        <>
+                          <div className="world-history-compact-inspector__section">
+                            <div className="world-history-compact-inspector__section-head">
+                              <span className="world-history-panel__eyebrow">People</span>
+                              <span className="world-history-count-chip">{selectedPolityPeoplePreview.length}</span>
+                            </div>
+                            {selectedPolityPeoplePreview.length === 0 ? (
+                              <div className="world-history-empty">No people are placed in this polity yet.</div>
+                            ) : (
+                              <div className="world-history-context-list">
+                                {selectedPolityPeoplePreview.map((membership) => (
+                                  <button
+                                    key={`compact-polity-person-${membership.id}`}
+                                    type="button"
+                                    className="world-history-context-list__item"
+                                    onClick={() =>
+                                      membership.personEntityId
+                                        ? openEntityPage(membership.personEntityId)
+                                        : undefined
+                                    }
+                                  >
+                                    <strong>{membership.personTitle || 'Untitled person'}</strong>
+                                    <span>{formatMembershipTimespan(membership)}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="world-history-compact-inspector__section">
+                            <div className="world-history-compact-inspector__section-head">
+                              <span className="world-history-panel__eyebrow">Topics / Civilizations</span>
+                              <span className="world-history-count-chip">{selectedPolityTopicPreview.length}</span>
+                            </div>
+                            {selectedPolityTopicPreview.length === 0 ? (
+                              <div className="world-history-empty">
+                                No topics or civilizations include this polity yet.
+                              </div>
+                            ) : (
+                              <div className="world-history-context-list">
+                                {selectedPolityTopicPreview.map((membership) => (
+                                  <button
+                                    key={`compact-polity-topic-${membership.id}`}
+                                    type="button"
+                                    className="world-history-context-list__item"
+                                    onClick={() =>
+                                      membership.formationEntityId
+                                        ? openEntityPage(membership.formationEntityId)
+                                        : undefined
+                                    }
+                                  >
+                                    <strong>{membership.formationTitle || 'Untitled topic'}</strong>
+                                    <span>{formatMembershipTimespan(membership)}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
                     {resolvedPolityMatch ? (
                       <div className="world-history-selected-card__summary">
                         <span className="world-history-panel__eyebrow">Resolved polity</span>
-                        <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
-                        <span className="world-history-hint">
-                          Snapshot region: {getBasemapLabel(selectedBasemapFeature)}
-                        </span>
-                      </div>
-                    ) : null}
-                    <div className="world-history-selected-card__facts">
-                      <div>
-                        <span className="world-history-panel__eyebrow">Snapshot year</span>
-                        <strong>{activeBasemapYear ? formatYear(activeBasemapYear.year) : 'Unavailable'}</strong>
-                      </div>
-                      <div>
-                        <span className="world-history-panel__eyebrow">Part of</span>
-                        <strong>{selectedBasemapFeature.properties?.atlasParent || 'Standalone region'}</strong>
-                      </div>
-                      <div>
-                        <span className="world-history-panel__eyebrow">Subject</span>
-                        <strong>{selectedBasemapFeature.properties?.atlasSubject || 'No subject note'}</strong>
-                      </div>
-                      <div>
-                        <span className="world-history-panel__eyebrow">Border precision</span>
-                        <strong>
-                          {selectedBasemapFeature.properties?.atlasBorderPrecision ?? 'Unknown'}
-                        </strong>
-                      </div>
-                    </div>
-                    <div className="world-history-reconciliation">
+	                        <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+	                        <span className="world-history-hint">
+	                          Snapshot region: {getBasemapLabel(selectedBasemapFeature)}
+	                        </span>
+	                      </div>
+	                    ) : null}
+	                    {resolvedPolityMatch?.worldHistoryPolity ? (
+	                      <div className="world-history-selected-card__summary">
+	                        <span className="world-history-panel__eyebrow">Map-backed polity</span>
+	                        <strong>{resolvedPolityMatch.worldHistoryPolity.title}</strong>
+	                        <div className="world-history-selected-card__facts">
+	                          <div>
+	                            <span className="world-history-panel__eyebrow">Local id</span>
+	                            <strong>#{resolvedPolityMatch.worldHistoryPolity.id}</strong>
+	                          </div>
+	                          <div>
+	                            <span className="world-history-panel__eyebrow">Span</span>
+	                            <strong>{formatEntityBounds(resolvedPolityMatch.worldHistoryPolity)}</strong>
+	                          </div>
+	                          <div>
+	                            <span className="world-history-panel__eyebrow">Import key</span>
+	                            <strong>{resolvedPolityMatch.worldHistoryPolity.sourceKey}</strong>
+	                          </div>
+	                          <div>
+	                            <span className="world-history-panel__eyebrow">Snapshots</span>
+	                            <strong>
+	                              {typeof resolvedPolityMatch.worldHistoryPolity.metadata?.importedSnapshotCount === 'number'
+	                                ? resolvedPolityMatch.worldHistoryPolity.metadata.importedSnapshotCount
+	                                : selectedPolitySnapshots.length || 'Unknown'}
+	                            </strong>
+	                          </div>
+	                        </div>
+	                        {resolvedPolityMatch.worldHistoryPolity.summary ? (
+	                          <span className="world-history-hint">
+	                            {resolvedPolityMatch.worldHistoryPolity.summary}
+	                          </span>
+	                        ) : null}
+	                      </div>
+	                    ) : null}
+	                    <div className="world-history-selected-card__facts">
+	                      <div>
+	                        <span className="world-history-panel__eyebrow">Snapshot year</span>
+	                        <strong>{activeBasemapYear ? formatYear(activeBasemapYear.year) : 'Unavailable'}</strong>
+	                      </div>
+	                      <div>
+	                        <span className="world-history-panel__eyebrow">Part of</span>
+	                        <strong>{selectedBasemapFeature.properties?.atlasParent || 'Standalone region'}</strong>
+	                      </div>
+	                      <div>
+	                        <span className="world-history-panel__eyebrow">Subject</span>
+	                        <strong>{selectedBasemapFeature.properties?.atlasSubject || 'No subject note'}</strong>
+	                      </div>
+	                      <div>
+	                        <span className="world-history-panel__eyebrow">Border precision</span>
+	                        <strong>
+	                          {selectedBasemapFeature.properties?.atlasBorderPrecision ?? 'Unknown'}
+	                        </strong>
+	                      </div>
+	                      {resolvedPolityMatch?.worldHistoryPolitySnapshot?.sourceFeatureId ? (
+	                        <div>
+	                          <span className="world-history-panel__eyebrow">Feature id</span>
+	                          <strong>{resolvedPolityMatch.worldHistoryPolitySnapshot.sourceFeatureId}</strong>
+	                        </div>
+	                      ) : null}
+	                    </div>
+	                    <div className="world-history-reconciliation">
                       <div className="world-history-reconciliation__header">
                         <div>
                           <span className="world-history-panel__eyebrow">Reconciliation</span>
@@ -3943,7 +4164,7 @@ const WorldHistoryPage: React.FC = () => {
                 )}
               </section>
 
-              <section className="world-history-panel">
+              <section className="world-history-panel world-history-panel--browse">
                 <div className="world-history-panel__header">
                   <div>
                     <span className="world-history-panel__eyebrow">{activeFormationUi.workspaceEyebrow}</span>
@@ -4265,7 +4486,7 @@ const WorldHistoryPage: React.FC = () => {
                 )}
               </section>
 
-              <section className="world-history-panel">
+              <section className="world-history-panel world-history-panel--browse">
                 <div className="world-history-panel__header">
                   <div>
                     <span className="world-history-panel__eyebrow">Jump</span>
@@ -4325,7 +4546,7 @@ const WorldHistoryPage: React.FC = () => {
                 )}
               </section>
 
-              <section className="world-history-panel">
+              <section className="world-history-panel world-history-panel--browse">
                 <div className="world-history-panel__header">
                   <div>
                     <span className="world-history-panel__eyebrow">Shelf</span>
@@ -4384,7 +4605,7 @@ const WorldHistoryPage: React.FC = () => {
                 )}
               </section>
 
-              <section className="world-history-panel">
+              <section className="world-history-panel world-history-panel--browse">
                 <div className="world-history-panel__header">
                   <div>
                     <span className="world-history-panel__eyebrow">Timeline</span>
