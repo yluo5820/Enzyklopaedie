@@ -57,7 +57,7 @@ World History currently uses:
 If the basemap dataset is not present, the world-history page still loads but the local polygon basemap
 layer will be unavailable.
 
-To seed built-in `polity` entities and yearly snapshots from that dataset, run:
+To seed map-backed polity records and their compatibility `reference_entities` mirrors, run:
 
 ```bash
 npm run import:historical-polities --prefix server
@@ -83,7 +83,8 @@ The current automated coverage is intentionally focused on the new foundation:
 - shared domain helpers
 - item create/update API flow
 - atlas entity create/update/delete API flow
-- Wikidata authority search/import flow for reference entities
+- Wikidata authority search/import flow for people
+- map-backed world-history polity storage and compatibility snapshots
 - formation membership and atlas relation flow
 - person polity and subject membership flow
 - canonical item creator resolution through `created_by` person relations
@@ -104,10 +105,10 @@ After `npm start`, use this path:
 2. Check the home dashboard loads
 3. Open `Items` and add an item
 4. Confirm the item creator resolves to a linked person when possible, while the creator text remains available as fallback display
-5. Open `Entities` and confirm the atlas loads with `person`, `polity`, and `formation`
-6. Search Wikidata from `Entities`, import a person or polity, and open the created entity
-7. Create a new person manually, add a subject membership, then place that person inside a polity
-8. Create a new formation, add a polity membership, open it, update it, and delete it again
+5. Open `Entities` and confirm the page is focused on people
+6. Search Wikidata from `Entities`, import a person, and open the created entity
+7. Create a new person manually, add a subject membership, then place that person inside a map-backed polity
+8. Confirm custom polity creation is not available from the Entities page
 9. Open `Subjects` and confirm the tree loads with `Ontology` as the root
 10. Open a subject page from the tree, create a child subject, and create a topic inside that subject
 11. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items

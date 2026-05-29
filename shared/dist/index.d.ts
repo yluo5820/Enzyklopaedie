@@ -162,6 +162,40 @@ export interface PolitySnapshot {
     createdAt: string;
     updatedAt: string;
 }
+export interface WorldHistoryPolity {
+    id: number;
+    referenceEntityId?: number;
+    source: 'historical-basemaps';
+    sourceKey: string;
+    title: string;
+    summary?: string;
+    description?: string;
+    startYear?: number;
+    endYear?: number;
+    authority?: CanonicalHistoricalEntityAuthority;
+    authorityId?: string;
+    imageUrl?: string;
+    sourceUrl?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface WorldHistoryPolitySnapshot {
+    id: number;
+    worldHistoryPolityId: number;
+    referenceEntityId?: number;
+    snapshotYear: number;
+    source: 'historical-basemaps';
+    sourceFeatureId?: string;
+    titleAtSnapshot: string;
+    parentLabel?: string;
+    subjectLabel?: string;
+    borderPrecision?: number;
+    geometry: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+}
 export interface FormationMembership {
     id: number;
     formationEntityId: number;
@@ -329,6 +363,10 @@ export type NewActivityEvent = Omit<ActivityEvent, 'id' | 'occurredAt'>;
 export type UpdateActivityEvent = Partial<Omit<ActivityEvent, 'id' | 'occurredAt'>>;
 export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdatePolitySnapshot = Partial<Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewWorldHistoryPolity = Omit<WorldHistoryPolity, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateWorldHistoryPolity = Partial<Omit<WorldHistoryPolity, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewWorldHistoryPolitySnapshot = Omit<WorldHistoryPolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdateWorldHistoryPolitySnapshot = Partial<Omit<WorldHistoryPolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>>;
 export type NewFormationMembership = Omit<FormationMembership, 'id' | 'createdAt'>;
 export type UpdateFormationMembership = Partial<Omit<FormationMembership, 'id' | 'createdAt'>>;
 export type NewPersonPolityMembership = Omit<PersonPolityMembership, 'id' | 'createdAt'>;

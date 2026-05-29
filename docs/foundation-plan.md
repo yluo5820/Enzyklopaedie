@@ -8,8 +8,8 @@ organize and present four layers together:
 1. `Items`: the concrete works a person studied.
 2. `Subjects`: the synchronic logical taxonomy of knowledge, rooted at `Ontology`.
 3. `Topics`: contextualized domains of study that sit between subjects and items.
-4. `Entities`: people, polities, and formations that give topics and items their historical or
-   spatial setting.
+4. `Entities`: editable people plus map-backed historical context that gives topics and items
+   their historical or spatial setting.
 
 The detailed version of this model lives in [domain-model.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/domain-model.md).
 
@@ -44,8 +44,8 @@ Status:
    - `person`
    - `polity`
    - `formation`
-4. Treat imported historical basemap regions as built-in `polity` seeds.
-5. Add dated `polity_snapshots` and `formation_memberships`.
+4. Treat imported historical basemap regions as built-in, read-only `polity` seeds.
+5. Add dated map snapshots and `formation_memberships`.
 
 Status:
 - implemented in the current atlas branch
@@ -53,7 +53,7 @@ Status:
 ### Phase 5
 
 1. Add person-to-polity membership.
-2. Make the world-history map open directly into built-in polity records and formation composition.
+2. Make the world-history map open directly into built-in polity records and later formation composition.
 3. Add subject filtering and richer people overlays to the atlas.
 4. Canonicalize item creators through `created_by` person relations.
 5. Add exhibition and publishing layers.

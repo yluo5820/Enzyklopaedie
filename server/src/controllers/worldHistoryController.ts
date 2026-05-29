@@ -1,12 +1,13 @@
 import { NextFunction, Request, Response } from 'express';
-import type {
-  CanonicalHistoricalEntity,
-  CanonicalHistoricalSearchMatch,
-  FormationSubtype,
-  HistoricalBasemapPolityMatchResponse,
-  NewCanonicalHistoricalEntity,
-  ReferenceEntity,
-  ReferenceEntityKind,
+import {
+  isBuiltInPolityEntity,
+  type CanonicalHistoricalEntity,
+  type CanonicalHistoricalSearchMatch,
+  type FormationSubtype,
+  type HistoricalBasemapPolityMatchResponse,
+  type NewCanonicalHistoricalEntity,
+  type ReferenceEntity,
+  type ReferenceEntityKind,
 } from '@enzyklopaedie/shared';
 import { getDb } from '../db';
 import { recordActivityEvent } from '../lib/activity';
@@ -520,6 +521,12 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
     targetFormationSubtype
   );
   if (existingByTitle) {
+    if (targetKind === 'polity' && !isBuiltInPolityEntity(existingByTitle)) {
+      return res.status(400).json({
+        message: 'Polities can only be linked when they already exist in the map-backed atlas.',
+      });
+    }
+
     const updatedExistingEntity = await syncReferenceEntityAtlasMetadata(db, existingByTitle, canonicalEntity);
     const now = new Date().toISOString();
     await db.run(
@@ -538,6 +545,12 @@ export const promoteCanonicalHistoricalEntity = asyncErrorHandler(async (req: Re
         updatedAt: now,
       },
       referenceEntity: updatedExistingEntity,
+    });
+  }
+
+  if (targetKind === 'polity') {
+    return res.status(400).json({
+      message: 'Polities are seeded from historical basemaps before they can be linked to Wikidata.',
     });
   }
 

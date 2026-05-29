@@ -1,7 +1,12 @@
 import type { PolitySnapshot, ReferenceEntity } from '@enzyklopaedie/shared';
 import type sqlite3 from 'sqlite3';
 import type { Database } from 'sqlite';
-import { hydrateReferenceEntity, parseReferenceEntityMetadata } from './referenceEntities';
+import { hydrateReferenceEntity } from './referenceEntities';
+import {
+  listWorldHistoryPolitySnapshotsByFeature,
+  listWorldHistoryPolitySnapshotsByReferenceEntity,
+  toLegacyPolitySnapshot,
+} from './worldHistoryPolities';
 
 type DbConnection = Database<sqlite3.Database, sqlite3.Statement>;
 
@@ -42,6 +47,16 @@ export const listPolitySnapshotsByReferenceEntity = async (
   db: DbConnection,
   referenceEntityId: number
 ) => {
+  const worldHistorySnapshots = await listWorldHistoryPolitySnapshotsByReferenceEntity(
+    db,
+    referenceEntityId
+  );
+  if (worldHistorySnapshots.length > 0) {
+    return worldHistorySnapshots.map((snapshot) =>
+      toLegacyPolitySnapshot(snapshot, referenceEntityId)
+    );
+  }
+
   const rows = await db.all<PolitySnapshotRow[]>(
     `SELECT * FROM polity_snapshots
      WHERE referenceEntityId = ?
@@ -58,6 +73,42 @@ export const findPolitySnapshotMatch = async (
   snapshotYear: number,
   sourceFeatureId: string
 ) => {
+  const worldHistorySnapshots = await listWorldHistoryPolitySnapshotsByFeature(
+    db,
+    source,
+    snapshotYear
+  );
+
+  for (const snapshot of worldHistorySnapshots) {
+    const sourceFeatureIds = Array.isArray(snapshot.metadata?.sourceFeatureIds)
+      ? snapshot.metadata?.sourceFeatureIds.filter(
+          (value): value is string => typeof value === 'string'
+        )
+      : [];
+
+    if (snapshot.sourceFeatureId !== sourceFeatureId && !sourceFeatureIds.includes(sourceFeatureId)) {
+      continue;
+    }
+
+    if (!snapshot.referenceEntityId) {
+      return null;
+    }
+
+    const referenceEntityRow = await db.get<ReferenceEntityRow>(
+      'SELECT * FROM reference_entities WHERE id = ?',
+      snapshot.referenceEntityId
+    );
+
+    if (!referenceEntityRow) {
+      return null;
+    }
+
+    return {
+      referenceEntity: hydrateReferenceEntity(referenceEntityRow),
+      snapshot: toLegacyPolitySnapshot(snapshot, snapshot.referenceEntityId),
+    };
+  }
+
   const rows = await db.all<PolitySnapshotRow[]>(
     `SELECT * FROM polity_snapshots
      WHERE source = ? AND snapshotYear = ?

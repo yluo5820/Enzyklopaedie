@@ -11,8 +11,12 @@ import {
 import {
   generateUniqueReferenceEntitySlug,
   hydrateReferenceEntity,
-  parseReferenceEntityMetadata,
 } from './referenceEntities';
+import {
+  updateWorldHistoryPolityRange,
+  upsertWorldHistoryPolity,
+  upsertWorldHistoryPolitySnapshot,
+} from './worldHistoryPolities';
 
 type DbConnection = Database<sqlite3.Database, sqlite3.Statement>;
 
@@ -194,6 +198,15 @@ export const importHistoricalPolities = async (
   );
 
   const touchedPolityIds = new Map<number, { minYear: number; maxYear: number; title: string }>();
+  const touchedWorldHistoryPolityIds = new Map<
+    number,
+    {
+      importKey: string;
+      minYear: number;
+      maxYear: number;
+      snapshotCount: number;
+    }
+  >();
   const createdPolityIds = new Set<number>();
   const updatedPolityIds = new Set<number>();
   const snapshotCountsByPolityId = new Map<number, number>();
@@ -204,6 +217,7 @@ export const importHistoricalPolities = async (
 
   try {
     await db.run(`DELETE FROM polity_snapshots WHERE source = 'historical-basemaps'`);
+    await db.run(`DELETE FROM world_history_polity_snapshots WHERE source = 'historical-basemaps'`);
 
     for (const yearEntry of manifest.availableYears) {
       const layer = await getHistoricalBasemapLayer(yearEntry.year, cutoffYear);
@@ -263,6 +277,24 @@ export const importHistoricalPolities = async (
 
       for (const [key, group] of groupedByPolity.entries()) {
         const ensured = await ensurePolityEntity(db, entityByKey, key, group.label, yearEntry.year);
+        const polityMetadata = {
+          ...(ensured.entity.metadata ?? {}),
+          atlasSource: 'historical-basemaps',
+          builtIn: true,
+          polityImportKey: key,
+        };
+        const worldHistoryPolity = await upsertWorldHistoryPolity(db, {
+          referenceEntityId: ensured.entity.id,
+          source: 'historical-basemaps',
+          sourceKey: key,
+          title: ensured.entity.title,
+          summary: ensured.entity.summary ?? BUILT_IN_POLITY_SUMMARY,
+          description: ensured.entity.description,
+          startYear: ensured.entity.startYear,
+          endYear: ensured.entity.endYear,
+          metadata: polityMetadata,
+        });
+
         if (ensured.created) {
           createdPolityIds.add(ensured.entity.id);
         } else {
@@ -285,6 +317,20 @@ export const importHistoricalPolities = async (
         } else {
           currentRange.minYear = Math.min(currentRange.minYear, yearEntry.year);
           currentRange.maxYear = Math.max(currentRange.maxYear, yearEntry.year);
+        }
+
+        const currentWorldHistoryRange = touchedWorldHistoryPolityIds.get(worldHistoryPolity.id);
+        if (!currentWorldHistoryRange) {
+          touchedWorldHistoryPolityIds.set(worldHistoryPolity.id, {
+            importKey: key,
+            minYear: yearEntry.year,
+            maxYear: yearEntry.year,
+            snapshotCount: 1,
+          });
+        } else {
+          currentWorldHistoryRange.minYear = Math.min(currentWorldHistoryRange.minYear, yearEntry.year);
+          currentWorldHistoryRange.maxYear = Math.max(currentWorldHistoryRange.maxYear, yearEntry.year);
+          currentWorldHistoryRange.snapshotCount += 1;
         }
 
         const now = new Date().toISOString();
@@ -330,18 +376,32 @@ export const importHistoricalPolities = async (
           now,
           now
         );
+
+        await upsertWorldHistoryPolitySnapshot(db, {
+          worldHistoryPolityId: worldHistoryPolity.id,
+          referenceEntityId: ensured.entity.id,
+          snapshotYear: yearEntry.year,
+          source: 'historical-basemaps',
+          sourceFeatureId: group.sourceFeatureIds[0],
+          titleAtSnapshot: group.label,
+          parentLabel: parentLabel ?? undefined,
+          subjectLabel: subjectLabel ?? undefined,
+          borderPrecision: borderPrecision ?? undefined,
+          geometry,
+          metadata,
+        });
       }
     }
 
     for (const [entityId, range] of touchedPolityIds.entries()) {
       const existing = entityByKey.get(normalizePolityKey(range.title));
       const currentMetadata = existing ? { ...(existing.metadata ?? {}) } : {};
-        const metadata = {
-          ...currentMetadata,
-          atlasSource: 'historical-basemaps',
-          builtIn: true,
-          importedSnapshotCount: snapshotCountsByPolityId.get(entityId) ?? 0,
-        };
+      const metadata = {
+        ...currentMetadata,
+        atlasSource: 'historical-basemaps',
+        builtIn: true,
+        importedSnapshotCount: snapshotCountsByPolityId.get(entityId) ?? 0,
+      };
 
       await db.run(
         `UPDATE reference_entities
@@ -357,6 +417,22 @@ export const importHistoricalPolities = async (
         JSON.stringify(metadata),
         new Date().toISOString(),
         entityId
+      );
+    }
+
+    for (const [worldHistoryPolityId, range] of touchedWorldHistoryPolityIds.entries()) {
+      await updateWorldHistoryPolityRange(
+        db,
+        worldHistoryPolityId,
+        range.minYear,
+        range.maxYear,
+        BUILT_IN_POLITY_SUMMARY,
+        {
+          atlasSource: 'historical-basemaps',
+          builtIn: true,
+          importedSnapshotCount: range.snapshotCount,
+          polityImportKey: range.importKey,
+        }
       );
     }
 

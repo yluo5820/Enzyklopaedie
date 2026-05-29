@@ -403,7 +403,7 @@ export const fetchReferenceEntities = async (kind?: string): Promise<ReferenceEn
 
 export const searchReferenceEntityAuthority = async (
   query: string,
-  kind: ReferenceAuthoritySearchKind = 'all',
+  kind: ReferenceAuthoritySearchKind = 'person',
   limit = 10
 ): Promise<ReferenceAuthoritySearchMatch[]> => {
   const trimmedQuery = query.trim();

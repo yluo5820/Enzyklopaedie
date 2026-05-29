@@ -59,7 +59,7 @@ Active entity kinds:
 What they mean:
 
 - `person`: an individual figure
-- `polity`: a built-in historical-geographical unit backed by atlas data
+- `polity`: a read-only historical-geographical unit backed by map data
 - `formation`: a user-curated grouping of polities across time and space
 
 Entities are not part of the subject hierarchy. They are linked into topics and items.
@@ -110,8 +110,8 @@ Free-text creator fields are only an import fallback.
 
 ### Polity
 
-- is a built-in atlas unit, not a freeform user-created geography by default
-- can have many dated `polity_snapshots`
+- is a built-in atlas unit, not a freeform user-created geography
+- can have many dated map snapshots
 - can belong to formations
 - can contain sub-polities through explicit structure links
 
@@ -143,16 +143,18 @@ Current storage and routes:
 - `topics` table and `/subjects` UI are the subject layer
 - `study_topics` table and `/topics/:id` UI are the topic layer
 - `knowledge_items` are the item layer
-- `reference_entities` hold `person`, `polity`, and `formation`
-- `polity_snapshots` hold year-specific atlas geometry
+- `reference_entities` hold editable people, formations, and compatibility mirrors for built-in polities
+- `world_history_polities` hold read-only map-backed polity identities
+- `world_history_polity_snapshots` hold year-specific map geometry for those identities
+- `polity_snapshots` currently mirror year-specific atlas geometry for compatibility
 - `formation_memberships` hold formation-to-polity membership
 
 ## World History Overlay
 
 The world-history surface has two separate layers:
 
-- canonical authority records from Wikidata
-- local atlas-backed polities from `historical-basemaps`
+- local map-backed polities from `historical-basemaps`
+- canonical authority records from Wikidata for people, future enrichment, and non-polity atlas concepts
 
 Canonical records can still come in external kinds such as:
 
@@ -162,10 +164,10 @@ Canonical records can still come in external kinds such as:
 - `place`
 - `region`
 
-Those are external authority categories. Locally, they reconcile into the active atlas model:
+Those are external authority categories. Locally, map-backed polities are the source of truth:
 
-- `nation` and many `place`/`region` records -> `polity`
-- `civilization` and `era` -> `formation`
+- `nation` and many `place`/`region` records can only link to an existing map-backed `polity`
+- `civilization` and `era` can still reconcile into `formation` while that modeling remains under review
 
 ## Naming Notes
 
@@ -179,5 +181,5 @@ Preferred user-facing terms:
 Preferred atlas-facing terms:
 
 - `People`
-- `Polities`
+- `Map-backed states and empires`
 - `Formations`

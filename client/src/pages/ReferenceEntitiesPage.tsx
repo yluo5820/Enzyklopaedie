@@ -2,7 +2,6 @@ import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
   FormationSubtype,
   NewReferenceEntity,
-  ReferenceAuthoritySearchKind,
   ReferenceAuthoritySearchMatch,
   ReferenceEntity,
   ReferenceEntityKind,
@@ -17,24 +16,16 @@ import {
 } from '../api';
 import './ReferenceEntitiesPage.css';
 
-const browseKindOptions: ReferenceEntityKind[] = ['person', 'polity', 'formation'];
-const creatableKindOptions: ReferenceEntityKind[] = ['person', 'formation'];
-const authorityKindOptions: ReferenceAuthoritySearchKind[] = ['all', 'person', 'polity', 'formation'];
+const browseKindOptions: ReferenceEntityKind[] = ['person'];
 const kindLabels: Record<ReferenceEntityKind, string> = {
   person: 'People',
-  polity: 'Polities',
-  formation: 'Formations',
+  polity: 'States & Empires',
+  formation: 'Civilizations & Eras',
 };
 const singularKindLabels: Record<ReferenceEntityKind, string> = {
   person: 'Person',
-  polity: 'Polity',
-  formation: 'Formation',
-};
-const authorityKindLabels: Record<ReferenceAuthoritySearchKind, string> = {
-  all: 'All Importable',
-  person: 'People',
-  polity: 'Polities',
-  formation: 'Formations',
+  polity: 'State / Empire',
+  formation: 'Civilization / Era',
 };
 const formationSubtypeLabels: Record<FormationSubtype, string> = {
   civilization: 'Civilization',
@@ -43,17 +34,10 @@ const formationSubtypeLabels: Record<FormationSubtype, string> = {
   world_frame: 'World Frame',
   other: 'Other',
 };
-const formationSubtypeOptions: FormationSubtype[] = [
-  'civilization',
-  'era',
-  'tradition',
-  'world_frame',
-  'other',
-];
 const kindAtlasLeads: Record<ReferenceEntityKind, string> = {
   person: 'Writers, thinkers, speakers, and other individual figures.',
-  polity: 'Built-in historical-geographical units imported from the world-history basemap.',
-  formation: 'User-curated groupings of polities across time and space.',
+  polity: 'Historical states, empires, kingdoms, republics, dynasties, and other political units.',
+  formation: 'User-curated civilizations, eras, traditions, and other broad historical groupings.',
 };
 
 type EntityWorkbenchPreset = {
@@ -72,7 +56,7 @@ type EntityWorkbenchPreset = {
 const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset> = {
   person: {
     lead:
-      'People anchor provenance. Start with identity and life dates here, then link polities, formations, and influences on the detail page.',
+      'People anchor provenance. Start with identity and life dates here, then link states, empires, historical groupings, and influences on the detail page.',
     startYearLabel: 'Birth Year',
     endYearLabel: 'Death Year',
     startYearPlaceholder: '384 for Aristotle',
@@ -81,33 +65,33 @@ const entityWorkbenchPresets: Record<ReferenceEntityKind, EntityWorkbenchPreset>
     summaryPlaceholder: 'Who is this person in one sentence?',
     descriptionPlaceholder: 'Biographical notes, role, major works, and why this person matters.',
     submitLabel: 'Add Person',
-    nextStep: 'After saving, connect this person to items through created_by and to polities or formations.',
+    nextStep: 'After saving, connect this person to items through created_by and to states, empires, or broader historical groupings.',
   },
   polity: {
     lead:
-      'Polities are atlas-backed records imported from historical basemaps. They should normally come from the world-history importer, not be typed in here.',
+      'States and empires are atlas-backed political units imported from historical basemaps or authority records.',
     startYearLabel: 'Begin Year',
     endYearLabel: 'End Year',
     startYearPlaceholder: '-27',
     endYearPlaceholder: '476',
     chronologyHint: 'Polity chronology should normally be driven by imported atlas snapshots.',
-    summaryPlaceholder: 'Built-in polity record',
-    descriptionPlaceholder: 'Atlas-backed polity notes belong on the detail page once the importer has created the record.',
-    submitLabel: 'Add Polity',
-    nextStep: 'Use the world-history importer to seed polities from historical basemaps.',
+    summaryPlaceholder: 'Built-in state or empire record',
+    descriptionPlaceholder: 'Atlas-backed political-unit notes belong on the detail page once the importer has created the record.',
+    submitLabel: 'Add State / Empire',
+    nextStep: 'Use Wikidata or the world-history importer to seed states and empires when possible.',
   },
   formation: {
     lead:
-      'Formations are user-curated spatiotemporal groupings of polities. Use them for historical continuities, regional periods, and civilizational spans.',
+      'Civilizations and eras are user-curated groupings of states and empires across time and space.',
     startYearLabel: 'Begin Year',
     endYearLabel: 'End Year',
     startYearPlaceholder: '-323',
     endYearPlaceholder: '1453',
     chronologyHint: 'Use the broad span of the formation itself. Specific polity memberships can be dated on the detail page.',
-    summaryPlaceholder: 'What historical formation does this record name?',
-    descriptionPlaceholder: 'Notes on the scope, subtype, membership logic, and why these polities belong together.',
-    submitLabel: 'Add Formation',
-    nextStep: 'After saving, add polity memberships to define the formation directly.',
+    summaryPlaceholder: 'What civilization, era, or historical frame does this record name?',
+    descriptionPlaceholder: 'Notes on the scope, subtype, membership logic, and why these states or empires belong together.',
+    submitLabel: 'Add Civilization / Era',
+    nextStep: 'After saving, add member states or empires to define the grouping directly.',
   },
 };
 
@@ -191,7 +175,6 @@ const ReferenceEntitiesPage: React.FC = () => {
   const [filter, setFilter] = useState<EntityFilter>('all');
   const [formState, setFormState] = useState(createInitialFormState());
   const [authorityQuery, setAuthorityQuery] = useState('');
-  const [authorityKind, setAuthorityKind] = useState<ReferenceAuthoritySearchKind>('person');
   const [authorityMatches, setAuthorityMatches] = useState<ReferenceAuthoritySearchMatch[]>([]);
   const [authoritySearching, setAuthoritySearching] = useState(false);
   const [authorityImportingKey, setAuthorityImportingKey] = useState<string | null>(null);
@@ -213,10 +196,10 @@ const ReferenceEntitiesPage: React.FC = () => {
   useEffect(() => {
     const loadEntities = async () => {
       try {
-        setEntities(await fetchReferenceEntities());
+        setEntities(await fetchReferenceEntities('person'));
       } catch (loadError) {
         console.error(loadError);
-        setError('Failed to load reference entities.');
+        setError('Failed to load people.');
       } finally {
         setLoading(false);
       }
@@ -228,10 +211,11 @@ const ReferenceEntitiesPage: React.FC = () => {
   const workbenchPreset = entityWorkbenchPresets[formState.kind];
 
   const counts = useMemo(() => {
-    const byKind = Object.fromEntries(browseKindOptions.map((kind) => [kind, 0])) as Record<
-      ReferenceEntityKind,
-      number
-    >;
+    const byKind: Record<ReferenceEntityKind, number> = {
+      formation: 0,
+      person: 0,
+      polity: 0,
+    };
 
     for (const entity of entities) {
       byKind[entity.kind] += 1;
@@ -281,10 +265,10 @@ const ReferenceEntitiesPage: React.FC = () => {
     setError(null);
 
     try {
-      const matches = await searchReferenceEntityAuthority(trimmedQuery, authorityKind, 8);
+      const matches = await searchReferenceEntityAuthority(trimmedQuery, 'person', 8);
       setAuthorityMatches(matches);
       if (matches.length === 0) {
-        setAuthorityStatus('No Wikidata authority records matched that search.');
+        setAuthorityStatus('No Wikidata person records matched that search.');
       }
     } catch (searchError) {
       console.error(searchError);
@@ -401,16 +385,16 @@ const ReferenceEntitiesPage: React.FC = () => {
         <section className="reference-entities-panel reference-entities-single-panel reference-entities-create-panel">
           <div className="reference-entities-header reference-entities-header-row">
             <div>
-              <span className="reference-entities-eyebrow">Reference Atlas</span>
+              <span className="reference-entities-eyebrow">People</span>
               <h1>Add {singularKindLabels[formState.kind]}</h1>
-              <p>Capture one primary atlas record at a time. New history work should start with people or formations.</p>
+              <p>Capture people for creators, thinkers, rulers, speakers, and other named figures.</p>
             </div>
             <button
               type="button"
               className="reference-entities-secondary-button"
               onClick={() => setViewMode('list')}
             >
-              Show Atlas Index ({entities.length})
+              Show People Index ({entities.length})
             </button>
           </div>
 
@@ -423,33 +407,18 @@ const ReferenceEntitiesPage: React.FC = () => {
                 <h2>Search authority records</h2>
               </div>
               <span className="reference-entities-authority-note">
-                Imports names, dates, summaries, images, and source metadata.
+                Imports names, life dates, summaries, images, and source metadata.
               </span>
             </div>
 
             <form className="reference-entities-authority-form" onSubmit={handleAuthoritySearch}>
-              <div className="reference-entities-field">
-                <label htmlFor="authorityKind">Record Type</label>
-                <select
-                  id="authorityKind"
-                  value={authorityKind}
-                  onChange={(event) => setAuthorityKind(event.target.value as ReferenceAuthoritySearchKind)}
-                >
-                  {authorityKindOptions.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {authorityKindLabels[kind]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className="reference-entities-field">
                 <label htmlFor="authorityQuery">Search</label>
                 <input
                   id="authorityQuery"
                   value={authorityQuery}
                   onChange={(event) => setAuthorityQuery(event.target.value)}
-                  placeholder="Aristotle, Ibn Sina, Ottoman Empire"
+                  placeholder="Aristotle, Ibn Sina, Hypatia"
                 />
               </div>
 
@@ -540,42 +509,7 @@ const ReferenceEntitiesPage: React.FC = () => {
           </div>
 
           <form className="reference-entities-form reference-entities-form-grid" onSubmit={handleSubmit}>
-            <div className="reference-entities-field reference-entities-field-span-4 is-primary">
-              <label htmlFor="kind">Kind</label>
-              <select id="kind" name="kind" value={formState.kind} onChange={handleChange}>
-                {creatableKindOptions.map((kind) => (
-                  <option key={kind} value={kind}>
-                    {singularKindLabels[kind]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {formState.kind === 'formation' ? (
-              <div className="reference-entities-field reference-entities-field-span-4 is-primary">
-                <label htmlFor="formationSubtype">Formation Type</label>
-                <select
-                  id="formationSubtype"
-                  name="formationSubtype"
-                  value={formState.formationSubtype}
-                  onChange={handleChange}
-                >
-                  {formationSubtypeOptions.map((subtype) => (
-                    <option key={subtype} value={subtype}>
-                      {formationSubtypeLabels[subtype]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-
-            <div
-              className={`reference-entities-field ${
-                formState.kind === 'formation'
-                  ? 'reference-entities-field-span-4'
-                  : 'reference-entities-field-span-8'
-              } is-primary`}
-            >
+            <div className="reference-entities-field reference-entities-field-span-12 is-primary">
               <label htmlFor="title">Title</label>
               <input id="title" name="title" value={formState.title} onChange={handleChange} required />
             </div>
@@ -654,16 +588,16 @@ const ReferenceEntitiesPage: React.FC = () => {
         <section className="reference-entities-panel reference-entities-single-panel reference-entities-list-panel">
           <div className="reference-entities-header reference-entities-header-row">
             <div>
-              <span className="reference-entities-eyebrow">Atlas Index</span>
-              <h1>Reference Atlas</h1>
-              <p>Browse the atlas backbone directly: people, built-in polities, and formations.</p>
+              <span className="reference-entities-eyebrow">People Index</span>
+              <h1>People</h1>
+              <p>Browse local person records used by items and historical context.</p>
             </div>
             <button
               type="button"
               className="reference-entities-secondary-button"
               onClick={() => setViewMode('create')}
             >
-              Back to Add Entity
+              Back to Add Person
             </button>
           </div>
 
@@ -672,7 +606,7 @@ const ReferenceEntitiesPage: React.FC = () => {
           <div className="reference-entities-stats">
             <div className="reference-entities-stat">
               <strong>{entities.length}</strong>
-              <span>Total entities</span>
+              <span>Total people</span>
             </div>
             {groupedEntities.map((group) => (
               <div key={group.kind} className="reference-entities-stat reference-entities-stat-rich">
@@ -708,7 +642,7 @@ const ReferenceEntitiesPage: React.FC = () => {
           {loading ? <div className="reference-entities-empty">Loading reference entities...</div> : null}
           {!loading && filteredEntities.length === 0 ? (
             <div className="reference-entities-empty">
-              No entities in this slice yet. Switch back and add the first atlas record.
+              No people in this slice yet. Switch back and add the first person.
             </div>
           ) : null}
 

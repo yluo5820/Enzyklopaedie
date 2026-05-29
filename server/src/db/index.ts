@@ -248,6 +248,47 @@ export async function initializeDatabase() {
       FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS world_history_polities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referenceEntityId INTEGER UNIQUE,
+      source TEXT NOT NULL,
+      sourceKey TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT,
+      description TEXT,
+      startYear INTEGER,
+      endYear INTEGER,
+      authority TEXT,
+      authorityId TEXT,
+      imageUrl TEXT,
+      sourceUrl TEXT,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(source, sourceKey),
+      FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS world_history_polity_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      worldHistoryPolityId INTEGER NOT NULL,
+      referenceEntityId INTEGER,
+      snapshotYear INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      sourceFeatureId TEXT,
+      titleAtSnapshot TEXT NOT NULL,
+      parentLabel TEXT,
+      subjectLabel TEXT,
+      borderPrecision INTEGER,
+      geometry TEXT NOT NULL,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(worldHistoryPolityId, snapshotYear, source),
+      FOREIGN KEY (worldHistoryPolityId) REFERENCES world_history_polities(id) ON DELETE CASCADE,
+      FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE SET NULL
+    );
+
     CREATE TABLE IF NOT EXISTS formation_memberships (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       formationEntityId INTEGER NOT NULL,
@@ -305,6 +346,16 @@ export async function initializeDatabase() {
       ON polity_snapshots(referenceEntityId, snapshotYear DESC);
     CREATE INDEX IF NOT EXISTS idx_polity_snapshots_source_year
       ON polity_snapshots(source, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_world_history_polities_source_title
+      ON world_history_polities(source, lower(title));
+    CREATE INDEX IF NOT EXISTS idx_world_history_polities_reference
+      ON world_history_polities(referenceEntityId);
+    CREATE INDEX IF NOT EXISTS idx_world_history_polity_snapshots_reference_year
+      ON world_history_polity_snapshots(referenceEntityId, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_world_history_polity_snapshots_source_year
+      ON world_history_polity_snapshots(source, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_world_history_polity_snapshots_feature
+      ON world_history_polity_snapshots(source, snapshotYear, sourceFeatureId);
     CREATE INDEX IF NOT EXISTS idx_formation_memberships_formation
       ON formation_memberships(formationEntityId, startYear, polityEntityId);
     CREATE INDEX IF NOT EXISTS idx_formation_memberships_polity
@@ -424,6 +475,8 @@ export const resetDatabase = async () => {
     await db.exec(`
       DELETE FROM canonical_historical_entity_geometries;
       DELETE FROM canonical_historical_entities;
+      DELETE FROM world_history_polity_snapshots;
+      DELETE FROM world_history_polities;
       DELETE FROM formation_memberships;
       DELETE FROM person_polity_memberships;
       DELETE FROM person_subject_memberships;

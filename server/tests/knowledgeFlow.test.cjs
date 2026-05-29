@@ -1048,7 +1048,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'polity',
+        kind: 'formation',
+        formationSubtype: 'civilization',
         title: 'Byzantine Empire',
         summary: 'A test fixture for the reference atlas.',
         startYear: 330,
@@ -1061,8 +1062,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     assert.equal(createResponse.status, 201);
     const createdEntity = await createResponse.json();
-    assert.equal(createdEntity.kind, 'polity');
-    assert.equal(createdEntity.slug, 'polity-byzantine-empire');
+    assert.equal(createdEntity.kind, 'formation');
+    assert.equal(createdEntity.slug, 'formation-byzantine-empire');
     assert.deepEqual(createdEntity.metadata, {
       origin: 'server-test',
     });
@@ -1071,7 +1072,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'polity',
+        kind: 'formation',
+        formationSubtype: 'civilization',
         title: 'Byzantine Empire',
       }),
     });
@@ -1080,10 +1082,19 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const duplicateEntity = await duplicateResponse.json();
     assert.equal(duplicateEntity.id, createdEntity.id);
 
-    const politiesResponse = await request('/api/reference-entities?kind=polity');
-    assert.equal(politiesResponse.status, 200);
-    const polities = await politiesResponse.json();
-    assert.ok(polities.some((entity) => entity.id === createdEntity.id));
+    const customPolityResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'polity',
+        title: 'Custom Island Kingdom',
+      }),
+    });
+    assert.equal(customPolityResponse.status, 400);
+    assert.match(
+      (await customPolityResponse.json()).message,
+      /map-backed records/
+    );
 
     const getResponse = await request(`/api/reference-entities/${createdEntity.id}`);
     assert.equal(getResponse.status, 200);
@@ -1180,8 +1191,17 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         endYear: 1077,
       }),
     });
-    assert.equal(polityResponse.status, 201);
-    const polityEntity = await polityResponse.json();
+    assert.equal(polityResponse.status, 400);
+
+    const { getDb } = require('../dist/db');
+    const { importHistoricalPolities } = require('../dist/lib/importHistoricalPolities');
+    await importHistoricalPolities(await getDb(), -500);
+
+    const politiesResponse = await request('/api/reference-entities?kind=polity');
+    assert.equal(politiesResponse.status, 200);
+    const polities = await politiesResponse.json();
+    const polityEntity = polities.find((entity) => entity.title === 'Roman Empire');
+    assert.ok(polityEntity);
 
     const formationMembershipResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/formation-memberships`,
@@ -1201,7 +1221,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(formationMembership.formationEntityId, updatedEntity.id);
     assert.equal(formationMembership.polityEntityId, polityEntity.id);
     assert.equal(formationMembership.formationTitle, 'Eastern Roman World');
-    assert.equal(formationMembership.polityTitle, 'Anatolian Theme');
+    assert.equal(formationMembership.polityTitle, 'Roman Empire');
 
     const authoredItemResponse = await request('/api/knowledge-items', {
       method: 'POST',
@@ -1303,7 +1323,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(formationMembershipListResponse.status, 200);
     const formationMemberships = await formationMembershipListResponse.json();
     assert.equal(formationMemberships.length, 1);
-    assert.equal(formationMemberships[0].polityTitle, 'Anatolian Theme');
+    assert.equal(formationMemberships[0].polityTitle, 'Roman Empire');
 
     const polityMembershipListResponse = await request(
       `/api/reference-entities/${polityEntity.id}/formation-memberships`
@@ -1331,7 +1351,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(personPolityMembership.personEntityId, personEntity.id);
     assert.equal(personPolityMembership.polityEntityId, polityEntity.id);
     assert.equal(personPolityMembership.personTitle, 'Michael Psellos');
-    assert.equal(personPolityMembership.polityTitle, 'Anatolian Theme');
+    assert.equal(personPolityMembership.polityTitle, 'Roman Empire');
 
     const personPolityMembershipListResponse = await request(
       `/api/reference-entities/${personEntity.id}/person-polity-memberships`
@@ -1339,7 +1359,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(personPolityMembershipListResponse.status, 200);
     const personPolityMemberships = await personPolityMembershipListResponse.json();
     assert.equal(personPolityMemberships.length, 1);
-    assert.equal(personPolityMemberships[0].polityTitle, 'Anatolian Theme');
+    assert.equal(personPolityMemberships[0].polityTitle, 'Roman Empire');
 
     const polityPersonMembershipListResponse = await request(
       `/api/reference-entities/${polityEntity.id}/person-polity-memberships`
@@ -2010,6 +2030,33 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     }
   });
 
+  await t.test('reference authority routes reject non-person records', async () => {
+    const searchResponse = await requestThroughHttp(
+      '/api/reference-entities/authority-search?q=Roman%20Empire&kind=polity'
+    );
+    assert.equal(searchResponse.status, 400);
+    assert.match(
+      (await searchResponse.json()).message,
+      /limited to people/
+    );
+
+    const importResponse = await requestThroughHttp('/api/reference-entities/authority-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authority: 'wikidata',
+        authorityId: 'Q2277',
+        kind: 'polity',
+        title: 'Roman Empire',
+      }),
+    });
+    assert.equal(importResponse.status, 400);
+    assert.match(
+      (await importResponse.json()).message,
+      /limited to people/
+    );
+  });
+
   await t.test('world history routes search, cache, promote, list, and delete canonical atlas entities', async () => {
     const originalFetch = global.fetch;
     let callCount = 0;
@@ -2222,6 +2269,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       assert.equal(geometryCached.geojson.type, 'FeatureCollection');
       assert.equal(callCount, 3);
 
+      const { getDb } = require('../dist/db');
+      const { importHistoricalPolities } = require('../dist/lib/importHistoricalPolities');
+      await importHistoricalPolities(await getDb(), -500);
+
       const promoteResponse = await requestThroughHttp(
         `/api/world-history/entities/${created.id}/promote`,
         {
@@ -2430,6 +2481,38 @@ test('historical polity import seeds built-in polity entities and snapshots from
   assert.equal(snapshotMetadata.featureCount, 1);
   assert.deepEqual(snapshotMetadata.sourceFeatureIds, ['100-0']);
 
+  const worldHistoryPolityRows = await db.all(
+    `SELECT * FROM world_history_polities ORDER BY lower(title) ASC`
+  );
+  assert.equal(worldHistoryPolityRows.length, 4);
+  const romanWorldHistoryPolity = worldHistoryPolityRows.find((row) => row.title === 'Roman Empire');
+  assert.ok(romanWorldHistoryPolity);
+  assert.equal(romanWorldHistoryPolity.referenceEntityId, romanPolity.id);
+  assert.equal(romanWorldHistoryPolity.source, 'historical-basemaps');
+  assert.equal(romanWorldHistoryPolity.sourceKey, 'roman empire');
+  assert.equal(romanWorldHistoryPolity.startYear, 100);
+  assert.equal(romanWorldHistoryPolity.endYear, 100);
+  const romanWorldHistoryMetadata = JSON.parse(romanWorldHistoryPolity.metadata);
+  assert.equal(romanWorldHistoryMetadata.atlasSource, 'historical-basemaps');
+  assert.equal(romanWorldHistoryMetadata.builtIn, true);
+  assert.equal(romanWorldHistoryMetadata.importedSnapshotCount, 1);
+
+  const worldHistorySnapshotRows = await db.all(
+    `SELECT referenceEntityId, worldHistoryPolityId, snapshotYear, sourceFeatureId, titleAtSnapshot, metadata
+     FROM world_history_polity_snapshots
+     ORDER BY snapshotYear ASC, titleAtSnapshot ASC`
+  );
+  assert.equal(worldHistorySnapshotRows.length, 4);
+  const romanWorldHistorySnapshot = worldHistorySnapshotRows.find(
+    (row) => row.titleAtSnapshot === 'Roman Empire'
+  );
+  assert.ok(romanWorldHistorySnapshot);
+  assert.equal(romanWorldHistorySnapshot.referenceEntityId, romanPolity.id);
+  assert.equal(romanWorldHistorySnapshot.worldHistoryPolityId, romanWorldHistoryPolity.id);
+  assert.equal(romanWorldHistorySnapshot.sourceFeatureId, '100-0');
+  const worldHistorySnapshotMetadata = JSON.parse(romanWorldHistorySnapshot.metadata);
+  assert.deepEqual(worldHistorySnapshotMetadata.sourceFeatureIds, ['100-0']);
+
   const polityMatchResponse = await request('/api/world-history/basemaps/polity-match?year=100&featureId=100-0');
   assert.equal(polityMatchResponse.status, 200);
   const polityMatch = await polityMatchResponse.json();
@@ -2451,10 +2534,11 @@ test('historical polity import seeds built-in polity entities and snapshots from
       summary: 'Atlas-backed polity notes.',
     }),
   });
-  assert.equal(builtInPolityUpdateResponse.status, 200);
-  const updatedPolity = await builtInPolityUpdateResponse.json();
-  assert.equal(updatedPolity.title, 'Roman Empire');
-  assert.equal(updatedPolity.summary, 'Atlas-backed polity notes.');
+  assert.equal(builtInPolityUpdateResponse.status, 400);
+  assert.match(
+    (await builtInPolityUpdateResponse.json()).message,
+    /read-only map-backed/
+  );
 
   const builtInPolityRenameResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
     method: 'PUT',

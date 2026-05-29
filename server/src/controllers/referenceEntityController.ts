@@ -41,7 +41,7 @@ const isReferenceEntityKind = (value: unknown): value is ReferenceEntityKind =>
   value === 'formation';
 
 const isReferenceAuthoritySearchKind = (value: unknown): value is ReferenceAuthoritySearchKind =>
-  value === 'all' || isReferenceEntityKind(value);
+  value === 'person';
 
 const parseId = (value: unknown) => {
   const parsed = Number(value);
@@ -226,7 +226,7 @@ const getReferenceAuthoritySearchMatches = async (
 ) => {
   const canonicalMatches = await searchWikidataCanonicalEntities({
     includeWikipediaSummary: true,
-    kind: 'all',
+    kind: 'person',
     limit: Math.min(limit * 2, 20),
     query,
   });
@@ -234,7 +234,7 @@ const getReferenceAuthoritySearchMatches = async (
 
   for (const canonicalMatch of canonicalMatches) {
     const localKind = localEntityKindMap[canonicalMatch.kind];
-    if (!localKind || (kind !== 'all' && localKind !== kind)) {
+    if (localKind !== kind) {
       continue;
     }
 
@@ -353,11 +353,13 @@ export const searchReferenceEntityAuthority = asyncErrorHandler(async (req: Requ
   }
 
   if (requestedKind !== undefined && !isReferenceAuthoritySearchKind(requestedKind)) {
-    return res.status(400).json({ message: 'Invalid reference authority kind' });
+    return res.status(400).json({
+      message: 'Reference authority search is currently limited to people.',
+    });
   }
 
   const db = await getDb();
-  const kind = requestedKind === undefined ? 'all' : requestedKind;
+  const kind = requestedKind === undefined ? 'person' : requestedKind;
   const limit = parseLimit(req.query.limit);
 
   try {
@@ -380,13 +382,10 @@ export const importReferenceEntityAuthority = asyncErrorHandler(async (req: Requ
     return res.status(400).json({ message: 'A valid reference entity kind is required.' });
   }
 
-  if (
-    payload.kind === 'formation' &&
-    payload.formationSubtype !== undefined &&
-    payload.formationSubtype !== null &&
-    !isFormationSubtype(payload.formationSubtype)
-  ) {
-    return res.status(400).json({ message: 'Invalid formation subtype' });
+  if (payload.kind !== 'person') {
+    return res.status(400).json({
+      message: 'Reference authority import is currently limited to people.',
+    });
   }
 
   const authorityId = typeof payload.authorityId === 'string' ? payload.authorityId.trim() : '';
@@ -399,7 +398,6 @@ export const importReferenceEntityAuthority = asyncErrorHandler(async (req: Requ
     authority: 'wikidata',
     authorityId,
     kind: payload.kind,
-    formationSubtype: payload.kind === 'formation' ? payload.formationSubtype ?? undefined : undefined,
     title,
     summary: typeof payload.summary === 'string' ? payload.summary.trim() || undefined : undefined,
     description:
@@ -481,6 +479,12 @@ export const createReferenceEntity = asyncErrorHandler(async (req: Request, res:
 
   if (!isReferenceEntityKind(newEntity.kind)) {
     return res.status(400).json({ message: 'Invalid reference entity kind' });
+  }
+
+  if (newEntity.kind === 'polity') {
+    return res.status(400).json({
+      message: 'Polities are map-backed records seeded by the world history importer.',
+    });
   }
 
   const title = typeof newEntity.title === 'string' ? newEntity.title.trim() : '';
@@ -574,27 +578,10 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
 
   const existing = hydrateReferenceEntity(existingRow);
   const updatedEntity: UpdateReferenceEntity = req.body;
-  const isLockedBuiltInPolity = isBuiltInPolityEntity(existing);
-
-  if (isLockedBuiltInPolity) {
-    const requestedTitle =
-      typeof updatedEntity.title === 'string' ? updatedEntity.title.trim() : existing.title;
-    const requestedKind = updatedEntity.kind ?? existing.kind;
-    const requestedStartYear =
-      updatedEntity.startYear === undefined ? existing.startYear : updatedEntity.startYear ?? undefined;
-    const requestedEndYear =
-      updatedEntity.endYear === undefined ? existing.endYear : updatedEntity.endYear ?? undefined;
-
-    if (
-      requestedKind !== existing.kind ||
-      requestedTitle !== existing.title ||
-      requestedStartYear !== existing.startYear ||
-      requestedEndYear !== existing.endYear
-    ) {
-      return res.status(400).json({
-        message: 'Built-in polities keep their identity and timeline from the historical atlas.',
-      });
-    }
+  if (existing.kind === 'polity') {
+    return res.status(400).json({
+      message: 'Polities are read-only map-backed records seeded by the world history importer.',
+    });
   }
 
   const fields: string[] = [];
@@ -610,6 +597,11 @@ export const updateReferenceEntity = asyncErrorHandler(async (req: Request, res:
   if (updatedEntity.kind !== undefined) {
     if (!isReferenceEntityKind(updatedEntity.kind)) {
       return res.status(400).json({ message: 'Invalid reference entity kind' });
+    }
+    if (updatedEntity.kind === 'polity') {
+      return res.status(400).json({
+        message: 'Polities are map-backed records seeded by the world history importer.',
+      });
     }
     nextKind = updatedEntity.kind;
     fields.push('kind = ?');

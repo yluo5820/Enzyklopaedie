@@ -226,7 +226,7 @@ Those should be filtered out both:
 
 Create a preprocessing script, for example:
 
-- `server/scripts/importHistoricalPolities.ts`
+- `server/src/scripts/importHistoricalPolities.ts`
 
 Responsibilities:
 
@@ -234,9 +234,10 @@ Responsibilities:
 2. Walk all available yearly GeoJSON files from the chosen cutoff onward
 3. Ignore generated labels
 4. Normalize labels into provisional polity identities
-5. Create or update a `reference_entities(kind = polity)` row for each polity
-6. Insert dated rows into `polity_snapshots`
-7. Record source metadata like `parent`, `subject`, `borderPrecision`, and `sourceFeatureId`
+5. Create or update a `world_history_polities` row for each polity
+6. Maintain a compatibility `reference_entities(kind = polity)` mirror while older relation paths still need it
+7. Insert dated rows into `world_history_polity_snapshots` and the compatibility `polity_snapshots` table
+8. Record source metadata like `parent`, `subject`, `borderPrecision`, and `sourceFeatureId`
 
 ### Grouping rule
 
@@ -267,7 +268,7 @@ Create a second script, for example:
 
 Responsibilities:
 
-1. Take imported polity rows
+1. Take imported `world_history_polities` rows
 2. Search Wikidata by title
 3. Store candidate authority ids and summaries
 4. Save image, date span, and source url when available
@@ -287,11 +288,11 @@ Keep the current world-history page, but change the basemap side so:
 
 ### Step 2
 
-Refactor `/entities` from five kinds into three:
+Refactor `/entities` into the person workbench:
 
-- `person`
-- `polity`
-- `formation`
+- people remain editable and importable from Wikidata
+- map-backed polities move to world-history storage and become read-only
+- formations remain internal until the civilization/era/tag model is revisited
 
 ### Step 3
 
@@ -348,25 +349,30 @@ Completed:
 2. `polity_snapshots` and `formation_memberships` are in the active schema.
 3. Anonymous basemap regions are filtered out of the world-history UI.
 4. The historical-basemaps importer seeds built-in `polity` records and snapshots.
-5. The atlas UI now centers on the three active kinds.
+5. `world_history_polities` and `world_history_polity_snapshots` store the read-only map-backed polity layer.
 6. The old `nation / civilization / era / place` local atlas kinds have been removed from the active UI and model.
 7. `person_polity_memberships` place people inside built-in polities with optional year bounds.
 8. Person memberships project back onto the world-history map and polity/entity pages.
 9. Subject memberships let the atlas filter visible people by study context.
 10. Item creators canonicalize into `created_by` relations to person entities, with free-text creator values retained as an import/display fallback.
+11. The `/entities` page is now people-focused, and reference authority import rejects non-person records.
+12. Public custom polity creation/update is blocked; polities are seeded by the world-history importer.
 
 Still open:
 
 1. make duplicate imported polity identities easier to reconcile when conservative label grouping splits a historical unit
 2. decide whether a later dedicated `site` layer is needed for cities, battle sites, and other true places
-3. add exhibition and publishing layers after the atlas workflows settle
+3. decide whether civilizations/eras should become topic-like tags over lists of map-backed polities
+4. add exhibition and publishing layers after the atlas workflows settle
 
 ## Next Implementation Slice
 
 The next meaningful implementation step after this branch is:
 
 1. review real imported basemap data for duplicated or overly broad polity identities
-2. add a lightweight reconciliation workflow only if the data shows enough duplication to justify it
-3. start the exhibition/publishing layer once the canonical atlas model is stable in day-to-day use
+2. add a one-time Wikidata enrichment script for imported `world_history_polities`
+3. add a lightweight reconciliation workflow only if the data shows enough duplication to justify it
+4. decide the civilization/era tag model before exposing formation creation again
+5. start the exhibition/publishing layer once the canonical atlas model is stable in day-to-day use
 
 That keeps the branch focused on the canonical atlas V1 instead of stretching it into later publishing work.

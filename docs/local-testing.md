@@ -47,7 +47,8 @@ That test currently covers:
 - updating it
 - verifying the activity feed records both create and update events
 - creating, updating, filtering, and deleting atlas entities
-- Wikidata authority search/import for people, polities, and formations
+- Wikidata authority search/import for people
+- map-backed polity import and read-only route guards
 - formation memberships and atlas relation flows
 - person polity and subject membership flows
 - world-history search, basemap, and polity import routes
@@ -105,18 +106,15 @@ That test currently covers:
 - Link the topic to a reference entity and confirm it appears in the topic’s reference context section
 - Confirm items assigned to the topic appear in the contained item list
 
-### 7. Reference Atlas
+### 7. People
 
 - Open `/entities`
-- Confirm the page loads and shows `person`, `polity`, and `formation`
-- Search Wikidata for a person or polity, import one result, and confirm the created entity opens with dates, summary, image/source metadata, and description populated when available
-- Confirm built-in polities are browseable but not removable
+- Confirm the page is focused on people
+- Search Wikidata for a person, import one result, and confirm the created entity opens with dates, summary, image/source metadata, and description populated when available
+- Confirm states/empires are not available as custom creations from this page
 - Create a `person`, add one subject membership, then place that person inside a polity
-- Create a new `formation` and confirm it appears in the list immediately
-- Open that formation and add one polity membership
 - Confirm linked items and linked topics/subjects appear on the entity page when relations exist
 - Add an entity-to-entity link such as `part_of` or `related_to` and confirm it appears on both pages
-- Delete the user-created formation and confirm you return to the atlas list
 
 ### 8. World History
 
@@ -125,6 +123,7 @@ That test currently covers:
 - Drag the timeline and confirm the basemap snapshot changes
 - Search a canonical record and pin it
 - Click a named basemap region and confirm the snapshot panel updates
+- Confirm the selected region resolves to a read-only map-backed polity when imported snapshots are present
 - Confirm people placed in the selected polity appear in the current or historical people sections
 - Use the subject filter and confirm unrelated placed people are hidden from the people overlay
 - If `data/historical-basemaps` is present, confirm built-in polity resolution works for selected regions
@@ -132,6 +131,6 @@ That test currently covers:
 ## Notes
 
 - The world-history page now uses `maplibre-gl`, local basemap assets, and server atlas routes.
-- The atlas model is now `person / polity / formation`.
+- The atlas model is still `person / polity / formation`, with polities seeded from map data rather than created freeform.
 - The `/topics` surface is the `subject` layer.
 - The `/topics/:id` surface is the actual topic layer where items live.

@@ -156,17 +156,48 @@ const buildCommonsImageUrl = (filename?: string) => {
 
 const normalizeText = (value?: string) => value?.trim().toLowerCase() ?? '';
 
+const mediaInstanceIds = new Set([
+  'Q11424', // film
+  'Q386724', // work
+  'Q5398426', // television series
+  'Q7725634', // literary work
+  'Q7889', // video game
+  'Q21191270', // television series episode
+]);
+
+const polityInstanceIds = new Set([
+  'Q6256', // country
+  'Q7275', // state
+  'Q48349', // empire
+  'Q3024240', // historical country
+  'Q3624078', // sovereign state
+  'Q417175', // kingdom
+  'Q66724388', // historical state
+]);
+
 const detectKind = (
   requestedKind: WikidataAuthoritySearchKind,
+  title: string,
   description: string,
   claims?: Record<string, WikidataClaim[]>
-): CanonicalHistoricalEntityKind => {
+): CanonicalHistoricalEntityKind | null => {
+  const titleText = normalizeText(title);
+  const descriptionText = normalizeText(description);
+  const instanceOfIds = getEntityIds(claims, 'P31');
+  const isLikelyMedia =
+    instanceOfIds.some((id) => mediaInstanceIds.has(id)) ||
+    /\b(tv|television|film|movie|series|drama series|novel|book|album|song|video game|podcast)\b/.test(descriptionText);
+  const isAboutnessPage =
+    /^(history of|outline of|timeline of|list of)\b/.test(titleText) ||
+    /\b(occurrences and people|history of|outline of|timeline of|list of)\b/.test(descriptionText);
+  if (isLikelyMedia || isAboutnessPage) {
+    return null;
+  }
+
   if (requestedKind !== 'all') {
     return requestedKind;
   }
 
-  const descriptionText = normalizeText(description);
-  const instanceOfIds = getEntityIds(claims, 'P31');
   const isHuman = instanceOfIds.includes('Q5');
 
   if (isHuman) {
@@ -180,29 +211,30 @@ const detectKind = (
     return 'battle';
   }
 
+  if (
+    instanceOfIds.some((id) => polityInstanceIds.has(id)) ||
+    /\b(country|state|empire|kingdom|republic|nation|dynasty|polity|caliphate|sultanate|duchy|commonwealth)\b/.test(descriptionText)
+  ) {
+    return 'nation';
+  }
+
   if (descriptionText.includes('civilization')) {
     return 'civilization';
   }
 
-  if (descriptionText.includes('era') || descriptionText.includes('period')) {
+  if (/\b(era|historical period|period of history|age)\b/.test(descriptionText)) {
     return 'era';
-  }
-
-  if (
-    /\b(country|state|empire|kingdom|republic|nation|dynasty|polity)\b/.test(descriptionText)
-  ) {
-    return 'nation';
   }
 
   if (/\b(region|province|territory|county|prefecture)\b/.test(descriptionText)) {
     return 'region';
   }
 
-  if (getCoordinate(claims)) {
+  if (getCoordinate(claims) && /\b(city|town|settlement|capital|archaeological site|site|place)\b/.test(descriptionText)) {
     return 'place';
   }
 
-  return 'region';
+  return null;
 };
 
 const scoreMatch = (
@@ -407,7 +439,10 @@ export const searchWikidataCanonicalEntities = async ({
       const title = entity?.labels?.en?.value ?? result.label ?? result.id;
       const wikidataDescription = entity?.descriptions?.en?.value ?? result.description ?? undefined;
       const coordinates = getCoordinate(claims);
-      const detectedKind = detectKind(kind, wikidataDescription ?? '', claims);
+      const detectedKind = detectKind(kind, title, wikidataDescription ?? '', claims);
+      if (!detectedKind) {
+        return null;
+      }
       const imageFilename = getStringClaim(claims, 'P18');
       const geoshapeTitle = getStringClaim(claims, 'P3896');
       const wikipediaTitle = getEnglishWikipediaTitle(entity?.sitelinks);
