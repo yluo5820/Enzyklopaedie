@@ -1,7 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import type { ActivityEvent, KnowledgeItem } from '@enzyklopaedie/shared';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ActivityEvent, KnowledgeItem, ReferenceEntity, SubjectSummary, TopicSummary } from '@enzyklopaedie/shared';
 import { Link } from 'react-router-dom';
-import { fetchActivityEvents, fetchKnowledgeItems, fetchReferenceEntities } from '../api';
+import {
+  fetchActivityEvents,
+  fetchKnowledgeItems,
+  fetchReferenceEntities,
+  fetchSubjects,
+  fetchTopics,
+  resetDevelopmentData,
+} from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './HomePage.css';
 
@@ -12,34 +19,120 @@ const formatDate = (value: string) =>
     day: 'numeric',
   }).format(new Date(value));
 
+const formatStatusLabel = (value: KnowledgeItem['status']) =>
+  value.charAt(0).toUpperCase() + value.slice(1);
+
+const buildActivityHref = (event: ActivityEvent) => {
+  if (event.entityType === 'knowledge_item') return `/knowledge/${event.entityId}`;
+  if (event.entityType === 'subject') return `/subjects/${event.entityId}`;
+  if (event.entityType === 'topic') return `/topics/${event.entityId}`;
+  if (event.entityType === 'reference_entity') return `/entities/${event.entityId}`;
+  return null;
+};
+
+const getMostRecent = <T extends { updatedAt: string }>(values: T[]) =>
+  [...values].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+
 const HomePage: React.FC = () => {
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
-  const [referenceEntityCount, setReferenceEntityCount] = useState(0);
+  const [subjects, setSubjects] = useState<SubjectSummary[]>([]);
+  const [topics, setTopics] = useState<TopicSummary[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+  const [dashboardNotice, setDashboardNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        const [items, events, referenceEntities] = await Promise.all([
-          fetchKnowledgeItems(),
-          fetchActivityEvents(6),
-          fetchReferenceEntities(),
-        ]);
-        setKnowledgeItems(items);
-        setActivityEvents(events);
-        setReferenceEntityCount(referenceEntities.length);
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadDashboard();
+  const loadDashboard = useCallback(async () => {
+    try {
+      const [items, events, fetchedSubjects, fetchedTopics, fetchedReferenceEntities] = await Promise.all([
+        fetchKnowledgeItems(),
+        fetchActivityEvents(5),
+        fetchSubjects(),
+        fetchTopics(),
+        fetchReferenceEntities(),
+      ]);
+      setKnowledgeItems(items);
+      setActivityEvents(events);
+      setSubjects(fetchedSubjects);
+      setTopics(fetchedTopics);
+      setReferenceEntities(fetchedReferenceEntities);
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      setDashboardNotice('Failed to refresh the dashboard.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
   const stats = useMemo(() => summarizeKnowledgeProgress(knowledgeItems), [knowledgeItems]);
+  const recentItem = useMemo(() => getMostRecent(knowledgeItems), [knowledgeItems]);
+  const recentSubject = useMemo(() => getMostRecent(subjects), [subjects]);
+  const recentTopic = useMemo(() => getMostRecent(topics), [topics]);
+  const recentEntity = useMemo(() => getMostRecent(referenceEntities), [referenceEntities]);
+  const recentActivityEvents = useMemo(() => activityEvents.slice(0, 5), [activityEvents]);
+  const focusItems = useMemo(() => {
+    const statusPriority: Record<KnowledgeItem['status'], number> = {
+      active: 0,
+      queued: 1,
+      inbox: 2,
+      completed: 3,
+      archived: 4,
+    };
+
+    return [...knowledgeItems]
+      .filter((item) => item.status === 'active' || item.status === 'queued' || item.status === 'inbox')
+      .sort((left, right) => {
+        const statusGap = statusPriority[left.status] - statusPriority[right.status];
+        if (statusGap !== 0) return statusGap;
+        return right.updatedAt.localeCompare(left.updatedAt);
+      })
+      .slice(0, 4);
+  }, [knowledgeItems]);
+  const entityCounts = useMemo(
+    () =>
+      referenceEntities.reduce<Record<ReferenceEntity['kind'], number>>(
+        (accumulator, entity) => {
+          accumulator[entity.kind] += 1;
+          return accumulator;
+        },
+        { person: 0, polity: 0, formation: 0 }
+      ),
+    [referenceEntities]
+  );
+  const primaryEntityCount = entityCounts.person + entityCounts.polity + entityCounts.formation;
+  const topLevelTopics = useMemo(
+    () => topics.filter((topic) => !topic.parentTopicId).length,
+    [topics]
+  );
+
+  const handleResetDevelopmentData = async () => {
+    if (
+      !window.confirm(
+        'Reset development data? This clears items, topics, entities, atlas cache, and activity. Only Ontology and Unknown Author will remain.'
+      )
+    ) {
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const result = await resetDevelopmentData();
+      await loadDashboard();
+      setDashboardNotice(
+        `${result.message} Re-run the historical polity importer if you want the atlas backbone back immediately.`
+      );
+    } catch (error) {
+      console.error(error);
+      setDashboardNotice(error instanceof Error ? error.message : 'Failed to reset development data.');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <div className="home-page">
@@ -47,51 +140,174 @@ const HomePage: React.FC = () => {
         <span className="home-eyebrow">Enzyklopaedie</span>
         <h1>A local-first encyclopedia for what you learn.</h1>
         <p>
-          The direction is no longer just a reading log. This project is becoming a personal knowledge
-          world: capture items, organize them through subjects and topics, place them in a
-          chronology, track tasks and reviews, and eventually publish exhibition pages that show the
-          growth of your collection.
+          The core model is now in place. Use this hub to move between daily capture, subject
+          curation, atlas building, and the first historical surfaces without digging through the app.
         </p>
         <div className="home-links">
+          <Link to="/knowledge">Add Item</Link>
+          <Link to="/knowledge?view=list">Open Item List</Link>
           <Link to="/subjects">Open Subject Tree</Link>
-          <Link to="/knowledge">Open Item Workbench</Link>
-          <Link to="/entities">Open Reference Atlas</Link>
-          <Link to="/world-history">Open World History</Link>
+          <Link to="/entities?view=list">Open Atlas Index</Link>
         </div>
+      </section>
+
+      <section className="home-focus-grid">
+        <section className="home-panel">
+          <div className="home-panel-inner">
+            <span className="home-eyebrow">Continue</span>
+            <h2>Study queue</h2>
+            {loading ? <div className="home-empty">Loading current queue...</div> : null}
+            {!loading && focusItems.length === 0 ? (
+              <div className="home-empty">
+                Nothing is waiting right now. Add an item or move something back into the queue.
+              </div>
+            ) : null}
+            {!loading && focusItems.length > 0 ? (
+              <div className="home-focus-list">
+                {focusItems.map((item) => (
+                  <Link key={item.id} to={`/knowledge/${item.id}`} className="home-focus-item">
+                    <div className="home-focus-top">
+                      <strong>{item.title}</strong>
+                      <span className={`home-status-chip is-${item.status}`}>{formatStatusLabel(item.status)}</span>
+                    </div>
+                    <div className="home-focus-meta">
+                      <span>{item.kind}</span>
+                      <span>Updated {formatDate(item.updatedAt)}</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="home-panel">
+          <div className="home-panel-inner">
+            <span className="home-eyebrow">Resume</span>
+            <h2>Recent surfaces</h2>
+            <div className="home-resume-grid">
+              <Link to={recentTopic ? `/topics/${recentTopic.id}` : '/subjects'} className="home-resume-card">
+                <strong>Topic</strong>
+                <span>{recentTopic ? recentTopic.name : 'No topic yet'}</span>
+                <small>{recentTopic ? recentTopic.subjectName : 'Start from the subject tree'}</small>
+              </Link>
+              <Link
+                to={recentEntity ? `/entities/${recentEntity.id}` : '/entities?view=list'}
+                className="home-resume-card"
+              >
+                <strong>Entity</strong>
+                <span>{recentEntity ? recentEntity.title : 'No entity yet'}</span>
+                <small>{recentEntity ? recentEntity.kind : 'Open the atlas index'}</small>
+              </Link>
+              <Link
+                to={recentSubject ? `/subjects/${recentSubject.id}` : '/subjects'}
+                className="home-resume-card"
+              >
+                <strong>Subject</strong>
+                <span>{recentSubject ? recentSubject.name : 'No subject yet'}</span>
+                <small>{recentSubject ? `${recentSubject.topicCount} topics` : 'Open the subject tree'}</small>
+              </Link>
+              <Link
+                to={recentItem ? `/knowledge/${recentItem.id}` : '/knowledge?view=list'}
+                className="home-resume-card"
+              >
+                <strong>Item</strong>
+                <span>{recentItem ? recentItem.title : 'No item yet'}</span>
+                <small>{recentItem ? recentItem.status : 'Open the item workbench'}</small>
+              </Link>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section className="home-surface-grid">
+        <article className="home-surface-card">
+          <span className="home-eyebrow">Items</span>
+          <h2>{loading ? '...' : stats.total} captured</h2>
+          <div className="home-surface-meta">
+            <span>{loading ? '...' : stats.byStatus.inbox} inbox</span>
+            <span>{loading ? '...' : stats.byStatus.active} active</span>
+            <span>{loading ? '...' : stats.completed} completed</span>
+          </div>
+          <p>Keep daily capture and queue review friction-light.</p>
+          <div className="home-surface-actions">
+            <Link to="/knowledge">Add item</Link>
+            <Link to="/knowledge?view=list">Open list</Link>
+            {recentItem ? <Link to={`/knowledge/${recentItem.id}`}>Recent item: {recentItem.title}</Link> : null}
+          </div>
+        </article>
+
+        <article className="home-surface-card">
+          <span className="home-eyebrow">Subjects</span>
+          <h2>{loading ? '...' : subjects.length} branches</h2>
+          <div className="home-surface-meta">
+            <span>{loading ? '...' : topics.length} total topics</span>
+            <span>{loading ? '...' : topLevelTopics} top-level topics</span>
+          </div>
+          <p>Shape the synchronic tree rooted at Ontology.</p>
+          <div className="home-surface-actions">
+            <Link to="/subjects">Open tree</Link>
+            {recentSubject ? <Link to={`/subjects/${recentSubject.id}`}>Recent subject: {recentSubject.name}</Link> : null}
+            {recentTopic ? <Link to={`/topics/${recentTopic.id}`}>Recent topic: {recentTopic.name}</Link> : null}
+          </div>
+        </article>
+
+        <article className="home-surface-card">
+          <span className="home-eyebrow">Topics</span>
+          <h2>{loading ? '...' : topics.length} study contexts</h2>
+          <div className="home-surface-meta">
+            <span>{loading ? '...' : topics.filter((topic) => topic.itemCount > 0).length} with items</span>
+            <span>{loading ? '...' : topics.filter((topic) => topic.childTopicCount > 0).length} with subtopics</span>
+          </div>
+          <p>Use topics as the living places where items and history meet.</p>
+          <div className="home-surface-actions">
+            <Link to="/subjects">Find a topic</Link>
+            {recentTopic ? <Link to={`/topics/${recentTopic.id}`}>Continue topic</Link> : null}
+          </div>
+        </article>
+
+        <article className="home-surface-card">
+          <span className="home-eyebrow">Entity Atlas</span>
+          <h2>{loading ? '...' : referenceEntities.length} atlas records</h2>
+          <div className="home-surface-meta">
+            <span>{loading ? '...' : entityCounts.person} people</span>
+            <span>{loading ? '...' : entityCounts.polity} built-in polities</span>
+            <span>{loading ? '...' : entityCounts.formation} formations</span>
+          </div>
+          <p>Build the historical world around the knowledge tree with people, polities, and formations.</p>
+          <div className="home-surface-actions">
+            <Link to="/entities">Add entity</Link>
+            <Link to="/entities?view=list">Open atlas</Link>
+            {recentEntity ? <Link to={`/entities/${recentEntity.id}`}>Recent entity: {recentEntity.title}</Link> : null}
+          </div>
+        </article>
       </section>
 
       <div className="home-grid">
         <section className="home-panel">
           <div className="home-panel-inner">
-            <span className="home-eyebrow">Product Spine</span>
-            <h2>What we are building next</h2>
-            <p>
-              The model is mostly in place now. The next phase is making the encyclopedia feel easy to
-              use every day: faster capture, calmer pages, stronger historical context, and clearer
-              ways to see progress.
-            </p>
+            <span className="home-eyebrow">Current Focus</span>
+            <h2>Product Spine</h2>
             <div className="home-pillars">
               <div className="home-pillar">
                 <strong>Daily capture</strong>
-                <p>Item creation should stay friction-light, so adding a book or lecture feels like the default daily action.</p>
+                <p>Keep item capture fast enough to use every day.</p>
               </div>
               <div className="home-pillar">
                 <strong>Subject and topic curation</strong>
-                <p>Subject and topic pages now need to read less like admin screens and more like living encyclopedia surfaces.</p>
+                <p>Make subjects and topics feel like real encyclopedia pages.</p>
               </div>
               <div className="home-pillar">
                 <strong>Entity atlas</strong>
-                <p>People, nations, civilizations, eras, and places should become structured context pages instead of loose records.</p>
+                <p>Finish the shift toward people, polities, and formations as the atlas backbone.</p>
               </div>
               <div className="home-pillar">
                 <strong>Historical framing</strong>
-                <p>
-                  The next map step is not more rendering tricks. It is better time-and-place data flowing out of topics and entities.
-                </p>
+                <p>Feed better time-and-place data into the world-history surface.</p>
               </div>
               <div className="home-pillar">
                 <strong>Progress and exhibition</strong>
-                <p>After the core pages feel right, activity history, milestones, and showcase pages can turn the archive outward.</p>
+                <p>Turn activity, milestones, and showcases into the satisfaction loop.</p>
               </div>
             </div>
           </div>
@@ -100,8 +316,8 @@ const HomePage: React.FC = () => {
         <aside className="home-panel">
           <div className="home-panel-inner">
             <span className="home-eyebrow">Current State</span>
-            <h3>Foundation metrics</h3>
-            <div className="home-stats">
+            <h3>At a glance</h3>
+          <div className="home-stats">
               <div className="home-stat">
                 <strong>{loading ? '...' : stats.total}</strong>
                 <span>Items</span>
@@ -115,10 +331,42 @@ const HomePage: React.FC = () => {
                 <span>Completed items</span>
               </div>
               <div className="home-stat">
-                <strong>{loading ? '...' : referenceEntityCount}</strong>
-                <span>Reference entities</span>
+                <strong>{loading ? '...' : subjects.length}</strong>
+                <span>Subjects</span>
+              </div>
+              <div className="home-stat">
+                <strong>{loading ? '...' : topics.length}</strong>
+                <span>Topics</span>
+              </div>
+              <div className="home-stat">
+                <strong>{loading ? '...' : primaryEntityCount}</strong>
+                <span>Primary atlas records</span>
+              </div>
+              <div className="home-stat">
+                <strong>Prototype</strong>
+                <span>World history</span>
               </div>
             </div>
+            {import.meta.env.DEV ? (
+              <div className="home-dev-tools">
+                <strong>Development reset</strong>
+                <p>
+                  Clear the local database back to a clean skeleton so we can remove old atlas
+                  structure more aggressively during development.
+                </p>
+                <div className="home-dev-actions">
+                  <button
+                    type="button"
+                    className="home-danger-button"
+                    onClick={handleResetDevelopmentData}
+                    disabled={resetting}
+                  >
+                    {resetting ? 'Resetting…' : 'Reset development data'}
+                  </button>
+                </div>
+                {dashboardNotice ? <div className="home-dev-note">{dashboardNotice}</div> : null}
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>
@@ -127,23 +375,25 @@ const HomePage: React.FC = () => {
         <div className="home-panel-inner">
           <span className="home-eyebrow">Activity</span>
           <h2>Recent development of the encyclopedia</h2>
-          <p>
-            This is the beginning of the satisfaction loop you described: the system should remember not
-            just what exists, but what has changed.
-          </p>
           {loading ? <div className="home-empty">Loading activity...</div> : null}
-          {!loading && activityEvents.length === 0 ? (
+          {!loading && recentActivityEvents.length === 0 ? (
             <div className="home-empty">
               No recorded activity yet. Add something in the item workbench and it will start
               appearing here.
             </div>
           ) : null}
-          {!loading && activityEvents.length > 0 ? (
+          {!loading && recentActivityEvents.length > 0 ? (
             <div className="home-activity">
-              {activityEvents.map((event) => (
+              {recentActivityEvents.map((event) => (
                 <div key={event.id} className="home-activity-item">
-                  <strong>{event.message}</strong>
-                  <span>{formatDate(event.occurredAt)}</span>
+                  <div className="home-activity-top">
+                    <strong>{event.message}</strong>
+                    <span>{formatDate(event.occurredAt)}</span>
+                  </div>
+                  <div className="home-activity-meta">
+                    <span>{event.entityType.replace(/_/g, ' ')}</span>
+                    {buildActivityHref(event) ? <Link to={buildActivityHref(event) as string}>Open</Link> : null}
+                  </div>
                 </div>
               ))}
             </div>

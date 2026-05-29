@@ -42,11 +42,14 @@ npm run test --prefix server
 That test currently covers:
 
 - creating an item
+- resolving explicit and fallback item creators through canonical `created_by` person relations
 - fetching it back with parsed metadata
 - updating it
 - verifying the activity feed records both create and update events
-- creating, updating, filtering, and deleting unified reference entities
-- syncing legacy author data into the new reference entity model
+- creating, updating, filtering, and deleting atlas entities
+- formation memberships and atlas relation flows
+- person polity and subject membership flows
+- world-history search, basemap, and polity import routes
 
 ## Suggested Manual Pass
 
@@ -65,6 +68,7 @@ That test currently covers:
   - creator: `Codex`
   - status: `active`
 - Confirm it appears in the list immediately
+- Open the item and confirm the creator appears as canonical provenance when a person record is selected or resolved
 - Confirm the counts update
 - Remove it again and confirm it disappears
 
@@ -77,8 +81,8 @@ That test currently covers:
 
 - From `/knowledge`, open an item
 - Attach an existing topic or create a new topic under a chosen subject
-- Confirm the assigned topic chips link through to `/study-topics/:id`
-- Add one relation to a reference entity such as a person or era and confirm it appears as a linked card
+- Confirm the assigned topic chips link through to `/topics/:id`
+- Add one relation to a reference entity such as a person, polity, or formation and confirm it appears as a linked card
 - Add one note and confirm it appears immediately
 - Add one task, move it to `done`, and confirm the status updates
 - Add one review and confirm it appears at the top of the review list
@@ -103,26 +107,29 @@ That test currently covers:
 ### 7. Reference Atlas
 
 - Open `/entities`
-- Confirm the page loads and shows imported legacy entities such as `Unknown Author`
-- Create a new entity and confirm it appears in the list immediately
-- Open that entity and update its kind, summary, or chronology
+- Confirm the page loads and shows `person`, `polity`, and `formation`
+- Confirm built-in polities are browseable but not removable
+- Create a `person`, add one subject membership, then place that person inside a polity
+- Create a new `formation` and confirm it appears in the list immediately
+- Open that formation and add one polity membership
 - Confirm linked items and linked topics/subjects appear on the entity page when relations exist
-- Add an entity-to-entity link such as `contains` and confirm it appears as outgoing structure on the source entity and incoming structure on the target entity
-- Delete it again and confirm you return to the atlas list
+- Add an entity-to-entity link such as `part_of` or `related_to` and confirm it appears on both pages
+- Delete the user-created formation and confirm you return to the atlas list
 
-### 8. World History Prototype
+### 8. World History
 
 - Open `/world-history`
-- Confirm the map loads if `VITE_MAPTILER_API_KEY` exists in `client/.env.local`
-- Drag the timeline and confirm the highlighted period changes
+- Confirm the map loads without an external tile key
+- Drag the timeline and confirm the basemap snapshot changes
+- Search a canonical record and pin it
+- Click a named basemap region and confirm the snapshot panel updates
+- Confirm people placed in the selected polity appear in the current or historical people sections
+- Use the subject filter and confirm unrelated placed people are hidden from the people overlay
+- If `data/historical-basemaps` is present, confirm built-in polity resolution works for selected regions
 
 ## Notes
 
-- The world history page is still a prototype. It has a working map renderer and timeline interaction,
-  but not yet real historical spatial data.
-- The item workbench is the first slice of the rebuild and should be treated as the new product
-  direction, while the older legacy pages are being phased out as their useful flows move into it.
-- The old split `Authors`, `Nations`, `Civilizations`, and `Eras` screens are now legacy scaffolding.
-  The new main surface for that information is `/entities`.
+- The world-history page now uses `maplibre-gl`, local basemap assets, and server atlas routes.
+- The atlas model is now `person / polity / formation`.
 - The `/topics` surface is the `subject` layer.
-- The `/study-topics/:id` surface is the actual topic layer where items now live.
+- The `/topics/:id` surface is the actual topic layer where items live.

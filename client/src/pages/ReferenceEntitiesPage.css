@@ -12,6 +12,13 @@
   --accent-soft: #ead8c3;
 }
 
+.reference-entities-page,
+.reference-entities-page *,
+.reference-entities-page *::before,
+.reference-entities-page *::after {
+  box-sizing: border-box;
+}
+
 .reference-entities-layout {
   display: grid;
   grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
@@ -28,6 +35,10 @@
   box-shadow: 0 20px 44px rgba(47, 31, 18, 0.08);
 }
 
+.reference-entities-single-panel {
+  padding: 22px;
+}
+
 .reference-entities-form-panel {
   padding: 22px;
   position: sticky;
@@ -36,6 +47,13 @@
 
 .reference-entities-header {
   margin-bottom: 18px;
+}
+
+.reference-entities-header-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: start;
 }
 
 .reference-entities-eyebrow {
@@ -80,10 +98,21 @@
   font-size: 0.9rem;
 }
 
+.reference-entities-create-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
 .reference-entities-form,
 .reference-entities-content {
   display: grid;
   gap: 16px;
+}
+
+.reference-entities-form-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
 }
 
 .reference-entities-grid {
@@ -95,6 +124,7 @@
 .reference-entities-field {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .reference-entities-field label {
@@ -102,10 +132,28 @@
   color: var(--muted);
 }
 
+.reference-entities-field-span-4 {
+  grid-column: span 4;
+}
+
+.reference-entities-field-span-6 {
+  grid-column: span 6;
+}
+
+.reference-entities-field-span-8 {
+  grid-column: span 8;
+}
+
+.reference-entities-field-span-12 {
+  grid-column: span 12;
+}
+
 .reference-entities-field input,
 .reference-entities-field select,
 .reference-entities-field textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 11px 12px;
@@ -122,7 +170,8 @@
 .reference-entities-form button,
 .reference-entities-actions button,
 .reference-entities-link,
-.reference-entities-filter {
+.reference-entities-filter,
+.reference-entities-secondary-button {
   border: none;
   border-radius: 999px;
   padding: 10px 16px;
@@ -141,10 +190,16 @@
 }
 
 .reference-entities-actions button,
-.reference-entities-filter {
+.reference-entities-filter,
+.reference-entities-secondary-button {
   background: rgba(255, 255, 255, 0.84);
   border: 1px solid var(--line);
   color: var(--accent-dark);
+}
+
+.reference-entities-secondary-button.is-active {
+  background: var(--accent-soft);
+  border-color: rgba(106, 65, 35, 0.2);
 }
 
 .reference-entities-filter.is-active {
@@ -165,8 +220,9 @@
 
 .reference-entities-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
+  margin-bottom: 18px;
 }
 
 .reference-entities-stat {
@@ -176,10 +232,20 @@
   background: rgba(255, 255, 255, 0.84);
 }
 
+.reference-entities-stat-rich {
+  display: grid;
+  gap: 4px;
+}
+
 .reference-entities-stat strong {
   display: block;
   font-size: 1.6rem;
   margin-bottom: 4px;
+}
+
+.reference-entities-stat small {
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .reference-entities-list-header {
@@ -194,12 +260,43 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .reference-entities-items {
   display: grid;
   gap: 12px;
+}
+
+.reference-entities-groups {
+  display: grid;
+  gap: 22px;
+}
+
+.reference-entities-kind-group {
+  display: grid;
+  gap: 14px;
+}
+
+.reference-entities-kind-head {
+  padding-bottom: 4px;
+}
+
+.reference-entities-kind-head h3 {
+  margin: 6px 0 6px;
+  font-size: 1.4rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+.reference-entities-kind-head p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.reference-entities-kind-count {
+  color: var(--muted);
+  font-size: 0.92rem;
 }
 
 .reference-entities-item {
@@ -217,7 +314,8 @@
   margin-bottom: 10px;
 }
 
-.reference-entities-item h3 {
+.reference-entities-item h3,
+.reference-entities-item h4 {
   margin: 0 0 6px;
   font-size: 1.12rem;
 }
@@ -272,6 +370,24 @@
   color: #962f2f;
 }
 
+.reference-entities-inline-note,
+.reference-entities-collapsed-note {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.reference-entities-collapsed-note {
+  border-style: dashed;
+}
+
+.reference-entities-form-actions {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 1040px) {
   .reference-entities-layout {
     grid-template-columns: 1fr;
@@ -291,9 +407,26 @@
     padding: 20px;
   }
 
+  .reference-entities-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reference-entities-create-toolbar {
+    justify-content: stretch;
+  }
+
   .reference-entities-grid,
-  .reference-entities-stats {
+  .reference-entities-stats,
+  .reference-entities-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .reference-entities-field-span-4,
+  .reference-entities-field-span-6,
+  .reference-entities-field-span-8,
+  .reference-entities-field-span-12 {
+    grid-column: span 1;
   }
 
   .reference-entities-item-top {

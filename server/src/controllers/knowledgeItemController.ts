@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getDb } from '../db';
 import { KnowledgeItem, NewKnowledgeItem, UpdateKnowledgeItem } from '@enzyklopaedie/shared';
 import { recordActivityEvent } from '../lib/activity';
+import { resolveCanonicalCreatorPerson, syncKnowledgeItemCreatorRelation } from '../lib/knowledgeItemCreators';
 
 type AsyncRoute = (req: Request, res: Response, next: NextFunction) => Promise<any>;
 
@@ -42,6 +43,18 @@ const normalizeOptionalNumber = (value: unknown) => {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 };
 
+const parseOptionalEntityId = (value: unknown) => {
+  if (value === undefined) return { provided: false as const };
+  if (value === null || value === '') return { provided: true as const, value: null };
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return { provided: true as const, invalid: true as const };
+  }
+
+  return { provided: true as const, value: parsed };
+};
+
 const parseMetadata = (value?: string | null) => {
   if (!value) return undefined;
 
@@ -80,6 +93,9 @@ export const createKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
   const now = new Date().toISOString();
   const kind = normalizeKnowledgeItemKind(newKnowledgeItem.kind);
   const title = normalizeOptionalText(newKnowledgeItem.title);
+  const creatorEntityId = parseOptionalEntityId(newKnowledgeItem.creatorEntityId);
+  const creatorEntityIdInvalid = 'invalid' in creatorEntityId && creatorEntityId.invalid;
+  const creatorEntityIdValue = 'value' in creatorEntityId ? creatorEntityId.value : undefined;
 
   if (!kind) {
     return res.status(400).json({ message: 'Invalid item kind' });
@@ -87,6 +103,10 @@ export const createKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
 
   if (!title) {
     return res.status(400).json({ message: 'Item title is required' });
+  }
+
+  if (creatorEntityIdInvalid) {
+    return res.status(400).json({ message: 'Creator entity must be a valid person id' });
   }
 
   if (
@@ -103,6 +123,18 @@ export const createKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
       Array.isArray(newKnowledgeItem.metadata))
   ) {
     return res.status(400).json({ message: 'Item metadata must be an object' });
+  }
+
+  let canonicalCreatorPersonId: number;
+  try {
+    const creatorPerson = await resolveCanonicalCreatorPerson(db, {
+      creatorEntityId: creatorEntityIdValue,
+      creatorText: normalizeOptionalText(newKnowledgeItem.creator),
+    });
+    canonicalCreatorPersonId = creatorPerson.id;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid creator entity';
+    return res.status(400).json({ message });
   }
 
   const result = await db.run(
@@ -147,6 +179,8 @@ export const createKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
     updatedAt: now,
   };
 
+  await syncKnowledgeItemCreatorRelation(db, createdKnowledgeItem.id, canonicalCreatorPersonId, now);
+
   await recordActivityEvent({
     type: 'knowledge_item_created',
     entityType: 'knowledge_item',
@@ -165,6 +199,27 @@ export const updateKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
   const db = await getDb();
   const id = Number(req.params.id);
   const updatedKnowledgeItem: UpdateKnowledgeItem = req.body;
+  const creatorEntityId = parseOptionalEntityId(updatedKnowledgeItem.creatorEntityId);
+  const creatorEntityIdInvalid = 'invalid' in creatorEntityId && creatorEntityId.invalid;
+  const creatorEntityIdValue = 'value' in creatorEntityId ? creatorEntityId.value : undefined;
+
+  if (creatorEntityIdInvalid) {
+    return res.status(400).json({ message: 'Creator entity must be a valid person id' });
+  }
+
+  let canonicalCreatorPersonId: number | null = null;
+  if (creatorEntityId.provided) {
+    try {
+      const creatorPerson = await resolveCanonicalCreatorPerson(db, {
+        creatorEntityId: creatorEntityIdValue,
+        creatorText: normalizeOptionalText(updatedKnowledgeItem.creator),
+      });
+      canonicalCreatorPersonId = creatorPerson.id;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid creator entity';
+      return res.status(400).json({ message });
+    }
+  }
 
   const fields: string[] = [];
   const values: any[] = [];
@@ -260,7 +315,7 @@ export const updateKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
     values.push(updatedKnowledgeItem.metadata ? JSON.stringify(updatedKnowledgeItem.metadata) : null);
   }
 
-  if (fields.length === 0) {
+  if (fields.length === 0 && !creatorEntityId.provided) {
     return res.status(400).json({ message: 'No fields to update' });
   }
 
@@ -282,6 +337,10 @@ export const updateKnowledgeItem = asyncErrorHandler(async (req: Request, res: R
   }
 
   const hydrated = hydrateKnowledgeItem(row);
+
+  if (canonicalCreatorPersonId !== null) {
+    await syncKnowledgeItemCreatorRelation(db, hydrated.id, canonicalCreatorPersonId);
+  }
 
   await recordActivityEvent({
     type: 'knowledge_item_updated',

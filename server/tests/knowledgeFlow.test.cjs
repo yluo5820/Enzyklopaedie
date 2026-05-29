@@ -48,6 +48,102 @@ const requestThroughHttp = (pathname, options = {}) =>
 before(async () => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enzyklopaedie-server-test-'));
   process.env.DB_PATH = path.join(tempDir, 'knowledge-flow.db');
+  process.env.HISTORICAL_BASEMAPS_PATH = path.join(tempDir, 'historical-basemaps-fixture');
+
+  fs.mkdirSync(path.join(process.env.HISTORICAL_BASEMAPS_PATH, 'geojson'), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(process.env.HISTORICAL_BASEMAPS_PATH, 'index.json'),
+    JSON.stringify(
+      {
+        years: [
+          {
+            year: -500,
+            filename: 'world_bc500.geojson',
+            countries: ['Achaemenid Empire', 'Carthage'],
+          },
+          {
+            year: 100,
+            filename: 'world_100.geojson',
+            countries: ['Roman Empire'],
+          },
+          {
+            year: 1945,
+            filename: 'world_1945.geojson',
+            countries: ['United States', 'USSR', 'China'],
+          },
+        ],
+      },
+      null,
+      2
+    )
+  );
+
+  const fixtureLayers = {
+    'world_bc500.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { NAME: 'Achaemenid Empire' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[40, 20], [65, 20], [65, 40], [40, 40], [40, 20]]],
+          },
+        },
+      ],
+    },
+    'world_100.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { NAME: 'Roman Empire' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[10, 35], [25, 35], [25, 48], [10, 48], [10, 35]]],
+          },
+        },
+        {
+          type: 'Feature',
+          properties: { NAME: 'Han China' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[95, 20], [120, 20], [120, 40], [95, 40], [95, 20]]],
+          },
+        },
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[130, 20], [138, 20], [138, 28], [130, 28], [130, 20]]],
+          },
+        },
+      ],
+    },
+    'world_1945.geojson': {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { NAME: 'United States' },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[-125, 25], [-65, 25], [-65, 49], [-125, 49], [-125, 25]]],
+          },
+        },
+      ],
+    },
+  };
+
+  for (const [filename, geojson] of Object.entries(fixtureLayers)) {
+    fs.writeFileSync(
+      path.join(process.env.HISTORICAL_BASEMAPS_PATH, 'geojson', filename),
+      JSON.stringify(geojson)
+    );
+  }
 
   const dbModule = require('../dist/db');
   const app = require('../dist/app').default;
@@ -81,6 +177,7 @@ after(async () => {
   }
 
   delete process.env.DB_PATH;
+  delete process.env.HISTORICAL_BASEMAPS_PATH;
 
   if (tempDir) {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -121,6 +218,13 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.ok(createdItem.createdAt);
     assert.ok(createdItem.updatedAt);
 
+    const relationsResponse = await request(`/api/knowledge-items/${createdItem.id}/relations`);
+    assert.equal(relationsResponse.status, 200);
+    const relations = await relationsResponse.json();
+    const createdByRelation = relations.find((relation) => relation.relationType === 'created_by');
+    assert.ok(createdByRelation);
+    assert.equal(createdByRelation.toEntityTitle, 'Unknown Author');
+
     const listResponse = await request('/api/knowledge-items');
     assert.equal(listResponse.status, 200);
 
@@ -139,6 +243,101 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const fetchedItem = await getResponse.json();
     assert.equal(fetchedItem.id, firstItemId);
     assert.equal(fetchedItem.creator, 'Thomas S. Kuhn');
+  });
+
+  await t.test('POST /api/knowledge-items resolves an explicit creator person into the canonical creator path', async () => {
+    const personResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Aristotle',
+      }),
+    });
+    assert.equal(personResponse.status, 201);
+    const person = await personResponse.json();
+
+    const createResponse = await request('/api/knowledge-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'book',
+        title: 'Metaphysics',
+        creator: 'Aristotle',
+        creatorEntityId: person.id,
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const createdItem = await createResponse.json();
+
+    const relationsResponse = await request(`/api/knowledge-items/${createdItem.id}/relations`);
+    assert.equal(relationsResponse.status, 200);
+    const relations = await relationsResponse.json();
+    const createdByRelations = relations.filter((relation) => relation.relationType === 'created_by');
+    assert.equal(createdByRelations.length, 1);
+    assert.equal(createdByRelations[0].toEntityId, person.id);
+    assert.equal(createdByRelations[0].toEntityTitle, 'Aristotle');
+  });
+
+  await t.test('PUT /api/knowledge-items/:id can repoint the canonical creator path', async () => {
+    const platoResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Plato',
+      }),
+    });
+    assert.equal(platoResponse.status, 201);
+    const plato = await platoResponse.json();
+
+    const socratesResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'person',
+        title: 'Socrates',
+      }),
+    });
+    assert.equal(socratesResponse.status, 201);
+    const socrates = await socratesResponse.json();
+
+    const createResponse = await request('/api/knowledge-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'book',
+        title: 'Republic',
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const createdItem = await createResponse.json();
+
+    const firstUpdateResponse = await request(`/api/knowledge-items/${createdItem.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creatorEntityId: plato.id,
+      }),
+    });
+    assert.equal(firstUpdateResponse.status, 200);
+
+    const secondUpdateResponse = await request(`/api/knowledge-items/${createdItem.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creatorEntityId: socrates.id,
+      }),
+    });
+    assert.equal(secondUpdateResponse.status, 200);
+
+    const relationsResponse = await request(`/api/knowledge-items/${createdItem.id}/relations`);
+    assert.equal(relationsResponse.status, 200);
+    const relations = await relationsResponse.json();
+    const createdByRelations = relations.filter((relation) => relation.relationType === 'created_by');
+    assert.equal(createdByRelations.length, 1);
+    assert.equal(createdByRelations[0].toEntityId, socrates.id);
+    assert.equal(createdByRelations[0].toEntityTitle, 'Socrates');
   });
 
   await t.test('PUT /api/knowledge-items/:id updates items and records recent activity', async () => {
@@ -471,6 +670,21 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(fetchedStudyTopic.subjectId, childSubject.id);
     assert.equal(fetchedStudyTopic.itemCount, 1);
 
+    const updatedStudyTopicResponse = await request(`/api/topics/${studyTopic.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Late Antique Mediterranean Thought',
+        summary: 'A tighter curation summary for the topic page.',
+        description: 'Updated from the API test to verify topic editing.',
+      }),
+    });
+    assert.equal(updatedStudyTopicResponse.status, 200);
+    const updatedStudyTopic = await updatedStudyTopicResponse.json();
+    assert.equal(updatedStudyTopic.name, 'Late Antique Mediterranean Thought');
+    assert.equal(updatedStudyTopic.summary, 'A tighter curation summary for the topic page.');
+    assert.equal(updatedStudyTopic.description, 'Updated from the API test to verify topic editing.');
+
     const topicKnowledgeItemsResponse = await request(`/api/topics/${studyTopic.id}/knowledge-items`);
     assert.equal(topicKnowledgeItemsResponse.status, 200);
     const topicKnowledgeItems = await topicKnowledgeItemsResponse.json();
@@ -552,7 +766,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'era',
+        kind: 'formation',
         title: 'Late Antiquity',
         startYear: 250,
         endYear: 750,
@@ -560,16 +774,16 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     });
 
     assert.equal(referenceEntityResponse.status, 201);
-    const eraEntity = await referenceEntityResponse.json();
+    const formationEntity = await referenceEntityResponse.json();
 
     const entityRelationResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
-        relationType: 'during',
-        note: 'The source item belongs to this historical period.',
+        toEntityId: formationEntity.id,
+        relationType: 'about',
+        note: 'The source item belongs to this historical formation.',
       }),
     });
 
@@ -577,30 +791,31 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const entityRelation = await entityRelationResponse.json();
     assert.equal(entityRelation.toEntityType, 'reference_entity');
     assert.equal(entityRelation.toEntityTitle, 'Late Antiquity');
-    assert.equal(entityRelation.toEntityKind, 'era');
+    assert.equal(entityRelation.toEntityKind, 'formation');
 
     const relationsResponse = await request(`/api/knowledge-items/${sourceItem.id}/relations`);
     assert.equal(relationsResponse.status, 200);
     const relations = await relationsResponse.json();
-    assert.equal(relations.length, 2);
+    assert.equal(relations.length, 3);
     assert.ok(relations.some((entry) => entry.toEntityKind === 'book'));
-    assert.ok(relations.some((entry) => entry.toEntityKind === 'era'));
+    assert.ok(relations.some((entry) => entry.toEntityKind === 'formation'));
+    assert.ok(relations.some((entry) => entry.relationType === 'created_by'));
 
     const studyTopicRelationResponse = await request(`/api/topics/${studyTopic.id}/relations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'about',
-        note: 'This study topic is explicitly about the period.',
+        note: 'This study topic is explicitly about the formation.',
       }),
     });
 
     assert.equal(studyTopicRelationResponse.status, 201);
     const studyTopicRelation = await studyTopicRelationResponse.json();
     assert.equal(studyTopicRelation.toEntityTitle, 'Late Antiquity');
-    assert.equal(studyTopicRelation.toEntityKind, 'era');
+    assert.equal(studyTopicRelation.toEntityKind, 'formation');
 
     const studyTopicRelationsResponse = await request(`/api/topics/${studyTopic.id}/relations`);
     assert.equal(studyTopicRelationsResponse.status, 200);
@@ -613,7 +828,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'created_by',
       }),
     });
@@ -621,7 +836,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(invalidKnowledgeRelationResponse.status, 400);
     assert.match(
       (await invalidKnowledgeRelationResponse.json()).message,
-      /not allowed from book item to era/
+      /not allowed from book item to formation/
     );
 
     const invalidStudyTopicRelationResponse = await request(`/api/topics/${studyTopic.id}/relations`, {
@@ -629,7 +844,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         toEntityType: 'reference_entity',
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'created_by',
       }),
     });
@@ -637,7 +852,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(invalidStudyTopicRelationResponse.status, 400);
     assert.match(
       (await invalidStudyTopicRelationResponse.json()).message,
-      /not allowed from topic to era/
+      /not allowed from topic to formation/
     );
 
     const personEntityResponse = await request('/api/reference-entities', {
@@ -658,7 +873,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        toEntityId: eraEntity.id,
+        toEntityId: formationEntity.id,
         relationType: 'contains',
       }),
       }
@@ -667,10 +882,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(invalidReferenceRelationResponse.status, 400);
     assert.match(
       (await invalidReferenceRelationResponse.json()).message,
-      /not allowed from person to era/
+      /not allowed from person to formation/
     );
 
-    const referenceEntityRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    const referenceEntityRelationsResponse = await request(`/api/reference-entities/${formationEntity.id}/relations`);
     assert.equal(referenceEntityRelationsResponse.status, 200);
     const referenceEntityRelations = await referenceEntityRelationsResponse.json();
     assert.equal(referenceEntityRelations.length, 2);
@@ -833,7 +1048,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'nation',
+        kind: 'polity',
         title: 'Byzantine Empire',
         summary: 'A test fixture for the reference atlas.',
         startYear: 330,
@@ -846,8 +1061,8 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     assert.equal(createResponse.status, 201);
     const createdEntity = await createResponse.json();
-    assert.equal(createdEntity.kind, 'nation');
-    assert.equal(createdEntity.slug, 'nation-byzantine-empire');
+    assert.equal(createdEntity.kind, 'polity');
+    assert.equal(createdEntity.slug, 'polity-byzantine-empire');
     assert.deepEqual(createdEntity.metadata, {
       origin: 'server-test',
     });
@@ -856,7 +1071,7 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'nation',
+        kind: 'polity',
         title: 'Byzantine Empire',
       }),
     });
@@ -865,10 +1080,10 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     const duplicateEntity = await duplicateResponse.json();
     assert.equal(duplicateEntity.id, createdEntity.id);
 
-    const nationsResponse = await request('/api/reference-entities?kind=nation');
-    assert.equal(nationsResponse.status, 200);
-    const nations = await nationsResponse.json();
-    assert.ok(nations.some((entity) => entity.id === createdEntity.id));
+    const politiesResponse = await request('/api/reference-entities?kind=polity');
+    assert.equal(politiesResponse.status, 200);
+    const polities = await politiesResponse.json();
+    assert.ok(polities.some((entity) => entity.id === createdEntity.id));
 
     const getResponse = await request(`/api/reference-entities/${createdEntity.id}`);
     assert.equal(getResponse.status, 200);
@@ -880,8 +1095,9 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'civilization',
-        title: 'Eastern Roman Empire',
+        kind: 'formation',
+        formationSubtype: 'civilization',
+        title: 'Eastern Roman World',
         summary: 'Updated during the server test pass.',
         endYear: 1453,
       }),
@@ -889,36 +1105,39 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
 
     assert.equal(updateResponse.status, 200);
     const updatedEntity = await updateResponse.json();
-    assert.equal(updatedEntity.kind, 'civilization');
-    assert.equal(updatedEntity.title, 'Eastern Roman Empire');
-    assert.equal(updatedEntity.slug, 'civilization-eastern-roman-empire');
+    assert.equal(updatedEntity.kind, 'formation');
+    assert.equal(updatedEntity.formationSubtype, 'civilization');
+    assert.equal(updatedEntity.title, 'Eastern Roman World');
+    assert.equal(updatedEntity.slug, 'formation-eastern-roman-world');
     assert.equal(updatedEntity.startYear, 330);
 
-    const eraResponse = await request('/api/reference-entities', {
+    const broaderFormationResponse = await request('/api/reference-entities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'era',
-        title: 'Middle Byzantine Period',
-        startYear: 843,
-        endYear: 1204,
+        kind: 'formation',
+        formationSubtype: 'era',
+        title: 'Mediterranean Antiquity',
+        startYear: -200,
+        endYear: 700,
       }),
     });
-    assert.equal(eraResponse.status, 201);
-    const eraEntity = await eraResponse.json();
+    assert.equal(broaderFormationResponse.status, 201);
+    const broaderFormationEntity = await broaderFormationResponse.json();
 
-    const nationResponse = await request('/api/reference-entities', {
+    const parallelFormationResponse = await request('/api/reference-entities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kind: 'nation',
-        title: 'Anatolian Theme',
-        startYear: 669,
-        endYear: 1077,
+        kind: 'formation',
+        formationSubtype: 'tradition',
+        title: 'Orthodox East',
+        startYear: 330,
+        endYear: 1453,
       }),
     });
-    assert.equal(nationResponse.status, 201);
-    const nationEntity = await nationResponse.json();
+    assert.equal(parallelFormationResponse.status, 201);
+    const parallelFormationEntity = await parallelFormationResponse.json();
 
     const personResponse = await request('/api/reference-entities', {
       method: 'POST',
@@ -932,6 +1151,57 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     });
     assert.equal(personResponse.status, 201);
     const personEntity = await personResponse.json();
+
+    const ontologyResponse = await request('/api/subjects');
+    assert.equal(ontologyResponse.status, 200);
+    const ontologySubjects = await ontologyResponse.json();
+    const ontologySubject = ontologySubjects.find((subject) => subject.slug === 'ontology');
+    assert.ok(ontologySubject);
+
+    const subjectResponse = await request('/api/subjects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Mathematics',
+        description: 'A subject used for person subject membership coverage.',
+        parentSubjectId: ontologySubject.id,
+      }),
+    });
+    assert.equal(subjectResponse.status, 201);
+    const mathSubject = await subjectResponse.json();
+
+    const polityResponse = await request('/api/reference-entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'polity',
+        title: 'Anatolian Theme',
+        startYear: 330,
+        endYear: 1077,
+      }),
+    });
+    assert.equal(polityResponse.status, 201);
+    const polityEntity = await polityResponse.json();
+
+    const formationMembershipResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polityEntityId: polityEntity.id,
+          startYear: 330,
+          endYear: 1453,
+          note: 'Primary polity in this fixture formation.',
+        }),
+      }
+    );
+    assert.equal(formationMembershipResponse.status, 201);
+    const formationMembership = await formationMembershipResponse.json();
+    assert.equal(formationMembership.formationEntityId, updatedEntity.id);
+    assert.equal(formationMembership.polityEntityId, polityEntity.id);
+    assert.equal(formationMembership.formationTitle, 'Eastern Roman World');
+    assert.equal(formationMembership.polityTitle, 'Anatolian Theme');
 
     const authoredItemResponse = await request('/api/knowledge-items', {
       method: 'POST',
@@ -954,39 +1224,39 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
         relationType: 'created_by',
       }),
     });
-    assert.equal(createdByResponse.status, 201);
+    assert.equal(createdByResponse.status, 200);
 
-    const civilizationToEraResponse = await request(
+    const formationToBroaderResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toEntityId: eraEntity.id,
-          relationType: 'contains',
-          note: 'This civilization includes the middle Byzantine period.',
+          toEntityId: broaderFormationEntity.id,
+          relationType: 'part_of',
+          note: 'This formation belongs inside the broader Mediterranean frame.',
         }),
       }
     );
-    assert.equal(civilizationToEraResponse.status, 201);
-    const civilizationToEraRelation = await civilizationToEraResponse.json();
-    assert.equal(civilizationToEraRelation.toEntityTitle, 'Middle Byzantine Period');
+    assert.equal(formationToBroaderResponse.status, 201);
+    const formationToBroaderRelation = await formationToBroaderResponse.json();
+    assert.equal(formationToBroaderRelation.toEntityTitle, 'Mediterranean Antiquity');
 
-    const civilizationToNationResponse = await request(
+    const formationToParallelResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toEntityId: nationEntity.id,
-          relationType: 'contains',
-          note: 'This civilization includes the Anatolian Theme.',
+          toEntityId: parallelFormationEntity.id,
+          relationType: 'related_to',
+          note: 'This formation runs alongside the Orthodox East.',
         }),
       }
     );
-    assert.equal(civilizationToNationResponse.status, 201);
-    const civilizationToNationRelation = await civilizationToNationResponse.json();
-    assert.equal(civilizationToNationRelation.toEntityTitle, 'Anatolian Theme');
+    assert.equal(formationToParallelResponse.status, 201);
+    const formationToParallelRelation = await formationToParallelResponse.json();
+    assert.equal(formationToParallelRelation.toEntityTitle, 'Orthodox East');
 
     const outgoingRelationsResponse = await request(
       `/api/reference-entities/${updatedEntity.id}/outgoing-relations`
@@ -994,7 +1264,12 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
     assert.equal(outgoingRelationsResponse.status, 200);
     const outgoingRelations = await outgoingRelationsResponse.json();
     assert.equal(outgoingRelations.length, 2);
-    assert.ok(outgoingRelations.every((relation) => relation.relationType === 'contains'));
+    assert.ok(
+      outgoingRelations.some((relation) => relation.relationType === 'part_of')
+    );
+    assert.ok(
+      outgoingRelations.some((relation) => relation.relationType === 'related_to')
+    );
 
     const personRelationsResponse = await request(`/api/reference-entities/${personEntity.id}/relations`);
     assert.equal(personRelationsResponse.status, 200);
@@ -1008,16 +1283,122 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       )
     );
 
-    const eraRelationsResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
-    assert.equal(eraRelationsResponse.status, 200);
-    const eraRelations = await eraRelationsResponse.json();
+    const broaderFormationRelationsResponse = await request(
+      `/api/reference-entities/${broaderFormationEntity.id}/relations`
+    );
+    assert.equal(broaderFormationRelationsResponse.status, 200);
+    const broaderFormationRelations = await broaderFormationRelationsResponse.json();
     assert.ok(
-      eraRelations.some(
+      broaderFormationRelations.some(
         (relation) =>
           relation.fromEntityType === 'reference_entity' &&
-          relation.relationType === 'contains' &&
-          relation.fromEntityTitle === 'Eastern Roman Empire'
-      )
+          relation.relationType === 'part_of' &&
+          relation.fromEntityTitle === 'Eastern Roman World'
+        )
+    );
+
+    const formationMembershipListResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships`
+    );
+    assert.equal(formationMembershipListResponse.status, 200);
+    const formationMemberships = await formationMembershipListResponse.json();
+    assert.equal(formationMemberships.length, 1);
+    assert.equal(formationMemberships[0].polityTitle, 'Anatolian Theme');
+
+    const polityMembershipListResponse = await request(
+      `/api/reference-entities/${polityEntity.id}/formation-memberships`
+    );
+    assert.equal(polityMembershipListResponse.status, 200);
+    const polityMemberships = await polityMembershipListResponse.json();
+    assert.equal(polityMemberships.length, 1);
+    assert.equal(polityMemberships[0].formationTitle, 'Eastern Roman World');
+
+    const personPolityMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          polityEntityId: polityEntity.id,
+          startYear: 1045,
+          endYear: 1078,
+          note: 'Primary polity membership for this test person.',
+        }),
+      }
+    );
+    assert.equal(personPolityMembershipResponse.status, 201);
+    const personPolityMembership = await personPolityMembershipResponse.json();
+    assert.equal(personPolityMembership.personEntityId, personEntity.id);
+    assert.equal(personPolityMembership.polityEntityId, polityEntity.id);
+    assert.equal(personPolityMembership.personTitle, 'Michael Psellos');
+    assert.equal(personPolityMembership.polityTitle, 'Anatolian Theme');
+
+    const personPolityMembershipListResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships`
+    );
+    assert.equal(personPolityMembershipListResponse.status, 200);
+    const personPolityMemberships = await personPolityMembershipListResponse.json();
+    assert.equal(personPolityMemberships.length, 1);
+    assert.equal(personPolityMemberships[0].polityTitle, 'Anatolian Theme');
+
+    const polityPersonMembershipListResponse = await request(
+      `/api/reference-entities/${polityEntity.id}/person-polity-memberships`
+    );
+    assert.equal(polityPersonMembershipListResponse.status, 200);
+    const polityPersonMemberships = await polityPersonMembershipListResponse.json();
+    assert.equal(polityPersonMemberships.length, 1);
+    assert.equal(polityPersonMemberships[0].personTitle, 'Michael Psellos');
+
+    const personSubjectMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subjectId: mathSubject.id,
+          note: 'Primary field of study for this test person.',
+        }),
+      }
+    );
+    assert.equal(personSubjectMembershipResponse.status, 201);
+    const personSubjectMembership = await personSubjectMembershipResponse.json();
+    assert.equal(personSubjectMembership.personEntityId, personEntity.id);
+    assert.equal(personSubjectMembership.subjectId, mathSubject.id);
+    assert.equal(personSubjectMembership.personTitle, 'Michael Psellos');
+    assert.equal(personSubjectMembership.subjectName, 'Mathematics');
+
+    const personSubjectMembershipListResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships`
+    );
+    assert.equal(personSubjectMembershipListResponse.status, 200);
+    const personSubjectMemberships = await personSubjectMembershipListResponse.json();
+    assert.equal(personSubjectMemberships.length, 1);
+    assert.equal(personSubjectMemberships[0].subjectName, 'Mathematics');
+
+    const atlasPersonSubjectMembershipsResponse = await request(
+      `/api/world-history/person-subject-memberships?personEntityIds=${personEntity.id},999999`
+    );
+    assert.equal(atlasPersonSubjectMembershipsResponse.status, 200);
+    const atlasPersonSubjectMemberships = await atlasPersonSubjectMembershipsResponse.json();
+    assert.equal(atlasPersonSubjectMemberships.length, 1);
+    assert.equal(atlasPersonSubjectMemberships[0].personEntityId, personEntity.id);
+    assert.equal(atlasPersonSubjectMemberships[0].subjectName, 'Mathematics');
+
+    const invalidPersonPolityRelationResponse = await request(
+      `/api/reference-entities/${personEntity.id}/outgoing-relations`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEntityId: polityEntity.id,
+          relationType: 'located_in',
+        }),
+      }
+    );
+    assert.equal(invalidPersonPolityRelationResponse.status, 400);
+    assert.match(
+      (await invalidPersonPolityRelationResponse.json()).message,
+      /not allowed from person to polity/
     );
 
     const activityResponse = await request('/api/activity-events?limit=50');
@@ -1039,19 +1420,66 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       entityEvents.filter((event) => event.type === 'relation_created').length >= 2
     );
 
+    const deleteFormationMembershipResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships/${formationMembership.id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    assert.equal(deleteFormationMembershipResponse.status, 204);
+
+    const formationMembershipListAfterDeleteResponse = await request(
+      `/api/reference-entities/${updatedEntity.id}/formation-memberships`
+    );
+    assert.equal(formationMembershipListAfterDeleteResponse.status, 200);
+    const formationMembershipsAfterDelete = await formationMembershipListAfterDeleteResponse.json();
+    assert.equal(formationMembershipsAfterDelete.length, 0);
+
+    const deletePersonPolityMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships/${personPolityMembership.id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    assert.equal(deletePersonPolityMembershipResponse.status, 204);
+
+    const personPolityMembershipListAfterDeleteResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-polity-memberships`
+    );
+    assert.equal(personPolityMembershipListAfterDeleteResponse.status, 200);
+    const personPolityMembershipsAfterDelete = await personPolityMembershipListAfterDeleteResponse.json();
+    assert.equal(personPolityMembershipsAfterDelete.length, 0);
+
+    const deletePersonSubjectMembershipResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships/${personSubjectMembership.id}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    assert.equal(deletePersonSubjectMembershipResponse.status, 204);
+
+    const personSubjectMembershipListAfterDeleteResponse = await request(
+      `/api/reference-entities/${personEntity.id}/person-subject-memberships`
+    );
+    assert.equal(personSubjectMembershipListAfterDeleteResponse.status, 200);
+    const personSubjectMembershipsAfterDelete = await personSubjectMembershipListAfterDeleteResponse.json();
+    assert.equal(personSubjectMembershipsAfterDelete.length, 0);
+
     const deleteResponse = await request(`/api/reference-entities/${createdEntity.id}`, {
       method: 'DELETE',
     });
     assert.equal(deleteResponse.status, 204);
 
-    const danglingRelationResponse = await request(`/api/reference-entities/${eraEntity.id}/relations`);
+    const danglingRelationResponse = await request(
+      `/api/reference-entities/${broaderFormationEntity.id}/relations`
+    );
     assert.equal(danglingRelationResponse.status, 200);
     const danglingRelations = await danglingRelationResponse.json();
     assert.ok(
       !danglingRelations.some(
         (relation) =>
           relation.fromEntityType === 'reference_entity' &&
-          relation.fromEntityTitle === 'Eastern Roman Empire'
+          relation.fromEntityTitle === 'Eastern Roman World'
       )
     );
 
@@ -1387,4 +1815,496 @@ test('knowledge item routes support the current Phase 1 workflow', async (t) => 
       global.fetch = originalFetch;
     }
   });
+
+  await t.test('world history routes search, cache, promote, list, and delete canonical atlas entities', async () => {
+    const originalFetch = global.fetch;
+    let callCount = 0;
+
+    global.fetch = async (input) => {
+      callCount += 1;
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      const parsedUrl = new URL(url);
+
+      if (callCount === 1) {
+        assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
+        assert.equal(parsedUrl.searchParams.get('action'), 'wbsearchentities');
+        assert.match(parsedUrl.searchParams.get('search') || '', /roman empire/i);
+
+        return new Response(
+          JSON.stringify({
+            search: [
+              {
+                id: 'Q2277',
+                label: 'Roman Empire',
+                description: 'empire in the Mediterranean region',
+                concepturi: 'https://www.wikidata.org/wiki/Q2277',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      if (callCount === 2) {
+        assert.match(parsedUrl.toString(), /wikidata\.org\/w\/api\.php\?/);
+        assert.equal(parsedUrl.searchParams.get('action'), 'wbgetentities');
+        assert.equal(parsedUrl.searchParams.get('ids'), 'Q2277');
+
+        return new Response(
+          JSON.stringify({
+            entities: {
+              Q2277: {
+                id: 'Q2277',
+                labels: {
+                  en: {
+                    value: 'Roman Empire',
+                  },
+                },
+                descriptions: {
+                  en: {
+                    value: 'empire in the Mediterranean region',
+                  },
+                },
+                claims: {
+                  P571: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            time: '-0027-01-01T00:00:00Z',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P576: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            time: '+0476-01-01T00:00:00Z',
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P625: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: {
+                            latitude: 41.89,
+                            longitude: 12.49,
+                          },
+                        },
+                      },
+                    },
+                  ],
+                  P18: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: 'Roman Empire illustration.jpg',
+                        },
+                      },
+                    },
+                  ],
+                  P3896: [
+                    {
+                      mainsnak: {
+                        datavalue: {
+                          value: 'Data:Roman Empire.map',
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      assert.match(parsedUrl.toString(), /commons\.wikimedia\.org\/w\/index\.php\?/);
+      assert.equal(parsedUrl.searchParams.get('title'), 'Data:Roman Empire.map');
+
+      return new Response(
+        JSON.stringify({
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'Polygon',
+                coordinates: [
+                  [
+                    [10, 40],
+                    [20, 40],
+                    [20, 45],
+                    [10, 45],
+                    [10, 40],
+                  ],
+                ],
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    };
+
+    try {
+      const searchResponse = await requestThroughHttp(
+        '/api/world-history/search?q=Roman%20Empire&kind=nation'
+      );
+      assert.equal(searchResponse.status, 200);
+      const matches = await searchResponse.json();
+      assert.equal(matches.length, 1);
+      assert.equal(matches[0].authorityId, 'Q2277');
+      assert.equal(matches[0].kind, 'nation');
+      assert.equal(matches[0].startYear, -27);
+      assert.equal(matches[0].endYear, 476);
+      assert.equal(
+        matches[0].imageUrl,
+        'https://commons.wikimedia.org/wiki/Special:FilePath/Roman%20Empire%20illustration.jpg?width=480'
+      );
+
+      const createResponse = await requestThroughHttp('/api/world-history/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(matches[0]),
+      });
+      assert.equal(createResponse.status, 201);
+      const created = await createResponse.json();
+      assert.equal(created.title, 'Roman Empire');
+
+      const listResponse = await requestThroughHttp('/api/world-history/entities?year=100');
+      assert.equal(listResponse.status, 200);
+      const cached = await listResponse.json();
+      assert.equal(cached.length, 1);
+      assert.equal(cached[0].authorityId, 'Q2277');
+      assert.equal(cached[0].metadata.geoshapeTitle, 'Data:Roman Empire.map');
+
+      const geometryResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/geometry`
+      );
+      assert.equal(geometryResponse.status, 200);
+      const geometry = await geometryResponse.json();
+      assert.equal(geometry.source, 'wikimedia_commons_map');
+      assert.equal(geometry.cached, false);
+      assert.equal(geometry.geojson.type, 'FeatureCollection');
+      assert.equal(callCount, 3);
+
+      const geometryCachedResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/geometry`
+      );
+      assert.equal(geometryCachedResponse.status, 200);
+      const geometryCached = await geometryCachedResponse.json();
+      assert.equal(geometryCached.source, 'wikimedia_commons_map');
+      assert.equal(geometryCached.cached, true);
+      assert.equal(geometryCached.geojson.type, 'FeatureCollection');
+      assert.equal(callCount, 3);
+
+      const promoteResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteResponse.status, 200);
+      const promoted = await promoteResponse.json();
+      assert.equal(promoted.atlasEntity.referenceEntityId > 0, true);
+      assert.equal(promoted.referenceEntity.title, 'Roman Empire');
+      assert.equal(promoted.referenceEntity.kind, 'polity');
+      assert.equal(
+        promoted.referenceEntity.metadata.atlasImageUrl,
+        'https://commons.wikimedia.org/wiki/Special:FilePath/Roman%20Empire%20illustration.jpg?width=480'
+      );
+      assert.equal(
+        promoted.referenceEntity.metadata.atlasSourceUrl,
+        'https://www.wikidata.org/wiki/Q2277'
+      );
+
+      const listAfterPromoteResponse = await requestThroughHttp('/api/world-history/entities?year=100');
+      assert.equal(listAfterPromoteResponse.status, 200);
+      const listAfterPromote = await listAfterPromoteResponse.json();
+      assert.equal(listAfterPromote[0].referenceEntityId, promoted.referenceEntity.id);
+
+      const promoteAgainResponse = await requestThroughHttp(
+        `/api/world-history/entities/${created.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteAgainResponse.status, 200);
+      const promotedAgain = await promoteAgainResponse.json();
+      assert.equal(promotedAgain.referenceEntity.id, promoted.referenceEntity.id);
+
+      const createEraResponse = await requestThroughHttp('/api/world-history/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authority: 'wikidata',
+          authorityId: 'Q999999',
+          kind: 'era',
+          title: 'Late Antiquity',
+          summary: 'A test era for formation subtype promotion.',
+          startYear: 250,
+          endYear: 750,
+          sourceUrl: 'https://www.wikidata.org/wiki/Q999999',
+        }),
+      });
+      assert.equal(createEraResponse.status, 201);
+      const createdEra = await createEraResponse.json();
+      assert.equal(createdEra.kind, 'era');
+
+      const promoteEraResponse = await requestThroughHttp(
+        `/api/world-history/entities/${createdEra.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteEraResponse.status, 200);
+      const promotedEra = await promoteEraResponse.json();
+      assert.equal(promotedEra.referenceEntity.kind, 'formation');
+      assert.equal(promotedEra.referenceEntity.formationSubtype, 'era');
+      assert.equal(promotedEra.referenceEntity.title, 'Late Antiquity');
+
+      const localPersonResponse = await requestThroughHttp('/api/reference-entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'person',
+          title: 'Euclid',
+        }),
+      });
+      assert.equal(localPersonResponse.status, 201);
+      const localPerson = await localPersonResponse.json();
+
+      const canonicalPersonResponse = await requestThroughHttp('/api/world-history/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          authority: 'wikidata',
+          authorityId: 'Q8747',
+          kind: 'person',
+          title: 'Euclid',
+          summary: 'Ancient Greek mathematician',
+          imageUrl: 'https://example.test/euclid.jpg',
+          sourceUrl: 'https://www.wikidata.org/wiki/Q8747',
+        }),
+      });
+      assert.equal(canonicalPersonResponse.status, 201);
+      const canonicalPerson = await canonicalPersonResponse.json();
+
+      const promoteExistingPersonResponse = await requestThroughHttp(
+        `/api/world-history/entities/${canonicalPerson.id}/promote`,
+        {
+          method: 'POST',
+        }
+      );
+      assert.equal(promoteExistingPersonResponse.status, 200);
+      const promotedExistingPerson = await promoteExistingPersonResponse.json();
+      assert.equal(promotedExistingPerson.referenceEntity.id, localPerson.id);
+      assert.equal(
+        promotedExistingPerson.referenceEntity.metadata.atlasImageUrl,
+        'https://example.test/euclid.jpg'
+      );
+      assert.equal(
+        promotedExistingPerson.referenceEntity.metadata.atlasSourceUrl,
+        'https://www.wikidata.org/wiki/Q8747'
+      );
+
+      const localPersonAfterPromoteResponse = await requestThroughHttp(
+        `/api/reference-entities/${localPerson.id}`
+      );
+      assert.equal(localPersonAfterPromoteResponse.status, 200);
+      const localPersonAfterPromote = await localPersonAfterPromoteResponse.json();
+      assert.equal(
+        localPersonAfterPromote.metadata.atlasImageUrl,
+        'https://example.test/euclid.jpg'
+      );
+
+      const deleteResponse = await requestThroughHttp(`/api/world-history/entities/${created.id}`, {
+        method: 'DELETE',
+      });
+      assert.equal(deleteResponse.status, 204);
+
+      const afterDeleteResponse = await requestThroughHttp('/api/world-history/entities?year=100');
+      assert.equal(afterDeleteResponse.status, 200);
+      const afterDelete = await afterDeleteResponse.json();
+      assert.equal(afterDelete.length, 0);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});
+
+test('world history basemap routes resolve local historical boundary layers', async () => {
+  const manifestResponse = await request('/api/world-history/basemaps/manifest?cutoffYear=-500');
+  assert.equal(manifestResponse.status, 200);
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.source, 'historical-basemaps');
+  assert.equal(manifest.datasetPresent, true);
+  assert.equal(manifest.minYear, -500);
+  assert.equal(manifest.maxYear, 1945);
+  assert.deepEqual(
+    manifest.availableYears.map((entry) => entry.year),
+    [-500, 100, 1945]
+  );
+
+  const layerResponse = await request('/api/world-history/basemaps/layer?year=1862&cutoffYear=-500');
+  assert.equal(layerResponse.status, 200);
+  const layer = await layerResponse.json();
+  assert.equal(layer.source, 'historical-basemaps');
+  assert.equal(layer.requestedYear, 1862);
+  assert.equal(layer.resolvedYear, 100);
+  assert.equal(layer.filename, 'world_100.geojson');
+  assert.equal(layer.featureCount, 3);
+  assert.equal(layer.geojson.type, 'FeatureCollection');
+  assert.equal(layer.geojson.features[0].properties.atlasFeatureId, '100-0');
+  assert.equal(layer.geojson.features[0].properties.atlasLabel, 'Roman Empire');
+  assert.equal(layer.geojson.features[2].properties.atlasLabel, 'Region 3');
+  assert.equal(layer.geojson.features[2].properties.atlasIsNamed, false);
+});
+
+test('historical polity import seeds built-in polity entities and snapshots from named basemap regions', async () => {
+  const { getDb } = require('../dist/db');
+  const { importHistoricalPolities } = require('../dist/lib/importHistoricalPolities');
+  const db = await getDb();
+
+  const result = await importHistoricalPolities(db, -500);
+  assert.equal(result.datasetPresent, true);
+  assert.equal(result.importedPolityCount, 4);
+  assert.equal(result.createdPolityCount + result.updatedPolityCount, 4);
+  assert.equal(result.importedSnapshotCount, 4);
+  assert.equal(result.skippedAnonymousFeatureCount, 1);
+
+  const polityRows = await db.all(
+    `SELECT * FROM reference_entities WHERE kind = 'polity' ORDER BY lower(title) ASC`
+  );
+  const polityTitles = polityRows.map((row) => row.title);
+  assert.deepEqual(
+    polityTitles.filter((title) =>
+      ['Achaemenid Empire', 'Han China', 'Roman Empire', 'United States'].includes(title)
+    ),
+    ['Achaemenid Empire', 'Han China', 'Roman Empire', 'United States']
+  );
+
+  const romanPolity = polityRows.find((row) => row.title === 'Roman Empire');
+  assert.ok(romanPolity);
+  assert.equal(romanPolity.startYear, 100);
+  assert.equal(romanPolity.endYear, 100);
+  const romanMetadata = JSON.parse(romanPolity.metadata);
+  assert.equal(romanMetadata.atlasSource, 'historical-basemaps');
+  assert.equal(romanMetadata.builtIn, true);
+
+  const snapshotRows = await db.all(
+    `SELECT referenceEntityId, snapshotYear, source, titleAtSnapshot, metadata
+     FROM polity_snapshots
+     ORDER BY snapshotYear ASC, titleAtSnapshot ASC`
+  );
+  assert.equal(snapshotRows.length, 4);
+  assert.equal(snapshotRows[1].titleAtSnapshot, 'Han China');
+
+  const romanSnapshot = snapshotRows.find((row) => row.titleAtSnapshot === 'Roman Empire');
+  assert.ok(romanSnapshot);
+  const snapshotMetadata = JSON.parse(romanSnapshot.metadata);
+  assert.equal(snapshotMetadata.featureCount, 1);
+  assert.deepEqual(snapshotMetadata.sourceFeatureIds, ['100-0']);
+
+  const polityMatchResponse = await request('/api/world-history/basemaps/polity-match?year=100&featureId=100-0');
+  assert.equal(polityMatchResponse.status, 200);
+  const polityMatch = await polityMatchResponse.json();
+  assert.equal(polityMatch.referenceEntity.id, romanPolity.id);
+  assert.equal(polityMatch.referenceEntity.kind, 'polity');
+  assert.equal(polityMatch.snapshot.referenceEntityId, romanPolity.id);
+  assert.equal(polityMatch.snapshot.snapshotYear, 100);
+
+  const politySnapshotsResponse = await request(`/api/reference-entities/${romanPolity.id}/polity-snapshots`);
+  assert.equal(politySnapshotsResponse.status, 200);
+  const politySnapshots = await politySnapshotsResponse.json();
+  assert.equal(politySnapshots.length, 1);
+  assert.equal(politySnapshots[0].titleAtSnapshot, 'Roman Empire');
+
+  const builtInPolityUpdateResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary: 'Atlas-backed polity notes.',
+    }),
+  });
+  assert.equal(builtInPolityUpdateResponse.status, 200);
+  const updatedPolity = await builtInPolityUpdateResponse.json();
+  assert.equal(updatedPolity.title, 'Roman Empire');
+  assert.equal(updatedPolity.summary, 'Atlas-backed polity notes.');
+
+  const builtInPolityRenameResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: 'Roman State',
+    }),
+  });
+  assert.equal(builtInPolityRenameResponse.status, 400);
+
+  const builtInPolityDeleteResponse = await request(`/api/reference-entities/${romanPolity.id}`, {
+    method: 'DELETE',
+  });
+  assert.equal(builtInPolityDeleteResponse.status, 400);
+});
+
+test('development reset clears app data and re-seeds the core roots', async () => {
+  const resetResponse = await request('/api/dev/reset', {
+    method: 'POST',
+  });
+  assert.equal(resetResponse.status, 200);
+  const resetPayload = await resetResponse.json();
+  assert.equal(resetPayload.reset, true);
+
+  const subjectsResponse = await request('/api/subjects');
+  assert.equal(subjectsResponse.status, 200);
+  const subjects = await subjectsResponse.json();
+  assert.equal(subjects.length, 1);
+  assert.equal(subjects[0].name, 'Ontology');
+
+  const entitiesResponse = await request('/api/reference-entities');
+  assert.equal(entitiesResponse.status, 200);
+  const entities = await entitiesResponse.json();
+  assert.equal(entities.length, 1);
+  assert.equal(entities[0].title, 'Unknown Author');
+  assert.equal(entities[0].kind, 'person');
+
+  const itemsResponse = await request('/api/knowledge-items');
+  assert.equal(itemsResponse.status, 200);
+  const items = await itemsResponse.json();
+  assert.equal(items.length, 0);
+
+  const atlasEntitiesResponse = await request('/api/world-history/entities');
+  assert.equal(atlasEntitiesResponse.status, 200);
+  const atlasEntities = await atlasEntitiesResponse.json();
+  assert.equal(atlasEntities.length, 0);
 });

@@ -2,25 +2,25 @@
 
 ## Canonical Vocabulary
 
-The project should use four main layers:
+The app currently uses four core layers:
 
 1. `Subject`
 2. `Topic`
 3. `Entity`
 4. `Item`
 
-This replaces the looser earlier language around `topics`, `knowledge items`, and generic relations.
+This is the active model, not a migration target.
 
 ## Layer Responsibilities
 
 ### Subject
 
-`Subject` is the pure synchronic taxonomy of knowledge.
+`Subject` is the synchronic taxonomy of knowledge.
 
-- A subject has a parent subject and child subjects.
-- The root of the entire hierarchy is `Ontology`.
-- A subject does not carry space or time as part of its definition.
-- A subject contains topics, not items directly in the long-term model.
+- Subjects form a parent/child tree.
+- The root of the tree is `Ontology`.
+- Subjects do not carry time or geography themselves.
+- Subjects contain topics.
 
 Examples:
 
@@ -31,164 +31,141 @@ Examples:
 
 ### Topic
 
-`Topic` is a contextualized field of understanding under a subject.
+`Topic` is a contextualized study domain under a subject.
 
 - A topic belongs to one primary subject.
 - A topic may have parent and child topics.
-- A topic may be restricted by entities such as an era, nation, civilization, person, or place.
 - A topic contains items.
+- A topic may link to entities that provide historical or geographic framing.
 
 Examples:
 
 - Ancient Greek Metaphysics
 - French Philosophy
-- Roman Political Thought in Late Antiquity
+- Roman Political Thought
 
-In other words, subjects are logical taxonomy, while topics are practical, situated domains of study.
+Subjects are the logical tree. Topics are the usable study surfaces inside that tree.
 
 ### Entity
 
-`Entity` is a worldly being, polity, period, or location.
+`Entity` is the atlas-facing world layer.
 
-Current kinds:
+Active entity kinds:
 
 - `person`
-- `nation`
-- `civilization`
-- `era`
-- `place`
+- `polity`
+- `formation`
 
-Entities can have their own pages, descriptions, and same-layer relations, but they are not part of the
-subject hierarchy.
+What they mean:
 
-Useful same-layer entity relations include:
+- `person`: an individual figure
+- `polity`: a built-in historical-geographical unit backed by atlas data
+- `formation`: a user-curated grouping of polities across time and space
 
-- `contains`
-- `part_of`
-- `during`
-- `located_in`
-- `related_to`
-- `influenced_by`
+Entities are not part of the subject hierarchy. They are linked into topics and items.
 
 ### Item
 
-`Item` is the ultimate individual substance of the system.
+`Item` is the concrete unit the user studied.
 
-- Operationally, the system now has two item forms: `book` and `lecture`.
-- Older distinctions such as article, essay, video, podcast, or course should normalize into one of those two forms.
-- Items are the concrete units the user actually read, watched, heard, or studied.
-- The system mainly sorts, organizes, and displays items.
+- The app currently supports two forms: `book` and `lecture`
+- Items belong to topics
+- Items can link to entities for provenance and context
 
 ## Core Semantic Rules
 
 ### Item Aboutness
 
-An item should not have to choose between being "about a subject" and "about an entity".
+Items do not attach directly to subjects.
 
-The clean model is:
+The active model is:
 
 - an item belongs to one or more topics
 - a topic belongs to a subject
-- a topic may be linked to entities
+- a topic may link to entities
 
-This allows an item to be:
+This keeps:
 
-- logically organized through the subject tree
-- historically or spatially contextualized through topic-linked entities
+- logical organization in the subject tree
+- contextual framing in topics and entities
 
 ### Provenance Versus Subject Matter
 
-These must stay separate.
+These stay separate.
 
-- `provenance`: who created the item, and in what era, nation, civilization, or place they belong
+- `provenance`: who created the item
 - `subject matter`: what the item is about
 
-Example:
-
-- a modern American scholar can write an item about Late Antiquity
-- the author's era and nation describe the item's provenance
-- Late Antiquity describes the item's subject matter
-
-In the implementation, formal provenance should be expressed through relations such as `created_by`.
-Free-text creator fields are only a legacy/import fallback.
-
-The app should not automatically collapse those into one field.
+Formal provenance should be expressed through relations such as `created_by`.
+Free-text creator fields are only an import fallback.
 
 ## Entity Semantics
 
 ### Person
 
-- contains authored items
-- may have topics about the person
-- may later have influence relations to other people
+- can be the `created_by` target for items
+- can be linked from topics as a figure of study or influence
+- can belong to polities or formations
+- can carry person-to-person influence links
 
-### Nation
+### Polity
 
-- contains authors associated with the nation
-- may have topics about the nation
-- may later have influence or inheritance relations to other nations
+- is a built-in atlas unit, not a freeform user-created geography by default
+- can have many dated `polity_snapshots`
+- can belong to formations
+- can contain sub-polities through explicit structure links
 
-### Era
+### Formation
 
-- contains authors associated with the era
-- may have topics about the era
-- may later have before/after relations
-
-### Civilization
-
-Civilization should be treated as a higher-order spatiotemporal continuum.
-
-- may contain nations
-- may contain eras
-- may contain subcivilizations
-- may have topics about the civilization
-
-Civilization should not become the most primitive historical concept in the data model. It is more
-interpretive than a nation or an era, so explicit membership should be preferred over hard inference.
+- is user-curated
+- groups polities through explicit memberships
+- can model civilizational spans, regional periods, or broader historical continuities
+- can relate to other formations through `part_of`, `related_to`, or `influenced_by`
 
 ## Containment Model
 
-Only dedicated pages should expose a layer's contained objects directly.
+Dedicated pages expose each layer’s contained objects.
 
-- Subject page: child subjects and contained topics
-- Topic page: child topics and contained items
-- Entity page: contained authors, nations, eras, subcivilizations, topics, or authored items depending on kind
-- Item page: creator and topic backlinks
+- Subject page: contained topics
+- Topic page: contained items and linked entities
+- Entity page:
+  - person: authored works, topic coverage, affiliations
+  - polity: snapshots, memberships, topic/item coverage
+  - formation: polity memberships, topic/item coverage, broader formation links
+- Item page: assigned topics plus entity/context links
 
 Reverse links should be queried, not stored as literal nested structures.
 
 ## Current Implementation Mapping
 
-The current application now matches the core four-layer model more closely:
+Current storage and routes:
 
-- `topics` table and `/topics` UI are the `subject` layer
-- `study_topics` table and `/study-topics/:id` UI are the real `topic` layer
-- `knowledge_items` are the `item` layer
-- `reference_entities` are the `entity` layer
+- `topics` table and `/subjects` UI are the subject layer
+- `study_topics` table and `/topics/:id` UI are the topic layer
+- `knowledge_items` are the item layer
+- `reference_entities` hold `person`, `polity`, and `formation`
+- `polity_snapshots` hold year-specific atlas geometry
+- `formation_memberships` hold formation-to-polity membership
 
-Current limitations:
+## World History Overlay
 
-- entity pages do not yet expose the full containment model back out to topics and items
-- topic-to-entity contextualization now exists for actual topics, but the entity containment model is still relation-based rather than fully typed
+The world-history surface has two separate layers:
 
-Current strengths:
+- canonical authority records from Wikidata
+- local atlas-backed polities from `historical-basemaps`
 
-- person pages can now show authored works through `created_by` item links
-- entity pages can now show topics and subjects that point to them
-- entity pages can now carry explicit structural links to other entities, including `contains`
+Canonical records can still come in external kinds such as:
 
-## Migration Direction
+- `nation`
+- `civilization`
+- `era`
+- `place`
+- `region`
 
-1. Keep current `topics` data, but reinterpret it as `subjects`.
-2. Relabel the current UI from `Topic` to `Subject`.
-3. Introduce a new real `topics` layer between subjects and items.
-4. Move item assignment from direct subject links to topic links.
-5. Let topics carry the main historical and spatial contextualization through linked entities.
-6. Rework entity pages to expose contained items and topics based on the new structure.
+Those are external authority categories. Locally, they reconcile into the active atlas model:
 
-Status:
-- steps 1 through 4 are implemented
-- steps 5 and 6 remain open
+- `nation` and many `place`/`region` records -> `polity`
+- `civilization` and `era` -> `formation`
 
 ## Naming Notes
 
@@ -196,11 +173,11 @@ Preferred user-facing terms:
 
 - `Items`
 - `Subjects`
-- `Entities`
 - `Topics`
+- `Entities`
 
-Preferred implementation strategy for now:
+Preferred atlas-facing terms:
 
-- keep existing filenames and database tables stable until the topic layer is introduced
-- change user-facing wording first
-- do deeper schema cleanup only after the design feels right in practice
+- `People`
+- `Polities`
+- `Formations`

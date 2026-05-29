@@ -6,6 +6,7 @@ import type {
   KnowledgeNote,
   KnowledgeRelationDetail,
   KnowledgeRelationType,
+  PersonSubjectMembershipDetail,
   KnowledgeReview,
   KnowledgeTask,
   KnowledgeTaskStatus,
@@ -34,7 +35,9 @@ import {
   fetchKnowledgeReviews,
   fetchKnowledgeTasks,
   fetchReferenceEntities,
+  fetchReferenceEntityPersonSubjectMemberships,
   fetchSubjects as fetchTopics,
+  fetchTopicRelations,
   fetchTopics as fetchStudyTopics,
   removeTopicFromKnowledgeItem as removeStudyTopicFromKnowledgeItem,
   updateKnowledgeItem,
@@ -95,11 +98,11 @@ const itemRecordPresets: Record<ItemRecordFormKind, ItemRecordPreset> = {
 
 const relationKindOrder: ReferenceEntity['kind'][] = [
   'person',
-  'era',
-  'nation',
-  'civilization',
-  'place',
+  'polity',
+  'formation',
 ];
+
+const atlasKindOrder: ReferenceEntity['kind'][] = ['formation', 'polity', 'person'];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(undefined, {
@@ -173,36 +176,25 @@ const getItemRelationPreset = (
     };
   }
 
-  if (targetEntityKind === 'era') {
-    return {
-      allowedRelationTypes: ['during', 'about', 'related_to'],
-      defaultRelationType: 'during',
-      helperText:
-        'Use eras for historical setting. Choose during when the item belongs to a period context, or about when the period is the explicit subject.',
-      notePlaceholder: 'Optional note about the period context',
-      targetPrompt: 'Choose an era',
-    };
-  }
-
-  if (targetEntityKind === 'nation' || targetEntityKind === 'place') {
+  if (targetEntityKind === 'polity') {
     return {
       allowedRelationTypes: ['located_in', 'about', 'related_to'],
       defaultRelationType: 'located_in',
       helperText:
-        'Use nations and places for geographic or political setting. Choose about only when the entity is itself the subject matter.',
+        'Use polities for geographic or political setting. Choose about only when the polity is itself the subject matter.',
       notePlaceholder: 'Optional note about this location or polity',
-      targetPrompt: targetEntityKind === 'nation' ? 'Choose a nation' : 'Choose a place',
+      targetPrompt: 'Choose a polity',
     };
   }
 
-  if (targetEntityKind === 'civilization') {
+  if (targetEntityKind === 'formation') {
     return {
       allowedRelationTypes: ['about', 'related_to', 'influenced_by'],
       defaultRelationType: 'about',
       helperText:
-        'Civilizations usually enter as higher-order historical context or as an explicit subject of study.',
-      notePlaceholder: 'Optional note about this civilizational context',
-      targetPrompt: 'Choose a civilization',
+        'Formations usually enter as higher-order historical context or as an explicit subject of study.',
+      notePlaceholder: 'Optional note about this formation context',
+      targetPrompt: 'Choose a formation',
     };
   }
 
@@ -212,7 +204,7 @@ const getItemRelationPreset = (
     helperText:
       'Choose the entity first. The relation options will narrow once the target is specific.',
     notePlaceholder: 'Optional note about this context',
-    targetPrompt: 'Choose a person, era, nation, civilization, or place',
+    targetPrompt: 'Choose a person, polity, or formation',
   };
 };
 
@@ -251,6 +243,56 @@ const formatReferenceTimespan = (entity: ReferenceEntity) => {
 
   if (start && end) return `${start} - ${end}`;
   return start || end || null;
+};
+
+const formatAtlasHorizon = (entities: ReferenceEntity[]) => {
+  const datedEntities = entities.filter(
+    (entity) => entity.startYear !== undefined || entity.endYear !== undefined
+  );
+  if (datedEntities.length === 0) return null;
+
+  const starts = datedEntities
+    .map((entity) => entity.startYear)
+    .filter((value): value is number => value !== undefined);
+  const ends = datedEntities
+    .map((entity) => entity.endYear)
+    .filter((value): value is number => value !== undefined);
+
+  const earliest = starts.length > 0 ? Math.min(...starts) : undefined;
+  const latest = ends.length > 0 ? Math.max(...ends) : undefined;
+
+  if (earliest !== undefined && latest !== undefined) {
+    return earliest === latest ? formatYear(earliest) : `${formatYear(earliest)} - ${formatYear(latest)}`;
+  }
+
+  if (earliest !== undefined) return `From ${formatYear(earliest)}`;
+  if (latest !== undefined) return `Until ${formatYear(latest)}`;
+  return null;
+};
+
+const resolveAtlasFocusYear = (entity: ReferenceEntity) =>
+  entity.endYear ?? entity.startYear ?? 1862;
+
+const buildAtlasHref = (entity: ReferenceEntity) => {
+  const year = resolveAtlasFocusYear(entity);
+
+  if (entity.kind === 'formation') {
+    return `/world-history?year=${year}&formation=${entity.id}`;
+  }
+
+  if (entity.kind === 'polity') {
+    return `/world-history?year=${year}&polity=${entity.id}`;
+  }
+
+  return null;
+};
+
+type ItemAtlasFrameGroup = {
+  entity: ReferenceEntity;
+  sourceKinds: Array<'direct' | 'topic'>;
+  directRelationTypes: KnowledgeRelationType[];
+  topicRelationTypes: KnowledgeRelationType[];
+  topicTitles: string[];
 };
 
 const buildRelationHref = (relation: KnowledgeRelationDetail) => {
@@ -382,11 +424,14 @@ const ItemDetailPage: React.FC = () => {
   const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [itemStudyTopics, setItemStudyTopics] = useState<StudyTopicSummary[]>([]);
   const [relations, setRelations] = useState<KnowledgeRelationDetail[]>([]);
+  const [topicRelationsById, setTopicRelationsById] = useState<Record<number, KnowledgeRelationDetail[]>>({});
   const [notes, setNotes] = useState<KnowledgeNote[]>([]);
   const [tasks, setTasks] = useState<KnowledgeTask[]>([]);
   const [reviews, setReviews] = useState<KnowledgeReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [atlasContextError, setAtlasContextError] = useState<string | null>(null);
+  const [creatorCoverageError, setCreatorCoverageError] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
   const [savingRecord, setSavingRecord] = useState(false);
   const [savingTopicAssignment, setSavingTopicAssignment] = useState(false);
@@ -544,27 +589,79 @@ const ItemDetailPage: React.FC = () => {
       }),
     [referenceEntities]
   );
+  const referenceEntityMap = useMemo(
+    () => new Map(referenceEntities.map((entity) => [entity.id, entity])),
+    [referenceEntities]
+  );
+  const [creatorSubjectMembershipsByPersonId, setCreatorSubjectMembershipsByPersonId] = useState<
+    Record<number, PersonSubjectMembershipDetail[]>
+  >({});
+  const unknownAuthorEntity = useMemo(
+    () => referenceEntities.find((entity) => entity.slug === 'person-unknown-author') ?? null,
+    [referenceEntities]
+  );
+  const creatorRelations = useMemo(
+    () =>
+      relations.filter(
+        (relation) =>
+          relation.relationType === 'created_by' &&
+          relation.toEntityType === 'reference_entity' &&
+          relation.toEntityKind === 'person'
+      ),
+    [relations]
+  );
+  const creatorPeople = useMemo(() => {
+    const seen = new Set<number>();
+    const people: ReferenceEntity[] = [];
+
+    for (const relation of creatorRelations) {
+      const entity = referenceEntityMap.get(relation.toEntityId);
+      if (!entity || entity.kind !== 'person' || seen.has(entity.id)) continue;
+      seen.add(entity.id);
+      people.push(entity);
+    }
+
+    return people;
+  }, [creatorRelations, referenceEntityMap]);
   const completedTasks = useMemo(
     () => tasks.filter((task) => task.status === 'done').length,
     [tasks]
   );
   const creatorDisplay = useMemo(() => {
-    const creatorTitles = relations
-      .filter(
-        (relation) =>
-          relation.relationType === 'created_by' &&
-          relation.toEntityType === 'reference_entity' &&
-          relation.toEntityKind === 'person' &&
-          relation.toEntityTitle
-      )
+    const creatorTitles = creatorRelations
+      .filter((relation) => relation.toEntityId !== unknownAuthorEntity?.id && relation.toEntityTitle)
       .map((relation) => relation.toEntityTitle as string);
 
     if (creatorTitles.length > 0) {
       return creatorTitles.join(', ');
     }
 
-    return item?.creator || null;
-  }, [item?.creator, relations]);
+    return item?.creator || creatorRelations[0]?.toEntityTitle || null;
+  }, [creatorRelations, item?.creator, unknownAuthorEntity?.id]);
+  const creatorCoveragePending = useMemo(
+    () =>
+      creatorPeople.some(
+        (person) =>
+          person.id !== unknownAuthorEntity?.id &&
+          !Object.prototype.hasOwnProperty.call(creatorSubjectMembershipsByPersonId, person.id)
+      ),
+    [creatorPeople, creatorSubjectMembershipsByPersonId, unknownAuthorEntity?.id]
+  );
+  const creatorsMissingSubjectCoverage = useMemo(
+    () =>
+      creatorPeople.filter((person) => {
+        if (person.id === unknownAuthorEntity?.id) return false;
+        const memberships = creatorSubjectMembershipsByPersonId[person.id];
+        return Array.isArray(memberships) && memberships.length === 0;
+      }),
+    [creatorPeople, creatorSubjectMembershipsByPersonId, unknownAuthorEntity?.id]
+  );
+  const creatorNeedsResolution = useMemo(
+    () =>
+      Boolean(item?.creator) &&
+      creatorRelations.some((relation) => relation.toEntityId === unknownAuthorEntity?.id),
+    [creatorRelations, item?.creator, unknownAuthorEntity?.id]
+  );
   const itemFormKind = item ? getItemFormKind(item) : 'book';
   const recordPreset = itemRecordPresets[itemFormKind];
   const recordExtraFieldValue =
@@ -585,6 +682,90 @@ const ItemDetailPage: React.FC = () => {
       ),
     [itemFormKind, relationForm.toEntityType, selectedRelationReferenceTarget?.kind]
   );
+  const itemAtlasFrameGroups = useMemo(() => {
+    const grouped = new Map<number, ItemAtlasFrameGroup>();
+
+    const registerEntity = (
+      entity: ReferenceEntity,
+      sourceKind: 'direct' | 'topic',
+      relationType: KnowledgeRelationType,
+      topicTitle?: string
+    ) => {
+      const current = grouped.get(entity.id);
+      if (current) {
+        if (!current.sourceKinds.includes(sourceKind)) current.sourceKinds.push(sourceKind);
+        const relationBucket =
+          sourceKind === 'direct' ? current.directRelationTypes : current.topicRelationTypes;
+        if (!relationBucket.includes(relationType)) {
+          relationBucket.push(relationType);
+        }
+        if (topicTitle && !current.topicTitles.includes(topicTitle)) {
+          current.topicTitles.push(topicTitle);
+        }
+        return;
+      }
+
+      grouped.set(entity.id, {
+        entity,
+        sourceKinds: [sourceKind],
+        directRelationTypes: sourceKind === 'direct' ? [relationType] : [],
+        topicRelationTypes: sourceKind === 'topic' ? [relationType] : [],
+        topicTitles: topicTitle ? [topicTitle] : [],
+      });
+    };
+
+    for (const relation of relations) {
+      if (relation.toEntityType !== 'reference_entity') continue;
+      const entity = referenceEntityMap.get(relation.toEntityId);
+      if (!entity) continue;
+      registerEntity(entity, 'direct', relation.relationType);
+    }
+
+    for (const topic of itemStudyTopics) {
+      const topicRelations = topicRelationsById[topic.id] ?? [];
+      for (const relation of topicRelations) {
+        if (relation.toEntityType !== 'reference_entity') continue;
+        const entity = referenceEntityMap.get(relation.toEntityId);
+        if (!entity) continue;
+        registerEntity(entity, 'topic', relation.relationType, topic.name);
+      }
+    }
+
+    return [...grouped.values()].sort((left, right) => {
+      const kindDifference =
+        atlasKindOrder.indexOf(left.entity.kind) - atlasKindOrder.indexOf(right.entity.kind);
+      if (kindDifference !== 0) return kindDifference;
+
+      const titleDifference = left.entity.title.localeCompare(right.entity.title);
+      if (titleDifference !== 0) return titleDifference;
+
+      return left.entity.id - right.entity.id;
+    });
+  }, [itemStudyTopics, referenceEntityMap, relations, topicRelationsById]);
+  const itemAtlasHorizon = useMemo(
+    () => formatAtlasHorizon(itemAtlasFrameGroups.map((entry) => entry.entity)),
+    [itemAtlasFrameGroups]
+  );
+  const formationAtlasFrameGroups = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.entity.kind === 'formation'),
+    [itemAtlasFrameGroups]
+  );
+  const polityAtlasFrameGroups = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.entity.kind === 'polity'),
+    [itemAtlasFrameGroups]
+  );
+  const personAtlasFrameGroups = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.entity.kind === 'person'),
+    [itemAtlasFrameGroups]
+  );
+  const topicDrivenAtlasFrameCount = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.sourceKinds.includes('topic')).length,
+    [itemAtlasFrameGroups]
+  );
+  const directAtlasFrameCount = useMemo(
+    () => itemAtlasFrameGroups.filter((entry) => entry.sourceKinds.includes('direct')).length,
+    [itemAtlasFrameGroups]
+  );
 
   useEffect(() => {
     setRelationForm((current) => {
@@ -602,6 +783,82 @@ const ItemDetailPage: React.FC = () => {
       };
     });
   }, [relationPreset]);
+
+  useEffect(() => {
+    if (itemStudyTopics.length === 0) {
+      setTopicRelationsById({});
+      setAtlasContextError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTopicAtlasContext = async () => {
+      try {
+        setAtlasContextError(null);
+        const entries = await Promise.all(
+          itemStudyTopics.map(async (topic) => [topic.id, await fetchTopicRelations(topic.id)] as const)
+        );
+
+        if (!cancelled) {
+          setTopicRelationsById(Object.fromEntries(entries));
+        }
+      } catch (loadError) {
+        console.error(loadError);
+        if (!cancelled) {
+          setTopicRelationsById({});
+          setAtlasContextError('Failed to load atlas context from the assigned topics.');
+        }
+      }
+    };
+
+    void loadTopicAtlasContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [itemStudyTopics]);
+
+  useEffect(() => {
+    const creatorPeopleNeedingCoverage = creatorPeople.filter(
+      (person) => person.id !== unknownAuthorEntity?.id
+    );
+
+    if (creatorPeopleNeedingCoverage.length === 0) {
+      setCreatorSubjectMembershipsByPersonId({});
+      setCreatorCoverageError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCreatorCoverage = async () => {
+      try {
+        const entries = await Promise.all(
+          creatorPeopleNeedingCoverage.map(async (person) => [
+            person.id,
+            await fetchReferenceEntityPersonSubjectMemberships(person.id),
+          ] as const)
+        );
+
+        if (!cancelled) {
+          setCreatorSubjectMembershipsByPersonId(Object.fromEntries(entries));
+          setCreatorCoverageError(null);
+        }
+      } catch (loadError) {
+        console.error(loadError);
+        if (!cancelled) {
+          setCreatorCoverageError('Failed to load creator subject coverage.');
+        }
+      }
+    };
+
+    void loadCreatorCoverage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [creatorPeople, unknownAuthorEntity?.id]);
 
   const handleItemStatusChange = async (nextStatus: KnowledgeItemStatus) => {
     if (!item || nextStatus === item.status) return;
@@ -1088,14 +1345,61 @@ const ItemDetailPage: React.FC = () => {
                 <dt>Form</dt>
                 <dd>{getItemFormLabel(item)}</dd>
               </div>
+              {creatorDisplay ? (
+                <div>
+                  <dt>Creator path</dt>
+                  <dd>{creatorDisplay}</dd>
+                </div>
+              ) : null}
               {itemRecordDetail ? (
                 <div>
                   <dt>Record detail</dt>
                   <dd>{itemRecordDetail}</dd>
                 </div>
               ) : null}
+              {(creatorNeedsResolution || creatorsMissingSubjectCoverage.length > 0) ? (
+                <div>
+                  <dt>Creator coverage</dt>
+                  <dd>
+                    {creatorNeedsResolution
+                      ? 'Needs person resolution'
+                      : creatorsMissingSubjectCoverage.length === 1
+                        ? 'Missing subject membership'
+                        : `${creatorsMissingSubjectCoverage.length} creators need subjects`}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </div>
+
+          {creatorNeedsResolution ? (
+            <div className="knowledge-detail-note">
+              <strong>Creator still points to Unknown Author</strong>
+              <span>
+                This item keeps the text fallback "{item.creator}", but its canonical creator relation still resolves
+                to Unknown Author. Match the creator to a person entity when you want the atlas and subject filters to
+                pick it up.
+              </span>
+            </div>
+          ) : null}
+
+          {creatorCoverageError ? <div className="knowledge-detail-error">{creatorCoverageError}</div> : null}
+
+          {!creatorCoverageError && !creatorCoveragePending && creatorsMissingSubjectCoverage.length > 0 ? (
+            <div className="knowledge-detail-note">
+              <strong>Creator subject coverage is incomplete</strong>
+              <span>
+                Add at least one subject to{' '}
+                {creatorsMissingSubjectCoverage.map((person, index) => (
+                  <React.Fragment key={person.id}>
+                    {index > 0 ? (index === creatorsMissingSubjectCoverage.length - 1 ? ' and ' : ', ') : null}
+                    <Link to={`/entities/${person.id}`}>{person.title}</Link>
+                  </React.Fragment>
+                ))}{' '}
+                so subject-filtered atlas views can surface this creator.
+              </span>
+            </div>
+          ) : null}
 
           {showRecordEditor ? (
             <div className="knowledge-detail-inline-panel">
@@ -1370,6 +1674,89 @@ const ItemDetailPage: React.FC = () => {
               </button>
             </div>
 
+            {atlasContextError ? <div className="knowledge-detail-error">{atlasContextError}</div> : null}
+
+            <div className="knowledge-detail-overview">
+              <dl className="knowledge-detail-fact-grid knowledge-detail-atlas-fact-grid">
+                <div>
+                  <dt>Historical horizon</dt>
+                  <dd>{itemAtlasHorizon || 'Open'}</dd>
+                </div>
+                <div>
+                  <dt>Formations in frame</dt>
+                  <dd>{formationAtlasFrameGroups.length || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Polity scope</dt>
+                  <dd>{polityAtlasFrameGroups.length || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>People in frame</dt>
+                  <dd>{personAtlasFrameGroups.length || 'None'}</dd>
+                </div>
+                <div>
+                  <dt>Inherited through topics</dt>
+                  <dd>{topicDrivenAtlasFrameCount}</dd>
+                </div>
+                <div>
+                  <dt>Direct on this item</dt>
+                  <dd>{directAtlasFrameCount}</dd>
+                </div>
+              </dl>
+            </div>
+
+            {itemAtlasFrameGroups.length > 0 ? (
+              <div className="knowledge-detail-stack knowledge-detail-atlas-stack">
+                {itemAtlasFrameGroups.map((entry) => (
+                  <article key={`atlas-frame-${entry.entity.id}`} className="knowledge-detail-card">
+                    <div className="knowledge-detail-card-top">
+                      <div>
+                        <div className="knowledge-detail-meta">
+                          <span>{entry.entity.kind}</span>
+                          {entry.sourceKinds.includes('direct') ? <span>direct</span> : null}
+                          {entry.sourceKinds.includes('topic') ? <span>through topics</span> : null}
+                          {formatReferenceTimespan(entry.entity) ? (
+                            <span>{formatReferenceTimespan(entry.entity)}</span>
+                          ) : null}
+                        </div>
+                        <Link to={`/entities/${entry.entity.id}`} className="knowledge-detail-card-link">
+                          <h3>{entry.entity.title}</h3>
+                        </Link>
+                      </div>
+                      <div className="knowledge-detail-card-actions">
+                        <Link to={`/entities/${entry.entity.id}`} className="knowledge-detail-secondary-link">
+                          Open entity
+                        </Link>
+                        {buildAtlasHref(entry.entity) ? (
+                          <Link to={buildAtlasHref(entry.entity)!} className="knowledge-detail-secondary-link">
+                            Open on atlas
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="knowledge-detail-meta">
+                      {entry.directRelationTypes.map((relationType) => (
+                        <span key={`direct-${entry.entity.id}-${relationType}`}>
+                          direct: {formatRelationType(relationType)}
+                        </span>
+                      ))}
+                      {entry.topicRelationTypes.map((relationType) => (
+                        <span key={`topic-${entry.entity.id}-${relationType}`}>
+                          topic: {formatRelationType(relationType)}
+                        </span>
+                      ))}
+                    </div>
+                    {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                    {entry.topicTitles.length > 0 ? (
+                      <div className="knowledge-detail-meta">
+                        <span>Through topics: {entry.topicTitles.join(', ')}</span>
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
+
             {showRelationComposer ? (
               <div className="knowledge-detail-inline-panel">
                 <form className="knowledge-detail-form" onSubmit={handleRelationSubmit}>
@@ -1462,7 +1849,9 @@ const ItemDetailPage: React.FC = () => {
             ) : null}
 
             {relations.length === 0 ? (
-              <div className="knowledge-detail-empty">No connections yet.</div>
+              itemAtlasFrameGroups.length === 0 ? (
+                <div className="knowledge-detail-empty">No connections yet.</div>
+              ) : null
             ) : (
               <div className="knowledge-detail-stack">
                 {relations.map((relation) => (

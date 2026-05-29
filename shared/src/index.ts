@@ -59,11 +59,29 @@ export interface TopicSummary extends Topic {
   subjectSlug: string;
 }
 
-export type ReferenceEntityKind = 'person' | 'nation' | 'civilization' | 'era' | 'place';
+export type ReferenceEntityKind =
+  | 'person'
+  | 'polity'
+  | 'formation';
+
+export type FormationSubtype =
+  | 'civilization'
+  | 'era'
+  | 'tradition'
+  | 'world_frame'
+  | 'other';
+
+export const isFormationSubtype = (value: unknown): value is FormationSubtype =>
+  value === 'civilization' ||
+  value === 'era' ||
+  value === 'tradition' ||
+  value === 'world_frame' ||
+  value === 'other';
 
 export interface ReferenceEntity {
   id: number;
   kind: ReferenceEntityKind;
+  formationSubtype?: FormationSubtype;
   title: string;
   slug: string;
   summary?: string;
@@ -74,6 +92,13 @@ export interface ReferenceEntity {
   createdAt: string;
   updatedAt: string;
 }
+
+export const isBuiltInPolityEntity = (
+  entity: Pick<ReferenceEntity, 'kind' | 'metadata'>
+) =>
+  entity.kind === 'polity' &&
+  entity.metadata?.atlasSource === 'historical-basemaps' &&
+  entity.metadata?.builtIn === true;
 
 export type KnowledgeRelationEntityType =
   | 'knowledge_item'
@@ -151,6 +176,7 @@ export type ActivityEventType =
   | 'reference_entity_updated'
   | 'subject_created'
   | 'topic_created'
+  | 'topic_updated'
   | 'topic_deleted'
   | 'note_created'
   | 'task_created'
@@ -169,26 +195,156 @@ export interface ActivityEvent {
   occurredAt: string;
 }
 
-export interface Place {
+export interface PolitySnapshot {
   id: number;
-  name: string;
-  latitude?: number;
-  longitude?: number;
-  bounds?: Record<string, unknown>;
-  description?: string;
+  referenceEntityId: number;
+  snapshotYear: number;
+  source: 'historical-basemaps';
+  titleAtSnapshot: string;
+  parentLabel?: string;
+  subjectLabel?: string;
+  borderPrecision?: number;
+  geometry: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface TimelineEvent {
+export interface FormationMembership {
   id: number;
-  title: string;
+  formationEntityId: number;
+  polityEntityId: number;
   startYear?: number;
   endYear?: number;
-  placeId?: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface FormationMembershipDetail extends FormationMembership {
+  formationTitle?: string;
+  formationSlug?: string;
+  polityTitle?: string;
+  politySlug?: string;
+}
+
+export interface PersonPolityMembership {
+  id: number;
+  personEntityId: number;
+  polityEntityId: number;
+  startYear?: number;
+  endYear?: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PersonPolityMembershipDetail extends PersonPolityMembership {
+  personTitle?: string;
+  personSlug?: string;
+  polityTitle?: string;
+  politySlug?: string;
+}
+
+export interface PersonSubjectMembership {
+  id: number;
+  personEntityId: number;
+  subjectId: number;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PersonSubjectMembershipDetail extends PersonSubjectMembership {
+  personTitle?: string;
+  personSlug?: string;
+  subjectName?: string;
+  subjectSlug?: string;
+}
+
+export interface HistoricalBasemapPolityMatchResponse {
+  referenceEntity: ReferenceEntity;
+  snapshot: PolitySnapshot;
+}
+
+export type CanonicalHistoricalEntityAuthority = 'wikidata';
+
+export type CanonicalHistoricalEntityKind =
+  | 'person'
+  | 'ruler'
+  | 'battle'
+  | 'nation'
+  | 'civilization'
+  | 'era'
+  | 'place'
+  | 'region';
+
+export interface CanonicalHistoricalEntity {
+  id: number;
+  authority: CanonicalHistoricalEntityAuthority;
+  authorityId: string;
+  kind: CanonicalHistoricalEntityKind;
+  referenceEntityId?: number;
+  title: string;
+  summary?: string;
   description?: string;
+  startYear?: number;
+  endYear?: number;
+  latitude?: number;
+  longitude?: number;
+  imageUrl?: string;
+  sourceUrl?: string;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CanonicalHistoricalSearchMatch {
+  authority: CanonicalHistoricalEntityAuthority;
+  authorityId: string;
+  kind: CanonicalHistoricalEntityKind;
+  title: string;
+  summary?: string;
+  description?: string;
+  startYear?: number;
+  endYear?: number;
+  latitude?: number;
+  longitude?: number;
+  imageUrl?: string;
+  sourceUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CanonicalHistoricalGeometryResponse {
+  entityId: number;
+  title: string;
+  source: 'wikimedia_commons_map';
+  cached: boolean;
+  cachedAt?: string;
+  geojson: Record<string, unknown>;
+}
+
+export interface HistoricalBasemapYear {
+  year: number;
+  filename: string;
+  countryCount: number;
+}
+
+export interface HistoricalBasemapManifestResponse {
+  source: 'historical-basemaps';
+  title: string;
+  license: 'GPL-3.0';
+  cutoffYear: number;
+  minYear: number;
+  maxYear: number;
+  datasetPresent: boolean;
+  availableYears: HistoricalBasemapYear[];
+}
+
+export interface HistoricalBasemapLayerResponse {
+  source: 'historical-basemaps';
+  requestedYear: number;
+  resolvedYear: number;
+  filename: string;
+  featureCount: number;
+  geojson: Record<string, unknown>;
 }
 
 export interface Exhibit {
@@ -242,8 +398,12 @@ export const slugifyName = (value: string) =>
 export const buildReferenceEntitySlug = (kind: ReferenceEntityKind, title: string) =>
   `${kind}-${slugifyName(title)}`;
 
-export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewKnowledgeItem = Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'> & {
+  creatorEntityId?: number | null;
+};
+export type UpdateKnowledgeItem = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>> & {
+  creatorEntityId?: number | null;
+};
 
 export type NewSubject = Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>;
 export type UpdateSubject = Partial<Omit<Subject, 'id' | 'slug' | 'createdAt' | 'updatedAt'>>;
@@ -253,6 +413,7 @@ export type UpdateTopic = Partial<Omit<Topic, 'id' | 'slug' | 'createdAt' | 'upd
 
 export interface ReferenceEntityDraft {
   kind: ReferenceEntityKind;
+  formationSubtype?: FormationSubtype | null;
   title: string;
   summary?: string | null;
   description?: string | null;
@@ -279,11 +440,24 @@ export type UpdateKnowledgeReview = Partial<Omit<KnowledgeReview, 'id' | 'create
 export type NewActivityEvent = Omit<ActivityEvent, 'id' | 'occurredAt'>;
 export type UpdateActivityEvent = Partial<Omit<ActivityEvent, 'id' | 'occurredAt'>>;
 
-export type NewPlace = Omit<Place, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdatePlace = Partial<Omit<Place, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewPolitySnapshot = Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>;
+export type UpdatePolitySnapshot = Partial<
+  Omit<PolitySnapshot, 'id' | 'createdAt' | 'updatedAt'>
+>;
+export type NewFormationMembership = Omit<FormationMembership, 'id' | 'createdAt'>;
+export type UpdateFormationMembership = Partial<Omit<FormationMembership, 'id' | 'createdAt'>>;
+export type NewPersonPolityMembership = Omit<PersonPolityMembership, 'id' | 'createdAt'>;
+export type UpdatePersonPolityMembership = Partial<Omit<PersonPolityMembership, 'id' | 'createdAt'>>;
+export type NewPersonSubjectMembership = Omit<PersonSubjectMembership, 'id' | 'createdAt'>;
+export type UpdatePersonSubjectMembership = Partial<Omit<PersonSubjectMembership, 'id' | 'createdAt'>>;
 
-export type NewTimelineEvent = Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>;
-export type UpdateTimelineEvent = Partial<Omit<TimelineEvent, 'id' | 'createdAt' | 'updatedAt'>>;
+export type NewCanonicalHistoricalEntity = Omit<
+  CanonicalHistoricalEntity,
+  'id' | 'createdAt' | 'updatedAt'
+>;
+export type UpdateCanonicalHistoricalEntity = Partial<
+  Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>
+>;
 
 export type NewExhibit = Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>;
 export type UpdateExhibit = Partial<Omit<Exhibit, 'id' | 'createdAt' | 'updatedAt'>>;

@@ -1,5 +1,13 @@
 import {
   ActivityEvent,
+  CanonicalHistoricalEntity,
+  CanonicalHistoricalGeometryResponse,
+  CanonicalHistoricalEntityKind,
+  CanonicalHistoricalSearchMatch,
+  FormationMembershipDetail,
+  HistoricalBasemapPolityMatchResponse,
+  HistoricalBasemapLayerResponse,
+  HistoricalBasemapManifestResponse,
   KnowledgeItem,
   KnowledgeRelationEntityType,
   KnowledgeNote,
@@ -11,9 +19,15 @@ import {
   NewKnowledgeNote,
   NewKnowledgeReview,
   NewKnowledgeTask,
+  NewFormationMembership,
+  NewPersonPolityMembership,
+  NewPersonSubjectMembership,
   NewReferenceEntity,
   NewSubject,
   NewTopic,
+  PersonPolityMembershipDetail,
+  PersonSubjectMembershipDetail,
+  PolitySnapshot,
   ReferenceEntity,
   Subject,
   SubjectSummary,
@@ -24,11 +38,13 @@ import {
   UpdateKnowledgeTask,
   UpdateReferenceEntity,
   UpdateSubject,
+  UpdateTopic,
 } from '@enzyklopaedie/shared';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
 export type BookSearchProvider = 'open_library' | 'library_of_congress';
+export type HistoricalAtlasKind = CanonicalHistoricalEntityKind | 'all';
 
 export type BookSearchMatch = {
   id: string;
@@ -59,12 +75,43 @@ export type BookSearchPage = {
   total?: number;
 };
 
+export const resetDevelopmentData = async (): Promise<{ message: string }> => {
+  const response = await fetch(`${API_BASE_URL}/dev/reset`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to reset development data');
+  }
+
+  return response.json();
+};
+
 // Knowledge item API functions
 export const fetchKnowledgeItems = async (): Promise<KnowledgeItem[]> => {
   const response = await fetch(`${API_BASE_URL}/knowledge-items`);
   if (!response.ok) {
     throw new Error('Failed to fetch knowledge items');
   }
+  return response.json();
+};
+
+export const fetchHistoricalBasemapPolityMatch = async (
+  year: number,
+  featureId: string
+): Promise<HistoricalBasemapPolityMatchResponse | null> => {
+  const params = new URLSearchParams({
+    year: String(year),
+    featureId,
+  });
+
+  const response = await fetch(`${API_BASE_URL}/world-history/basemaps/polity-match?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to reconcile the selected basemap region');
+  }
+
   return response.json();
 };
 
@@ -153,6 +200,169 @@ export const searchBookCatalog = async (
   return response.json() as Promise<BookSearchPage>;
 };
 
+export const fetchHistoricalAtlasEntities = async (
+  options: {
+    kind?: HistoricalAtlasKind;
+    year?: number;
+  } = {}
+): Promise<CanonicalHistoricalEntity[]> => {
+  const params = new URLSearchParams();
+
+  if (options.kind && options.kind !== 'all') {
+    params.set('kind', options.kind);
+  }
+  if (options.year !== undefined) {
+    params.set('year', String(options.year));
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/world-history/entities${params.toString() ? `?${params.toString()}` : ''}`
+  );
+  if (!response.ok) {
+    throw new Error('Failed to fetch world history atlas entities');
+  }
+  return response.json();
+};
+
+export const fetchWorldHistoryPersonSubjectMemberships = async (
+  personEntityIds: number[]
+): Promise<PersonSubjectMembershipDetail[]> => {
+  const uniquePersonEntityIds = [...new Set(personEntityIds.filter((value) => Number.isInteger(value) && value > 0))];
+  if (uniquePersonEntityIds.length === 0) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    personEntityIds: uniquePersonEntityIds.join(','),
+  });
+
+  const response = await fetch(`${API_BASE_URL}/world-history/person-subject-memberships?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch atlas person subject memberships');
+  }
+  return response.json();
+};
+
+export const fetchHistoricalBasemapManifest = async (
+  cutoffYear?: number
+): Promise<HistoricalBasemapManifestResponse> => {
+  const params = new URLSearchParams();
+  if (cutoffYear !== undefined) {
+    params.set('cutoffYear', String(cutoffYear));
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/world-history/basemaps/manifest${params.toString() ? `?${params.toString()}` : ''}`
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to fetch historical basemap manifest');
+  }
+
+  return response.json();
+};
+
+export const fetchHistoricalBasemapLayer = async (
+  year: number,
+  cutoffYear?: number
+): Promise<HistoricalBasemapLayerResponse> => {
+  const params = new URLSearchParams({
+    year: String(year),
+  });
+  if (cutoffYear !== undefined) {
+    params.set('cutoffYear', String(cutoffYear));
+  }
+
+  const response = await fetch(`${API_BASE_URL}/world-history/basemaps/layer?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to fetch historical basemap layer');
+  }
+
+  return response.json();
+};
+
+export const searchHistoricalAtlas = async (
+  query: string,
+  kind: HistoricalAtlasKind = 'all',
+  limit = 10
+): Promise<CanonicalHistoricalSearchMatch[]> => {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    q: trimmedQuery,
+    limit: String(Math.min(Math.max(limit, 1), 20)),
+  });
+
+  if (kind !== 'all') {
+    params.set('kind', kind);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/world-history/search?${params.toString()}`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to search the world history atlas');
+  }
+
+  return response.json();
+};
+
+export const saveHistoricalAtlasEntity = async (
+  entityData: Omit<CanonicalHistoricalEntity, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<CanonicalHistoricalEntity> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(entityData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to save atlas entity');
+  }
+
+  return response.json();
+};
+
+export const promoteHistoricalAtlasEntity = async (
+  id: number
+): Promise<{ atlasEntity: CanonicalHistoricalEntity; referenceEntity: ReferenceEntity }> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}/promote`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create a local entity from the atlas');
+  }
+
+  return response.json();
+};
+
+export const fetchHistoricalAtlasGeometry = async (
+  id: number
+): Promise<CanonicalHistoricalGeometryResponse> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}/geometry`);
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to fetch atlas geometry');
+  }
+
+  return response.json();
+};
+
+export const deleteHistoricalAtlasEntity = async (id: number): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/world-history/entities/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete atlas entity');
+  }
+};
+
 export const updateKnowledgeItem = async (
   id: number,
   itemData: UpdateKnowledgeItem
@@ -206,6 +416,46 @@ export const fetchReferenceEntityRelations = async (
   return response.json();
 };
 
+export const fetchReferenceEntityPolitySnapshots = async (
+  id: number
+): Promise<PolitySnapshot[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/polity-snapshots`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch polity snapshots');
+  }
+  return response.json();
+};
+
+export const fetchReferenceEntityFormationMemberships = async (
+  id: number
+): Promise<FormationMembershipDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/formation-memberships`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch formation memberships');
+  }
+  return response.json();
+};
+
+export const fetchReferenceEntityPersonPolityMemberships = async (
+  id: number
+): Promise<PersonPolityMembershipDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-polity-memberships`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch person polity memberships');
+  }
+  return response.json();
+};
+
+export const fetchReferenceEntityPersonSubjectMemberships = async (
+  id: number
+): Promise<PersonSubjectMembershipDetail[]> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-subject-memberships`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch person subject memberships');
+  }
+  return response.json();
+};
+
 export const fetchReferenceEntityOutgoingRelations = async (
   id: number
 ): Promise<KnowledgeRelationDetail[]> => {
@@ -237,6 +487,60 @@ export const createReferenceEntityRelation = async (
   return response.json();
 };
 
+export const createFormationMembership = async (
+  id: number,
+  membershipData: Omit<NewFormationMembership, 'formationEntityId'>
+): Promise<FormationMembershipDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/formation-memberships`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(membershipData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create formation membership');
+  }
+  return response.json();
+};
+
+export const createPersonPolityMembership = async (
+  id: number,
+  membershipData: Omit<NewPersonPolityMembership, 'personEntityId'>
+): Promise<PersonPolityMembershipDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-polity-memberships`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(membershipData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create person polity membership');
+  }
+  return response.json();
+};
+
+export const createPersonSubjectMembership = async (
+  id: number,
+  membershipData: Omit<NewPersonSubjectMembership, 'personEntityId'>
+): Promise<PersonSubjectMembershipDetail> => {
+  const response = await fetch(`${API_BASE_URL}/reference-entities/${id}/person-subject-memberships`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(membershipData),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to create person subject membership');
+  }
+  return response.json();
+};
+
 export const deleteReferenceEntityRelation = async (
   id: number,
   relationId: number
@@ -246,6 +550,54 @@ export const deleteReferenceEntityRelation = async (
   });
   if (!response.ok) {
     throw new Error('Failed to delete reference entity relation');
+  }
+};
+
+export const deleteFormationMembership = async (
+  id: number,
+  membershipId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/reference-entities/${id}/formation-memberships/${membershipId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to delete formation membership');
+  }
+};
+
+export const deletePersonPolityMembership = async (
+  id: number,
+  membershipId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/reference-entities/${id}/person-polity-memberships/${membershipId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to delete person polity membership');
+  }
+};
+
+export const deletePersonSubjectMembership = async (
+  id: number,
+  membershipId: number
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/reference-entities/${id}/person-subject-memberships/${membershipId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null) as { message?: string } | null;
+    throw new Error(errorPayload?.message || 'Failed to delete person subject membership');
   }
 };
 
@@ -379,6 +731,21 @@ export const createTopic = async (topicData: NewTopic): Promise<TopicSummary> =>
   });
   if (!response.ok) {
     throw new Error('Failed to create topic');
+  }
+  return response.json();
+};
+
+export const updateTopic = async (id: number, topicData: UpdateTopic): Promise<TopicSummary> => {
+  const response = await fetch(`${API_BASE_URL}/topics/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(topicData),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.message || 'Failed to update topic');
   }
   return response.json();
 };

@@ -69,15 +69,11 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
       return relationTypeSet('created_by', 'influenced_by', 'related_to');
     }
 
-    if (toEntityKind === 'era') {
-      return relationTypeSet('during', 'about', 'related_to');
-    }
-
-    if (toEntityKind === 'nation' || toEntityKind === 'place') {
+    if (toEntityKind === 'polity') {
       return relationTypeSet('located_in', 'about', 'related_to');
     }
 
-    if (toEntityKind === 'civilization') {
+    if (toEntityKind === 'formation') {
       return relationTypeSet('about', 'related_to', 'influenced_by');
     }
 
@@ -93,15 +89,11 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
       return relationTypeSet('about', 'influenced_by', 'related_to');
     }
 
-    if (toEntityKind === 'era') {
-      return relationTypeSet('during', 'about', 'related_to');
-    }
-
-    if (toEntityKind === 'nation' || toEntityKind === 'place') {
+    if (toEntityKind === 'polity') {
       return relationTypeSet('located_in', 'about', 'related_to');
     }
 
-    if (toEntityKind === 'civilization') {
+    if (toEntityKind === 'formation') {
       return relationTypeSet('part_of', 'about', 'related_to');
     }
 
@@ -116,29 +108,14 @@ export const getAllowedKnowledgeRelationTypesForEdge = (
     switch (fromEntityKind as ReferenceEntityKind | undefined) {
       case 'person':
         if (toEntityKind === 'person') return relationTypeSet('influenced_by', 'related_to');
-        if (toEntityKind === 'nation' || toEntityKind === 'place') return relationTypeSet('located_in');
-        if (toEntityKind === 'era') return relationTypeSet('during');
-        if (toEntityKind === 'civilization') return relationTypeSet('part_of');
+        if (toEntityKind === 'formation') return relationTypeSet('part_of');
         return relationTypeSet();
-      case 'nation':
-        if (toEntityKind === 'nation') return relationTypeSet('contains', 'influenced_by', 'related_to');
-        if (toEntityKind === 'civilization') return relationTypeSet('part_of', 'influenced_by', 'related_to');
-        if (toEntityKind === 'era') return relationTypeSet('during');
-        if (toEntityKind === 'place') return relationTypeSet('located_in');
+      case 'formation':
+        if (toEntityKind === 'formation') return relationTypeSet('part_of', 'related_to', 'influenced_by');
         return relationTypeSet();
-      case 'civilization':
-        if (toEntityKind === 'nation' || toEntityKind === 'era') return relationTypeSet('contains');
-        if (toEntityKind === 'civilization') return relationTypeSet('part_of');
-        if (toEntityKind === 'place') return relationTypeSet('located_in');
-        return relationTypeSet();
-      case 'era':
-        if (toEntityKind === 'era') {
-          return relationTypeSet('contains', 'part_of', 'related_to', 'influenced_by');
-        }
-        return relationTypeSet();
-      case 'place':
-        if (toEntityKind === 'place') return relationTypeSet('contains', 'part_of');
-        if (toEntityKind === 'nation' || toEntityKind === 'civilization') return relationTypeSet('contains');
+      case 'polity':
+        if (toEntityKind === 'polity') return relationTypeSet('contains', 'influenced_by', 'related_to');
+        if (toEntityKind === 'formation') return relationTypeSet('part_of', 'influenced_by', 'related_to');
         return relationTypeSet();
       default:
         return relationTypeSet();

@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { open, type Database } from 'sqlite';
 import path from 'path';
+import { backfillKnowledgeItemCreatorRelations } from '../lib/knowledgeItemCreators';
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data.db');
 let dbPromise: Promise<Database<sqlite3.Database, sqlite3.Statement>> | null = null;
@@ -17,6 +18,53 @@ const openDatabase = () => {
   }
 
   return dbPromise;
+};
+
+const seedCoreRecords = async (db: Database<sqlite3.Database, sqlite3.Statement>) => {
+  const now = new Date().toISOString();
+
+  await db.run(
+    `INSERT OR IGNORE INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    'Ontology',
+    'ontology',
+    'The root of the encyclopedia taxonomy.',
+    null,
+    '#8d5d35',
+    now,
+    now
+  );
+
+  await db.run(
+    `UPDATE topics
+     SET parentTopicId = NULL, updatedAt = ?
+     WHERE slug = 'ontology' AND parentTopicId IS NOT NULL`,
+    now
+  );
+
+  await db.run(
+    `UPDATE topics
+     SET parentTopicId = (SELECT id FROM topics WHERE slug = 'ontology'),
+         updatedAt = ?
+     WHERE slug != 'ontology' AND parentTopicId IS NULL`,
+    now
+  );
+
+  await db.run(
+    `INSERT OR IGNORE INTO reference_entities
+      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    'person',
+    'Unknown Author',
+    'person-unknown-author',
+    'Fallback person record for items without a resolved creator entity.',
+    null,
+    null,
+    null,
+    null,
+    now,
+    now
+  );
 };
 
 export async function initializeDatabase() {
@@ -60,6 +108,7 @@ export async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS reference_entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kind TEXT NOT NULL,
+      formationSubtype TEXT,
       title TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
       summary TEXT,
@@ -150,27 +199,90 @@ export async function initializeDatabase() {
       occurredAt TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS places (
+    CREATE TABLE IF NOT EXISTS canonical_historical_entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      latitude REAL,
-      longitude REAL,
-      bounds TEXT,
-      description TEXT,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS timeline_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      authority TEXT NOT NULL,
+      authorityId TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      referenceEntityId INTEGER,
       title TEXT NOT NULL,
+      summary TEXT,
+      description TEXT,
       startYear INTEGER,
       endYear INTEGER,
-      placeId INTEGER,
-      description TEXT,
+      latitude REAL,
+      longitude REAL,
+      imageUrl TEXT,
+      sourceUrl TEXT,
+      metadata TEXT,
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL,
-      FOREIGN KEY (placeId) REFERENCES places(id)
+      UNIQUE(authority, authorityId),
+      FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS canonical_historical_entity_geometries (
+      canonicalHistoricalEntityId INTEGER PRIMARY KEY,
+      source TEXT NOT NULL,
+      geojson TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (canonicalHistoricalEntityId)
+        REFERENCES canonical_historical_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS polity_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referenceEntityId INTEGER NOT NULL,
+      snapshotYear INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      titleAtSnapshot TEXT NOT NULL,
+      parentLabel TEXT,
+      subjectLabel TEXT,
+      borderPrecision INTEGER,
+      geometry TEXT NOT NULL,
+      metadata TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      UNIQUE(referenceEntityId, snapshotYear, source),
+      FOREIGN KEY (referenceEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS formation_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      formationEntityId INTEGER NOT NULL,
+      polityEntityId INTEGER NOT NULL,
+      startYear INTEGER,
+      endYear INTEGER,
+      note TEXT,
+      createdAt TEXT NOT NULL,
+      UNIQUE(formationEntityId, polityEntityId, startYear, endYear),
+      FOREIGN KEY (formationEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (polityEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS person_polity_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personEntityId INTEGER NOT NULL,
+      polityEntityId INTEGER NOT NULL,
+      startYear INTEGER,
+      endYear INTEGER,
+      note TEXT,
+      createdAt TEXT NOT NULL,
+      UNIQUE(personEntityId, polityEntityId, startYear, endYear),
+      FOREIGN KEY (personEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (polityEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS person_subject_memberships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      personEntityId INTEGER NOT NULL,
+      subjectId INTEGER NOT NULL,
+      note TEXT,
+      createdAt TEXT NOT NULL,
+      UNIQUE(personEntityId, subjectId),
+      FOREIGN KEY (personEntityId) REFERENCES reference_entities(id) ON DELETE CASCADE,
+      FOREIGN KEY (subjectId) REFERENCES topics(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS exhibits (
@@ -189,6 +301,22 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_activity_events_occurred_at ON activity_events(occurredAt DESC);
     CREATE INDEX IF NOT EXISTS idx_reference_entities_kind ON reference_entities(kind);
     CREATE INDEX IF NOT EXISTS idx_reference_entities_title ON reference_entities(lower(title));
+    CREATE INDEX IF NOT EXISTS idx_polity_snapshots_reference_year
+      ON polity_snapshots(referenceEntityId, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_polity_snapshots_source_year
+      ON polity_snapshots(source, snapshotYear DESC);
+    CREATE INDEX IF NOT EXISTS idx_formation_memberships_formation
+      ON formation_memberships(formationEntityId, startYear, polityEntityId);
+    CREATE INDEX IF NOT EXISTS idx_formation_memberships_polity
+      ON formation_memberships(polityEntityId, startYear, formationEntityId);
+    CREATE INDEX IF NOT EXISTS idx_person_polity_memberships_person
+      ON person_polity_memberships(personEntityId, startYear, polityEntityId);
+    CREATE INDEX IF NOT EXISTS idx_person_polity_memberships_polity
+      ON person_polity_memberships(polityEntityId, startYear, personEntityId);
+    CREATE INDEX IF NOT EXISTS idx_person_subject_memberships_person
+      ON person_subject_memberships(personEntityId, subjectId);
+    CREATE INDEX IF NOT EXISTS idx_person_subject_memberships_subject
+      ON person_subject_memberships(subjectId, personEntityId);
     CREATE INDEX IF NOT EXISTS idx_study_topics_subject ON study_topics(subjectId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_study_topics_parent ON study_topics(parentTopicId, lower(name));
     CREATE INDEX IF NOT EXISTS idx_knowledge_item_study_topics_item
@@ -198,36 +326,39 @@ export async function initializeDatabase() {
       ON knowledge_relations(fromEntityType, fromEntityId, createdAt DESC);
     CREATE INDEX IF NOT EXISTS idx_knowledge_tasks_item ON knowledge_tasks(knowledgeItemId);
     CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_item ON knowledge_reviews(knowledgeItemId);
+    CREATE INDEX IF NOT EXISTS idx_canonical_historical_entities_kind
+      ON canonical_historical_entities(kind, lower(title));
+    CREATE INDEX IF NOT EXISTS idx_canonical_historical_entities_years
+      ON canonical_historical_entities(startYear, endYear);
   `);
 
+  const canonicalHistoricalColumns = await db.all<{ name: string }[]>(
+    `PRAGMA table_info(canonical_historical_entities)`
+  );
+  if (
+    canonicalHistoricalColumns.length > 0 &&
+    !canonicalHistoricalColumns.some((column) => column.name === 'referenceEntityId')
+  ) {
+    await db.exec(
+      `ALTER TABLE canonical_historical_entities
+       ADD COLUMN referenceEntityId INTEGER REFERENCES reference_entities(id) ON DELETE SET NULL`
+    );
+  }
+
+  const referenceEntityColumns = await db.all<{ name: string }[]>(
+    `PRAGMA table_info(reference_entities)`
+  );
+  if (
+    referenceEntityColumns.length > 0 &&
+    !referenceEntityColumns.some((column) => column.name === 'formationSubtype')
+  ) {
+    await db.exec(
+      `ALTER TABLE reference_entities
+       ADD COLUMN formationSubtype TEXT`
+    );
+  }
+
   const now = new Date().toISOString();
-
-  await db.run(
-    `INSERT OR IGNORE INTO topics (name, slug, description, parentTopicId, color, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    'Ontology',
-    'ontology',
-    'The root of the encyclopedia taxonomy.',
-    null,
-    '#8d5d35',
-    now,
-    now
-  );
-
-  await db.run(
-    `UPDATE topics
-     SET parentTopicId = NULL, updatedAt = ?
-     WHERE slug = 'ontology' AND parentTopicId IS NOT NULL`,
-    now
-  );
-
-  await db.run(
-    `UPDATE topics
-     SET parentTopicId = (SELECT id FROM topics WHERE slug = 'ontology'),
-         updatedAt = ?
-     WHERE slug != 'ontology' AND parentTopicId IS NULL`,
-    now
-  );
 
   await db.run(
     `UPDATE knowledge_items
@@ -269,21 +400,13 @@ export async function initializeDatabase() {
      WHERE entityType IN ('topic', 'study_topic')`
   );
 
-  await db.run(
-    `INSERT OR IGNORE INTO reference_entities
-      (kind, title, slug, summary, description, startYear, endYear, metadata, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    'person',
-    'Unknown Author',
-    'person-unknown-author',
-    'Fallback person record for items without a resolved creator entity.',
-    null,
-    null,
-    null,
-    null,
-    now,
-    now
-  );
+  await db.exec(`
+    DROP TABLE IF EXISTS timeline_events;
+    DROP TABLE IF EXISTS places;
+  `);
+
+  await seedCoreRecords(db);
+  await backfillKnowledgeItemCreatorRelations(db);
 
   console.log('Database initialized successfully with new schema.');
   return db;
@@ -291,6 +414,48 @@ export async function initializeDatabase() {
 
 export const getDb = async () => {
   return openDatabase();
+};
+
+export const resetDatabase = async () => {
+  const db = await openDatabase();
+
+  await db.exec('BEGIN');
+  try {
+    await db.exec(`
+      DELETE FROM canonical_historical_entity_geometries;
+      DELETE FROM canonical_historical_entities;
+      DELETE FROM formation_memberships;
+      DELETE FROM person_polity_memberships;
+      DELETE FROM person_subject_memberships;
+      DELETE FROM polity_snapshots;
+      DELETE FROM knowledge_item_study_topics;
+      DELETE FROM knowledge_notes;
+      DELETE FROM knowledge_tasks;
+      DELETE FROM knowledge_reviews;
+      DELETE FROM knowledge_relations;
+      DELETE FROM activity_events;
+      DELETE FROM study_topics;
+      DELETE FROM exhibits;
+      DELETE FROM knowledge_items;
+      DELETE FROM reference_entities;
+      DELETE FROM topics;
+      DELETE FROM sqlite_sequence;
+    `);
+
+    await seedCoreRecords(db);
+    await db.exec('COMMIT');
+  } catch (error) {
+    await db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return {
+    reset: true,
+    seededRoots: {
+      subjects: 1,
+      referenceEntities: 1,
+    },
+  };
 };
 
 export const closeDb = async () => {

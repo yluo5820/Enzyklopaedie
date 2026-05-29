@@ -1,5 +1,8 @@
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import type {
+  FormationSubtype,
+  KnowledgeRelationDetail,
+  ReferenceEntity,
   SubjectSummary as TopicSummary,
   TopicSummary as StudyTopicSummary,
 } from '@enzyklopaedie/shared';
@@ -7,8 +10,10 @@ import { Link, useParams } from 'react-router-dom';
 import {
   createTopic as createStudyTopic,
   deleteTopic as deleteStudyTopic,
+  fetchReferenceEntities,
   fetchSubject as fetchTopic,
   fetchSubjects as fetchTopics,
+  fetchTopicRelations,
   fetchTopics as fetchStudyTopics,
   updateSubject as updateTopic,
 } from '../api';
@@ -20,6 +25,91 @@ const formatDate = (value: string) =>
     month: 'short',
     day: 'numeric',
   }).format(new Date(value));
+
+const PageHint = ({ text }: { text: string }) => (
+  <span className="topic-page-help" tabIndex={0} aria-label={text}>
+    <span aria-hidden="true" className="topic-page-help-icon">
+      i
+    </span>
+    <span role="tooltip" className="topic-page-help-tooltip">
+      {text}
+    </span>
+  </span>
+);
+
+const formationSubtypeLabels: Record<FormationSubtype, string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  tradition: 'Tradition',
+  world_frame: 'World Frame',
+  other: 'Formation',
+};
+
+const formatYear = (value?: number) => {
+  if (value === undefined) return null;
+  if (value < 0) return `${Math.abs(value)} BCE`;
+  if (value > 0) return `${value} CE`;
+  return 'Year 0';
+};
+
+const formatReferenceTimespan = (entity: ReferenceEntity) => {
+  const start = formatYear(entity.startYear);
+  const end = formatYear(entity.endYear);
+
+  if (start && end) return `${start} - ${end}`;
+  return start || end || null;
+};
+
+const formatAtlasHorizon = (entities: ReferenceEntity[]) => {
+  const datedEntities = entities.filter(
+    (entity) => entity.startYear !== undefined || entity.endYear !== undefined
+  );
+  if (datedEntities.length === 0) return null;
+
+  const starts = datedEntities
+    .map((entity) => entity.startYear)
+    .filter((value): value is number => value !== undefined);
+  const ends = datedEntities
+    .map((entity) => entity.endYear)
+    .filter((value): value is number => value !== undefined);
+
+  const earliest = starts.length > 0 ? Math.min(...starts) : undefined;
+  const latest = ends.length > 0 ? Math.max(...ends) : undefined;
+
+  if (earliest !== undefined && latest !== undefined) {
+    return earliest === latest
+      ? formatYear(earliest)
+      : `${formatYear(earliest)} - ${formatYear(latest)}`;
+  }
+
+  if (earliest !== undefined) return `From ${formatYear(earliest)}`;
+  if (latest !== undefined) return `Until ${formatYear(latest)}`;
+  return null;
+};
+
+const resolveAtlasFocusYear = (entity: ReferenceEntity) =>
+  entity.endYear ?? entity.startYear ?? 1862;
+
+const buildAtlasHref = (entity: ReferenceEntity) => {
+  const year = resolveAtlasFocusYear(entity);
+
+  if (entity.kind === 'formation') {
+    return `/world-history?year=${year}&formation=${entity.id}`;
+  }
+
+  if (entity.kind === 'polity') {
+    return `/world-history?year=${year}&polity=${entity.id}`;
+  }
+
+  return null;
+};
+
+type SubjectAtlasEntityAggregate = {
+  entity: ReferenceEntity;
+  topicCount: number;
+  topicIds: Set<number>;
+  relationCount: number;
+};
 
 const orderStudyTopics = (studyTopics: StudyTopicSummary[]) => {
   const children = new Map<number | null, StudyTopicSummary[]>();
@@ -47,6 +137,25 @@ const orderStudyTopics = (studyTopics: StudyTopicSummary[]) => {
   return ordered;
 };
 
+const buildTopicPath = (
+  topic: StudyTopicSummary,
+  topicMap: Map<number, StudyTopicSummary>
+) => {
+  const parts = [topic.name];
+  let currentParentId = topic.parentTopicId;
+  let guard = 0;
+
+  while (currentParentId && guard < 16) {
+    const parent = topicMap.get(currentParentId);
+    if (!parent) break;
+    parts.unshift(parent.name);
+    currentParentId = parent.parentTopicId;
+    guard += 1;
+  }
+
+  return parts.join(' / ');
+};
+
 const SubjectPage: React.FC = () => {
   const { id } = useParams();
   const subjectId = Number(id);
@@ -54,6 +163,8 @@ const SubjectPage: React.FC = () => {
   const [subject, setSubject] = useState<TopicSummary | null>(null);
   const [subjects, setSubjects] = useState<TopicSummary[]>([]);
   const [studyTopics, setStudyTopics] = useState<StudyTopicSummary[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
+  const [topicRelationsById, setTopicRelationsById] = useState<Record<number, KnowledgeRelationDetail[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingSubject, setSavingSubject] = useState(false);
@@ -79,15 +190,21 @@ const SubjectPage: React.FC = () => {
 
     const loadSubjectPage = async () => {
       try {
-        const [fetchedSubject, fetchedSubjects, fetchedStudyTopics] = await Promise.all([
+        const [fetchedSubject, fetchedSubjects, fetchedStudyTopics, fetchedReferenceEntities] = await Promise.all([
           fetchTopic(subjectId),
           fetchTopics(),
           fetchStudyTopics(subjectId),
+          fetchReferenceEntities(),
         ]);
+        const fetchedTopicRelations = await Promise.all(
+          fetchedStudyTopics.map(async (topic) => [topic.id, await fetchTopicRelations(topic.id)] as const)
+        );
 
         setSubject(fetchedSubject);
         setSubjects(fetchedSubjects);
         setStudyTopics(fetchedStudyTopics);
+        setReferenceEntities(fetchedReferenceEntities);
+        setTopicRelationsById(Object.fromEntries(fetchedTopicRelations));
       } catch (loadError) {
         console.error(loadError);
         setError('Failed to load subject page.');
@@ -129,6 +246,95 @@ const SubjectPage: React.FC = () => {
     return path;
   }, [subject, subjectMap]);
   const orderedStudyTopics = useMemo(() => orderStudyTopics(studyTopics), [studyTopics]);
+  const topicMap = useMemo(() => new Map(studyTopics.map((entry) => [entry.id, entry])), [studyTopics]);
+  const referenceEntityMap = useMemo(
+    () => new Map(referenceEntities.map((entity) => [entity.id, entity])),
+    [referenceEntities]
+  );
+  const topLevelStudyTopics = useMemo(
+    () => orderedStudyTopics.filter(({ depth }) => depth === 0),
+    [orderedStudyTopics]
+  );
+  const nestedStudyTopics = useMemo(
+    () =>
+      orderedStudyTopics
+        .filter(({ depth }) => depth > 0)
+        .map(({ topic, depth }) => ({
+          depth,
+          path: buildTopicPath(topic, topicMap),
+          topic,
+        })),
+    [orderedStudyTopics, topicMap]
+  );
+  const topicsWithHistoricalFrameCount = useMemo(
+    () => studyTopics.filter((topic) => (topicRelationsById[topic.id]?.length ?? 0) > 0).length,
+    [studyTopics, topicRelationsById]
+  );
+  const atlasEntityAggregates = useMemo(() => {
+    const grouped = new Map<number, SubjectAtlasEntityAggregate>();
+
+    for (const topic of studyTopics) {
+      const relations = topicRelationsById[topic.id] ?? [];
+
+      for (const relation of relations) {
+        const entity = referenceEntityMap.get(relation.toEntityId);
+        if (!entity) continue;
+
+        const current = grouped.get(entity.id);
+        if (current) {
+          current.relationCount += 1;
+          current.topicIds.add(topic.id);
+          current.topicCount = current.topicIds.size;
+          continue;
+        }
+
+        grouped.set(entity.id, {
+          entity,
+          topicCount: 1,
+          topicIds: new Set([topic.id]),
+          relationCount: 1,
+        });
+      }
+    }
+
+    return [...grouped.values()].sort((left, right) => {
+      if (left.topicCount !== right.topicCount) return right.topicCount - left.topicCount;
+      const titleDifference = left.entity.title.localeCompare(right.entity.title);
+      if (titleDifference !== 0) return titleDifference;
+      return left.entity.id - right.entity.id;
+    });
+  }, [referenceEntityMap, studyTopics, topicRelationsById]);
+  const formationAggregates = useMemo(
+    () => atlasEntityAggregates.filter((entry) => entry.entity.kind === 'formation'),
+    [atlasEntityAggregates]
+  );
+  const polityAggregates = useMemo(
+    () => atlasEntityAggregates.filter((entry) => entry.entity.kind === 'polity'),
+    [atlasEntityAggregates]
+  );
+  const personAggregates = useMemo(
+    () => atlasEntityAggregates.filter((entry) => entry.entity.kind === 'person'),
+    [atlasEntityAggregates]
+  );
+  const subjectAtlasHorizon = useMemo(
+    () => formatAtlasHorizon(atlasEntityAggregates.map((entry) => entry.entity)),
+    [atlasEntityAggregates]
+  );
+  const formationSubtypeSummary = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const entry of formationAggregates) {
+      const label =
+        entry.entity.formationSubtype
+          ? formationSubtypeLabels[entry.entity.formationSubtype]
+          : formationSubtypeLabels.other;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .map(([label, count]) => `${count} ${label.toLowerCase()}${count === 1 ? '' : 's'}`)
+      .join(', ');
+  }, [formationAggregates]);
 
   useEffect(() => {
     if (!subject) return;
@@ -295,6 +501,8 @@ const SubjectPage: React.FC = () => {
             ) : (
               <span>Root subject</span>
             )}
+            <span>{orderedStudyTopics.length} topic{orderedStudyTopics.length === 1 ? '' : 's'}</span>
+            <span>{subject.knowledgeItemCount} item{subject.knowledgeItemCount === 1 ? '' : 's'} through topics</span>
             <span>{childSubjects.length} child subject{childSubjects.length === 1 ? '' : 's'} in tree</span>
           </div>
           <div className="topic-page-hero-actions">
@@ -351,12 +559,192 @@ const SubjectPage: React.FC = () => {
           <section className="topic-page-panel">
             <div className="topic-page-section-head">
               <div>
-                <span className="topic-page-eyebrow">Contained Topics</span>
+                <span className="topic-page-eyebrow">Historical Footprint</span>
+                <h2>
+                  Atlas framing across topics
+                  <PageHint text="The formations, polities, and people currently shaping the topics inside this subject." />
+                  <span className="topic-page-count-badge">{topicsWithHistoricalFrameCount}</span>
+                </h2>
+              </div>
+            </div>
+
+            {atlasEntityAggregates.length === 0 ? (
+              <div className="topic-page-empty">
+                No atlas context has been attached to this subject’s topics yet.
+              </div>
+            ) : (
+              <div className="topic-page-subsection-stack topic-page-atlas-subsection-stack">
+                <div className="topic-page-overview-grid topic-page-atlas-overview-grid">
+                  <article className="topic-page-overview-card">
+                    <div className="topic-page-overview-label">
+                      <span className="topic-page-eyebrow">Framed Topics</span>
+                      <PageHint text="How many topics in this subject already carry some atlas framing." />
+                    </div>
+                    <strong>
+                      {topicsWithHistoricalFrameCount} / {orderedStudyTopics.length}
+                    </strong>
+                    <span className="topic-page-overview-meta">Topics with linked atlas entities</span>
+                  </article>
+                  <article className="topic-page-overview-card">
+                    <div className="topic-page-overview-label">
+                      <span className="topic-page-eyebrow">Formations</span>
+                      <PageHint text="Civilizations, eras, traditions, or world frames already in play across this subject." />
+                    </div>
+                    <strong>{formationAggregates.length || 'None'}</strong>
+                    <span className="topic-page-overview-meta">
+                      {formationAggregates.length > 0 ? formationSubtypeSummary : 'No formation frame yet'}
+                    </span>
+                  </article>
+                  <article className="topic-page-overview-card">
+                    <div className="topic-page-overview-label">
+                      <span className="topic-page-eyebrow">Polity Scope</span>
+                      <PageHint text="Named polities already localizing topics in this subject." />
+                    </div>
+                    <strong>{polityAggregates.length || 'None'}</strong>
+                    <span className="topic-page-overview-meta">
+                      {polityAggregates.length > 0
+                        ? polityAggregates
+                            .slice(0, 2)
+                            .map((entry) => entry.entity.title)
+                            .join(', ')
+                        : 'No polity scope yet'}
+                    </span>
+                  </article>
+                  <article className="topic-page-overview-card">
+                    <div className="topic-page-overview-label">
+                      <span className="topic-page-eyebrow">Time Horizon</span>
+                      <PageHint text="The broad date span implied by the atlas entities currently linked into this subject’s topics." />
+                    </div>
+                    <strong>{subjectAtlasHorizon || 'Open'}</strong>
+                    <span className="topic-page-overview-meta">
+                      {subjectAtlasHorizon ? 'Derived from linked atlas entities' : 'No dated atlas frame yet'}
+                    </span>
+                  </article>
+                </div>
+
+                {formationAggregates.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        Formations in play
+                        <PageHint text="The larger civilizational or era frames currently shaping topics in this subject." />
+                      </h3>
+                      <span className="topic-page-count-badge">{formationAggregates.length}</span>
+                    </div>
+                    <div className="topic-page-card-grid">
+                      {formationAggregates.slice(0, 6).map((entry) => (
+                        <article key={`subject-formation-${entry.entity.id}`} className="topic-page-card">
+                          <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-link">
+                            <strong>{entry.entity.title}</strong>
+                          </Link>
+                          <div className="topic-page-card-meta">
+                            <span>
+                              {entry.entity.formationSubtype
+                                ? formationSubtypeLabels[entry.entity.formationSubtype]
+                                : formationSubtypeLabels.other}
+                            </span>
+                            <span>{entry.topicCount} topic{entry.topicCount === 1 ? '' : 's'}</span>
+                            {formatReferenceTimespan(entry.entity) ? (
+                              <span>{formatReferenceTimespan(entry.entity)}</span>
+                            ) : null}
+                          </div>
+                          {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                          <div className="topic-page-card-actions">
+                            <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-button">
+                              Open entity
+                            </Link>
+                            {buildAtlasHref(entry.entity) ? (
+                              <Link to={buildAtlasHref(entry.entity)!} className="topic-page-card-button">
+                                Open on atlas
+                              </Link>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {polityAggregates.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        Polity scope
+                        <PageHint text="Named built-in or curated polities already anchoring topics in this subject." />
+                      </h3>
+                      <span className="topic-page-count-badge">{polityAggregates.length}</span>
+                    </div>
+                    <div className="topic-page-card-grid">
+                      {polityAggregates.slice(0, 6).map((entry) => (
+                        <article key={`subject-polity-${entry.entity.id}`} className="topic-page-card">
+                          <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-link">
+                            <strong>{entry.entity.title}</strong>
+                          </Link>
+                          <div className="topic-page-card-meta">
+                            <span>Polity</span>
+                            <span>{entry.topicCount} topic{entry.topicCount === 1 ? '' : 's'}</span>
+                            {formatReferenceTimespan(entry.entity) ? (
+                              <span>{formatReferenceTimespan(entry.entity)}</span>
+                            ) : null}
+                          </div>
+                          {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                          <div className="topic-page-card-actions">
+                            <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-button">
+                              Open entity
+                            </Link>
+                            {buildAtlasHref(entry.entity) ? (
+                              <Link to={buildAtlasHref(entry.entity)!} className="topic-page-card-button">
+                                Open on atlas
+                              </Link>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {personAggregates.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        People in view
+                        <PageHint text="People already linked into the topics inside this subject." />
+                      </h3>
+                      <span className="topic-page-count-badge">{personAggregates.length}</span>
+                    </div>
+                    <div className="topic-page-card-grid">
+                      {personAggregates.slice(0, 6).map((entry) => (
+                        <article key={`subject-person-${entry.entity.id}`} className="topic-page-card">
+                          <Link to={`/entities/${entry.entity.id}`} className="topic-page-card-link">
+                            <strong>{entry.entity.title}</strong>
+                          </Link>
+                          <div className="topic-page-card-meta">
+                            <span>Person</span>
+                            <span>{entry.topicCount} topic{entry.topicCount === 1 ? '' : 's'}</span>
+                            {formatReferenceTimespan(entry.entity) ? (
+                              <span>{formatReferenceTimespan(entry.entity)}</span>
+                            ) : null}
+                          </div>
+                          {entry.entity.summary ? <p>{entry.entity.summary}</p> : null}
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </div>
+            )}
+          </section>
+
+          <section className="topic-page-panel">
+            <div className="topic-page-section-head">
+              <div>
+                <span className="topic-page-eyebrow">Topic Landscape</span>
                 <h2>
                   Topics inside this subject
+                  <PageHint text="Subjects stay synchronic. Use topics for the contextual branches where items actually live." />
                   <span className="topic-page-count-badge">{orderedStudyTopics.length}</span>
                 </h2>
-                <p className="topic-page-section-copy">{subject.knowledgeItemCount} items through these topics.</p>
               </div>
               <button
                 type="button"
@@ -408,38 +796,98 @@ const SubjectPage: React.FC = () => {
                 No topics yet. Create the first contextual topic under this subject.
               </div>
             ) : (
-              <div className="topic-page-card-grid">
-                {orderedStudyTopics.map(({ topic, depth }) => (
-                  <article key={topic.id} className="topic-page-card">
-                    <Link to={`/topics/${topic.id}`} className="topic-page-card-link">
-                      <strong>{topic.name}</strong>
-                    </Link>
-                    <div className="topic-page-card-meta">
-                      {depth > 0 ? <span>Depth {depth + 1}</span> : <span>Top-level topic</span>}
-                      <span>{topic.itemCount} items</span>
-                      <span>{topic.childTopicCount} child topics</span>
+              <div className="topic-page-subsection-stack">
+                <section className="topic-page-subsection">
+                  <div className="topic-page-subsection-head">
+                    <h3>
+                      Top-level topics
+                      <PageHint text="These are the first practical branches directly under this subject." />
+                    </h3>
+                    <span className="topic-page-count-badge">{topLevelStudyTopics.length}</span>
+                  </div>
+                  <div className="topic-page-card-grid">
+                    {topLevelStudyTopics.map(({ topic }) => (
+                      <article key={topic.id} className="topic-page-card">
+                        <Link to={`/topics/${topic.id}`} className="topic-page-card-link">
+                          <strong>{topic.name}</strong>
+                        </Link>
+                        <div className="topic-page-card-meta">
+                          <span>{topic.itemCount} items</span>
+                          <span>{topic.childTopicCount} child topics</span>
+                        </div>
+                        {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
+                        <div className="topic-page-card-actions">
+                          <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
+                            Open topic
+                          </Link>
+                          <button
+                            type="button"
+                            className="topic-page-danger-button"
+                            onClick={() => handleDeleteStudyTopic(topic)}
+                            disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
+                            title={
+                              canDeleteStudyTopic(topic)
+                                ? 'Remove this empty leaf topic'
+                                : 'Only empty leaf topics with no items can be removed here'
+                            }
+                          >
+                            {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                {nestedStudyTopics.length > 0 ? (
+                  <section className="topic-page-subsection">
+                    <div className="topic-page-subsection-head">
+                      <h3>
+                        Nested branches
+                        <PageHint text="Deeper topic branches are shown as paths here so the subject page stays readable." />
+                      </h3>
+                      <span className="topic-page-count-badge">{nestedStudyTopics.length}</span>
                     </div>
-                    {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
-                    <div className="topic-page-card-actions">
-                      <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
-                        Open topic
-                      </Link>
-                      <button
-                        type="button"
-                        className="topic-page-danger-button"
-                        onClick={() => handleDeleteStudyTopic(topic)}
-                        disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
-                        title={
-                          canDeleteStudyTopic(topic)
-                            ? 'Remove this empty leaf topic'
-                            : 'Only empty leaf topics with no items can be removed here'
-                        }
-                      >
-                        {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
-                      </button>
+                    <div className="topic-page-item-list">
+                      {nestedStudyTopics.map(({ topic, depth, path }) => (
+                        <article key={topic.id} className="topic-page-item-card">
+                          <div className="topic-page-item-top">
+                            <div className="topic-page-item-badges">
+                              <span>Depth {depth + 1}</span>
+                              <span>{topic.childTopicCount} child topics</span>
+                              <span>{topic.itemCount} items</span>
+                            </div>
+                            <Link to={`/topics/${topic.id}`} className="topic-page-item-link">
+                              <strong>{topic.name}</strong>
+                            </Link>
+                          </div>
+                          <div className="topic-page-item-meta">
+                            <span>{path}</span>
+                          </div>
+                          {topic.summary || topic.description ? <p>{topic.summary || topic.description}</p> : null}
+                          <div className="topic-page-item-actions">
+                            <Link to={`/topics/${topic.id}`} className="topic-page-card-button">
+                              Open topic
+                            </Link>
+                            <button
+                              type="button"
+                              className="topic-page-danger-button"
+                              onClick={() => handleDeleteStudyTopic(topic)}
+                              disabled={!canDeleteStudyTopic(topic) || deletingStudyTopicId === topic.id}
+                              title={
+                                canDeleteStudyTopic(topic)
+                                  ? 'Remove this empty leaf topic'
+                                  : 'Only empty leaf topics with no items can be removed here'
+                              }
+                            >
+                              {deletingStudyTopicId === topic.id ? 'Removing...' : 'Remove'}
+                            </button>
+                          </div>
+                        </article>
+                      ))}
                     </div>
-                  </article>
-                ))}
+                  </section>
+                ) : null}
               </div>
             )}
           </section>

@@ -44,10 +44,24 @@ Open:
 Optional client env vars:
 
 - `client/.env.local`
-- `VITE_MAPTILER_API_KEY=...` for the world history page
 - Book search in the item workbench uses Open Library and the Library of Congress and does not require a user API key
 
 `client/.env.local` is ignored by git.
+
+World History currently uses:
+
+- `maplibre-gl` in the client
+- local canonical atlas routes from the server
+- a locally cloned `historical-basemaps` dataset if present at `data/historical-basemaps`
+
+If the basemap dataset is not present, the world-history page still loads but the local polygon basemap
+layer will be unavailable.
+
+To seed built-in `polity` entities and yearly snapshots from that dataset, run:
+
+```bash
+npm run import:historical-polities --prefix server
+```
 
 ## Testing
 
@@ -68,7 +82,11 @@ The current automated coverage is intentionally focused on the new foundation:
 
 - shared domain helpers
 - item create/update API flow
-- unified reference entity create/update/delete API flow
+- atlas entity create/update/delete API flow
+- formation membership and atlas relation flow
+- person polity and subject membership flow
+- canonical item creator resolution through `created_by` person relations
+- world-history basemap and importer flow
 - activity event recording for knowledge changes
 
 For a focused server-only pass, run:
@@ -84,20 +102,24 @@ After `npm start`, use this path:
 1. Open `http://localhost:5173`
 2. Check the home dashboard loads
 3. Open `Items` and add an item
-4. Open `Entities` and confirm the reference atlas loads with imported legacy entities like `Unknown Author`
-5. Create a new entity, open it, update it, and delete it again
-6. Open `Subjects` and confirm the tree loads with `Ontology` as the root
-7. Open a subject page from the tree, create a child subject, and create a topic inside that subject
-8. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
-9. Open an item, attach or create a topic, then link it to an entity such as a person or era
-10. Open that entity page and confirm the linked topic and item appear in its context sections
-11. Add an entity-to-entity structural link such as a civilization containing an era or nation
-12. Add a note, a task, and a review on the item page
-13. Return to `Home` and confirm recent activity entries appear
-14. Open `World History` and confirm the map and timeline render if a MapTiler key is present
+4. Confirm the item creator resolves to a linked person when possible, while the creator text remains available as fallback display
+5. Open `Entities` and confirm the atlas loads with `person`, `polity`, and `formation`
+6. Create a new person, add a subject membership, then place that person inside a polity
+7. Create a new formation, add a polity membership, open it, update it, and delete it again
+8. Open `Subjects` and confirm the tree loads with `Ontology` as the root
+9. Open a subject page from the tree, create a child subject, and create a topic inside that subject
+10. Open the new topic page, link it to an entity, and confirm it shows child topics and contained items
+11. Open an item, attach or create a topic, then link it to an entity such as a person, polity, or formation
+12. Open that entity page and confirm the linked topic and item appear in its context sections
+13. Add an entity-to-entity structural link such as a formation containing a polity or a formation belonging to a broader formation
+14. Add a note, a task, and a review on the item page
+15. Return to `Home` and confirm recent activity entries appear
+16. Open `World History` and confirm the map, basemap snapshot, timeline, people overlays, and subject filter render
+17. If `data/historical-basemaps` is present, confirm local boundary snapshots and built-in polity resolution load too
 
 ## Working Notes
 
 - Domain model: [docs/domain-model.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/domain-model.md)
 - Foundation plan: [docs/foundation-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/foundation-plan.md)
+- World history polity plan: [docs/world-history-polity-plan.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/world-history-polity-plan.md)
 - Local testing guide: [docs/local-testing.md](/Users/yluo/Downloads/Projects/Enzyklopaedie/docs/local-testing.md)

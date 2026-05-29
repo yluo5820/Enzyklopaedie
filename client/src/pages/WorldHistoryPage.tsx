@@ -1,252 +1,3066 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import maplibregl, {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  NavigationControl,
+} from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import type {
+  CanonicalHistoricalEntity,
+  CanonicalHistoricalSearchMatch,
+  FormationSubtype,
+  FormationMembershipDetail,
+  HistoricalBasemapPolityMatchResponse,
+  HistoricalBasemapLayerResponse,
+  HistoricalBasemapManifestResponse,
+  PersonPolityMembershipDetail,
+  PersonSubjectMembershipDetail,
+  PolitySnapshot,
+  ReferenceEntity,
+  SubjectSummary,
+} from '@enzyklopaedie/shared';
+import {
+  createFormationMembership,
+  createPersonPolityMembership,
+  deleteFormationMembership,
+  deleteHistoricalAtlasEntity,
+  fetchHistoricalBasemapLayer,
+  fetchHistoricalBasemapManifest,
+  fetchHistoricalBasemapPolityMatch,
+  fetchHistoricalAtlasGeometry,
+  fetchHistoricalAtlasEntities,
+  fetchReferenceEntities,
+  fetchReferenceEntityFormationMemberships,
+  fetchReferenceEntityPersonPolityMemberships,
+  fetchReferenceEntityPolitySnapshots,
+  fetchSubjects,
+  fetchWorldHistoryPersonSubjectMemberships,
+  promoteHistoricalAtlasEntity,
+  saveHistoricalAtlasEntity,
+  searchHistoricalAtlas,
+  type HistoricalAtlasKind,
+} from '../api';
 import './WorldHistoryPage.css';
 
-type Period = {
-  id: string;
-  name: string;
-  start: number;
-  end: number;
-  color: string;
-  bounds: [[number, number], [number, number]];
-  summary: string;
+const kindLabels: Record<HistoricalAtlasKind, string> = {
+  all: 'All types',
+  battle: 'Battles',
+  civilization: 'Civilizations / formations',
+  era: 'Eras / formations',
+  nation: 'Polities',
+  person: 'People',
+  place: 'Places',
+  region: 'Regions',
+  ruler: 'Rulers',
 };
 
-const periods: Period[] = [
-  {
-    id: 'classical',
-    name: 'Classical Antiquity',
-    start: -500,
-    end: 500,
-    color: '#9c6b3f',
-    bounds: [[-10, 28], [45, 46]],
-    summary: 'City-states, empires, and early trade networks across the Mediterranean basin.',
-  },
-  {
-    id: 'medieval',
-    name: 'Medieval Crossroads',
-    start: 500,
-    end: 1400,
-    color: '#7b5a44',
-    bounds: [[-10, 18], [90, 58]],
-    summary: 'Caravan routes and scholarly hubs stitch together Europe, Africa, and Asia.',
-  },
-  {
-    id: 'discovery',
-    name: 'Age of Discovery',
-    start: 1400,
-    end: 1700,
-    color: '#a0703a',
-    bounds: [[-85, -10], [25, 55]],
-    summary: 'Maritime powers widen the map, charting new coastlines and ocean routes.',
-  },
-  {
-    id: 'industrial',
-    name: 'Industrial Expansion',
-    start: 1700,
-    end: 1900,
-    color: '#6a4f3b',
-    bounds: [[-10, 15], [120, 60]],
-    summary: 'Mechanization accelerates exchange, industry, and global migration.',
-  },
-  {
-    id: 'modern',
-    name: 'Modern Era',
-    start: 1900,
-    end: 2025,
-    color: '#385c65',
-    bounds: [[-170, -55], [170, 75]],
-    summary: 'A connected world of shifting borders, ideas, and digital networks.',
-  },
+const atlasKindOptions: HistoricalAtlasKind[] = [
+  'all',
+  'nation',
+  'civilization',
+  'era',
+  'region',
+  'place',
+  'battle',
+  'ruler',
+  'person',
 ];
 
-const formatYear = (year: number) => {
-  if (year < 0) {
-    return `${Math.abs(year)} BCE`;
+const referenceEntityKindLabels: Record<ReferenceEntity['kind'], string> = {
+  formation: 'Formation',
+  person: 'Person',
+  polity: 'Polity',
+};
+const formationSubtypeLabels: Record<FormationSubtype, string> = {
+  civilization: 'Civilization',
+  era: 'Era',
+  tradition: 'Tradition',
+  world_frame: 'World Frame',
+  other: 'Formation',
+};
+
+type FormationWorkspaceUi = {
+  workspaceEyebrow: string;
+  memberCountLabel: string;
+  emptyMessage: string;
+  selectedRegionReadyMessage: string;
+  alreadyIncludedMessage: string;
+  addActionLabel: string;
+  confirmActionLabel: string;
+  removeActionLabel: string;
+};
+
+const formationWorkspaceUi: Record<FormationSubtype, FormationWorkspaceUi> = {
+  civilization: {
+    workspaceEyebrow: 'Civilization Workspace',
+    memberCountLabel: 'Member polities',
+    emptyMessage: 'No built-in polities are assigned to this civilization yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next member polity in this civilization.',
+    alreadyIncludedMessage: 'This polity is already part of this civilization.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to civilization',
+    removeActionLabel: 'Remove from civilization',
+  },
+  era: {
+    workspaceEyebrow: 'Era Workspace',
+    memberCountLabel: 'Polities in scope',
+    emptyMessage: 'No polities are in scope for this era yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next polity in scope for this era.',
+    alreadyIncludedMessage: 'This polity is already in scope for this era.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to era',
+    removeActionLabel: 'Remove from era',
+  },
+  tradition: {
+    workspaceEyebrow: 'Tradition Workspace',
+    memberCountLabel: 'Member polities',
+    emptyMessage: 'No built-in polities are assigned to this tradition yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next member polity in this tradition.',
+    alreadyIncludedMessage: 'This polity is already part of this tradition.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to tradition',
+    removeActionLabel: 'Remove from tradition',
+  },
+  world_frame: {
+    workspaceEyebrow: 'World Frame Workspace',
+    memberCountLabel: 'Polities in scope',
+    emptyMessage: 'No polities are in scope for this world frame yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next polity in scope for this world frame.',
+    alreadyIncludedMessage: 'This polity is already in scope for this world frame.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Add to frame',
+    removeActionLabel: 'Remove from frame',
+  },
+  other: {
+    workspaceEyebrow: 'Formation Workspace',
+    memberCountLabel: 'Member polities',
+    emptyMessage: 'No built-in polities are assigned to this formation yet.',
+    selectedRegionReadyMessage: 'Use the selected region as the next member of this formation.',
+    alreadyIncludedMessage: 'This polity is already part of the active formation.',
+    addActionLabel: 'Add selected polity',
+    confirmActionLabel: 'Confirm membership',
+    removeActionLabel: 'Remove from formation',
+  },
+};
+
+const getFormationWorkspaceUi = (formation?: ReferenceEntity | null) =>
+  formationWorkspaceUi[
+    formation?.kind === 'formation' ? formation.formationSubtype ?? 'other' : 'other'
+  ];
+
+const shouldDefaultFormationMembershipToActiveYear = (formation?: ReferenceEntity | null) =>
+  formation?.kind === 'formation' &&
+  (formation.formationSubtype === 'era' || formation.formationSubtype === 'world_frame');
+
+const DEFAULT_YEAR = 1862;
+const DEFAULT_MIN_YEAR = -1200;
+const DEFAULT_MAX_YEAR = 2025;
+const DEFAULT_BASEMAP_CUTOFF_YEAR = -500;
+const MATCHABLE_ATLAS_ENTITY_KINDS = new Set(['nation', 'civilization', 'region', 'place']);
+const MATCHABLE_REFERENCE_ENTITY_KINDS = new Set<ReferenceEntity['kind']>(['polity']);
+
+type CanonicalHistoricalEntityWithCoordinates = CanonicalHistoricalEntity & {
+  latitude: number;
+  longitude: number;
+};
+
+type GeoJsonLike = Record<string, any>;
+type FeatureCollectionLike = {
+  type: 'FeatureCollection';
+  features: Array<Record<string, unknown>>;
+};
+type PointFeatureLike = {
+  type: 'Feature';
+  properties?: Record<string, unknown>;
+  geometry?: {
+    type: 'Point';
+    coordinates: [number, number];
+  } | null;
+};
+type BasemapFeatureProperties = {
+  atlasFeatureId: string;
+  atlasLabel: string;
+  atlasIsNamed?: boolean;
+  atlasParent?: string | null;
+  atlasSubject?: string | null;
+  atlasBorderPrecision?: number | null;
+  NAME?: string | null;
+  SUBJECTO?: string | null;
+  PARTOF?: string | null;
+  BORDERPRECISION?: number | null;
+};
+type BasemapFeature = {
+  type: 'Feature';
+  properties?: BasemapFeatureProperties;
+  geometry?: Record<string, unknown> | null;
+};
+type PersonPresenceGeojsonBundle = {
+  points: FeatureCollectionLike;
+  spokes: FeatureCollectionLike;
+};
+type ProjectedPersonLabel = {
+  key: string;
+  left: number;
+  mode: 'formation' | 'polity';
+  title: string;
+  top: number;
+};
+const EMPTY_FEATURE_COLLECTION: FeatureCollectionLike = {
+  type: 'FeatureCollection',
+  features: [],
+};
+const EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE: PersonPresenceGeojsonBundle = {
+  points: EMPTY_FEATURE_COLLECTION,
+  spokes: EMPTY_FEATURE_COLLECTION,
+};
+
+const areProjectedLabelsEqual = (left: ProjectedPersonLabel[], right: ProjectedPersonLabel[]) => {
+  if (left.length !== right.length) return false;
+
+  for (const [index, entry] of left.entries()) {
+    const other = right[index];
+    if (!other) return false;
+    if (
+      entry.key !== other.key ||
+      entry.title !== other.title ||
+      entry.mode !== other.mode ||
+      entry.left !== other.left ||
+      entry.top !== other.top
+    ) {
+      return false;
+    }
   }
+
+  return true;
+};
+
+const LOCAL_ATLAS_MAP_STYLE = {
+  version: 8,
+  name: 'Local Historical Atlas',
+  sources: {},
+  layers: [
+    {
+      id: 'atlas-ocean',
+      type: 'background',
+      paint: {
+        'background-color': '#e4d4b8',
+      },
+    },
+  ],
+};
+
+const formatYear = (year?: number) => {
+  if (year === undefined) return 'Undated';
+  if (year < 0) return `${Math.abs(year)} BCE`;
   return `${year} CE`;
 };
 
-const getActivePeriod = (year: number) => {
-  const match = periods.find((period) => year >= period.start && year <= period.end);
-  return match ?? periods[0];
+const parseOptionalYearInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) ? parsed : undefined;
 };
 
-const buildPeriodGeoJson = () => ({
-  type: 'FeatureCollection',
-  features: periods.map((period) => {
-    const [west, south] = period.bounds[0];
-    const [east, north] = period.bounds[1];
-    return {
-      type: 'Feature',
-      properties: {
-        id: period.id,
-        name: period.name,
-        start: period.start,
-        end: period.end,
-        color: period.color,
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [west, south],
-            [east, south],
-            [east, north],
-            [west, north],
-            [west, south],
-          ],
-        ],
-      },
-    };
-  }),
+const formatTimespan = (entity: Pick<CanonicalHistoricalEntity, 'startYear' | 'endYear'>) => {
+  if (entity.startYear !== undefined && entity.endYear !== undefined) {
+    return `${formatYear(entity.startYear)} - ${formatYear(entity.endYear)}`;
+  }
+  if (entity.startYear !== undefined) {
+    return `From ${formatYear(entity.startYear)}`;
+  }
+  if (entity.endYear !== undefined) {
+    return `Until ${formatYear(entity.endYear)}`;
+  }
+  return 'No date range recorded';
+};
+
+const formatMembershipTimespan = (membership: {
+  startYear?: number;
+  endYear?: number;
+}) => {
+  if (membership.startYear !== undefined && membership.endYear !== undefined) {
+    return `${formatYear(membership.startYear)} - ${formatYear(membership.endYear)}`;
+  }
+  if (membership.startYear !== undefined) {
+    return `From ${formatYear(membership.startYear)}`;
+  }
+  if (membership.endYear !== undefined) {
+    return `Until ${formatYear(membership.endYear)}`;
+  }
+  return 'Undated';
+};
+
+const formatEntityBounds = (entity: { startYear?: number; endYear?: number }) => {
+  if (entity.startYear !== undefined && entity.endYear !== undefined) {
+    return `${formatYear(entity.startYear)} - ${formatYear(entity.endYear)}`;
+  }
+  if (entity.startYear !== undefined) {
+    return `From ${formatYear(entity.startYear)}`;
+  }
+  if (entity.endYear !== undefined) {
+    return `Until ${formatYear(entity.endYear)}`;
+  }
+  return 'No date range recorded';
+};
+
+const isVisibleInYear = (entity: Pick<CanonicalHistoricalEntity, 'startYear' | 'endYear'>, year: number) => {
+  if (entity.startYear !== undefined && entity.endYear !== undefined) {
+    return year >= entity.startYear && year <= entity.endYear;
+  }
+  if (entity.startYear !== undefined) {
+    return year >= entity.startYear;
+  }
+  if (entity.endYear !== undefined) {
+    return year <= entity.endYear;
+  }
+  return true;
+};
+
+const hasCoordinates = (
+  entity: Pick<CanonicalHistoricalEntity, 'latitude' | 'longitude'>
+): entity is CanonicalHistoricalEntityWithCoordinates =>
+  typeof entity.latitude === 'number' && typeof entity.longitude === 'number';
+
+const hasBoundaryGeometry = (entity: CanonicalHistoricalEntity) =>
+  Boolean(entity.metadata?.hasGeoshape && entity.metadata?.geoshapeTitle);
+
+const collectGeoJsonCoordinates = (value: unknown, accumulator: Array<[number, number]>) => {
+  if (!Array.isArray(value)) return;
+
+  if (
+    value.length >= 2 &&
+    typeof value[0] === 'number' &&
+    typeof value[1] === 'number'
+  ) {
+    accumulator.push([value[0], value[1]]);
+    return;
+  }
+
+  for (const entry of value) {
+    collectGeoJsonCoordinates(entry, accumulator);
+  }
+};
+
+const getGeoJsonBounds = (geojson: GeoJsonLike) => {
+  const coordinates: Array<[number, number]> = [];
+
+  const visit = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+
+    if (Array.isArray((node as { features?: unknown }).features)) {
+      for (const feature of (node as { features: unknown[] }).features) {
+        visit(feature);
+      }
+      return;
+    }
+
+    if ((node as { geometry?: unknown }).geometry) {
+      visit((node as { geometry: unknown }).geometry);
+      return;
+    }
+
+    if (Array.isArray((node as { geometries?: unknown }).geometries)) {
+      for (const geometry of (node as { geometries: unknown[] }).geometries) {
+        visit(geometry);
+      }
+      return;
+    }
+
+    if ((node as { coordinates?: unknown }).coordinates) {
+      collectGeoJsonCoordinates((node as { coordinates: unknown }).coordinates, coordinates);
+    }
+  };
+
+  visit(geojson);
+
+  if (coordinates.length === 0) return null;
+
+  return {
+    west: Math.min(...coordinates.map(([lng]) => lng)),
+    east: Math.max(...coordinates.map(([lng]) => lng)),
+    south: Math.min(...coordinates.map(([, lat]) => lat)),
+    north: Math.max(...coordinates.map(([, lat]) => lat)),
+  };
+};
+
+const getBoundsCenter = (bounds: {
+  west: number;
+  east: number;
+  south: number;
+  north: number;
+}) => ({
+  longitude: (bounds.west + bounds.east) / 2,
+  latitude: (bounds.south + bounds.north) / 2,
 });
 
+const isMembershipVisibleInYear = (
+  membership: Pick<PersonPolityMembershipDetail | FormationMembershipDetail, 'startYear' | 'endYear'>,
+  year: number
+) => {
+  if (membership.startYear !== undefined && membership.endYear !== undefined) {
+    return year >= membership.startYear && year <= membership.endYear;
+  }
+  if (membership.startYear !== undefined) {
+    return year >= membership.startYear;
+  }
+  if (membership.endYear !== undefined) {
+    return year <= membership.endYear;
+  }
+  return true;
+};
+
+const getPresenceMarkerPlacement = (
+  bounds: {
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+  },
+  index: number,
+  total: number
+) => {
+  const center = getBoundsCenter(bounds);
+  const anchor: [number, number] = [center.longitude, center.latitude];
+  if (total <= 1) {
+    return {
+      anchor,
+      coordinates: anchor,
+      displaced: false,
+    };
+  }
+
+  const ringCapacity = 8;
+  const ring = Math.floor(index / ringCapacity);
+  const slot = index - ring * ringCapacity;
+  const entriesInRing = Math.min(total - ring * ringCapacity, ringCapacity);
+  const angle =
+    entriesInRing <= 1
+      ? -Math.PI / 2
+      : (slot / entriesInRing) * 2 * Math.PI - Math.PI / 2;
+  const horizontalSpan = Math.max(bounds.east - bounds.west, 1.2);
+  const verticalSpan = Math.max(bounds.north - bounds.south, 0.8);
+  const baseRadiusLng = Math.min(Math.max(horizontalSpan * 0.12, 0.7), 4.5);
+  const baseRadiusLat = Math.min(Math.max(verticalSpan * 0.12, 0.5), 3.2);
+  const radiusLng = baseRadiusLng + ring * Math.max(baseRadiusLng * 0.55, 0.55);
+  const radiusLat = baseRadiusLat + ring * Math.max(baseRadiusLat * 0.55, 0.45);
+  const coordinates: [number, number] = [
+    center.longitude + Math.cos(angle) * radiusLng,
+    center.latitude + Math.sin(angle) * radiusLat,
+  ];
+
+  return {
+    anchor,
+    coordinates,
+    displaced: true,
+  };
+};
+
+const getPersonMembershipKey = (
+  membership: Pick<PersonPolityMembershipDetail, 'personEntityId' | 'personTitle'>
+) => {
+  if (typeof membership.personEntityId === 'number' && membership.personEntityId > 0) {
+    return `person:${membership.personEntityId}`;
+  }
+
+  return `title:${(membership.personTitle || 'untitled person').trim().toLowerCase()}`;
+};
+
+const buildSubjectPathLabel = (
+  subject: Pick<SubjectSummary, 'id' | 'name' | 'parentSubjectId'>,
+  subjectById: Map<number, Pick<SubjectSummary, 'id' | 'name' | 'parentSubjectId'>>
+) => {
+  const lineage: string[] = [subject.name];
+  let currentParentId = subject.parentSubjectId;
+
+  while (currentParentId) {
+    const parent = subjectById.get(currentParentId);
+    if (!parent) break;
+    lineage.unshift(parent.name);
+    currentParentId = parent.parentSubjectId;
+  }
+
+  return lineage.join(' / ');
+};
+
+const filterPersonMembershipsBySubject = <T extends Pick<PersonPolityMembershipDetail, 'personEntityId'>>(
+  memberships: T[],
+  selectedSubjectScope: Set<number> | null,
+  personSubjectMembershipCache: Record<number, PersonSubjectMembershipDetail[]>
+) => {
+  if (!selectedSubjectScope) {
+    return memberships;
+  }
+
+  return memberships.filter((membership) => {
+    if (!membership.personEntityId) {
+      return false;
+    }
+
+    return (personSubjectMembershipCache[membership.personEntityId] ?? []).some((entry) =>
+      selectedSubjectScope.has(entry.subjectId)
+    );
+  });
+};
+
+const getFeatureCollectionFeatures = (geojson: GeoJsonLike | null | undefined) => {
+  if (!geojson || geojson.type !== 'FeatureCollection' || !Array.isArray(geojson.features)) {
+    return [] as Array<Record<string, unknown>>;
+  }
+
+  return geojson.features as Array<Record<string, unknown>>;
+};
+
+const buildPersonPresenceGeojsonBundle = <T extends PersonPolityMembershipDetail>({
+  bounds,
+  memberships,
+  mode,
+  mapProperties,
+}: {
+  bounds: {
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+  };
+  mapProperties: (membership: T) => Record<string, unknown>;
+  memberships: T[];
+  mode: 'formation' | 'polity';
+}) => {
+  if (memberships.length === 0) {
+    return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
+  }
+
+  const pointFeatures: PointFeatureLike[] = [];
+  const spokeFeatures: Array<Record<string, unknown>> = [];
+
+  for (const [index, membership] of memberships.entries()) {
+    const placement = getPresenceMarkerPlacement(bounds, index, memberships.length);
+    const [anchorLongitude, anchorLatitude] = placement.anchor;
+    const [displayLongitude, displayLatitude] = placement.coordinates;
+
+    pointFeatures.push({
+      type: 'Feature',
+      properties: {
+        atlasAnchorLatitude: anchorLatitude,
+        atlasAnchorLongitude: anchorLongitude,
+        atlasDisplayIndex: index,
+        atlasDisplayLatitude: displayLatitude,
+        atlasDisplayLongitude: displayLongitude,
+        atlasDisplayTotal: memberships.length,
+        atlasMembershipId: membership.id,
+        atlasMembershipTimespan: formatMembershipTimespan(membership),
+        atlasPersonEntityId: membership.personEntityId,
+        atlasPersonTitle: membership.personTitle || 'Untitled person',
+        atlasPresenceId: `${mode}-${membership.id}`,
+        atlasPresenceMode: mode,
+        ...mapProperties(membership),
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: placement.coordinates,
+      },
+    });
+
+    if (placement.displaced) {
+      spokeFeatures.push({
+        type: 'Feature',
+        properties: {
+          atlasPresenceId: `${mode}-${membership.id}`,
+          atlasPresenceMode: mode,
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [placement.anchor, placement.coordinates],
+        },
+      });
+    }
+  }
+
+  return {
+    points: {
+      type: 'FeatureCollection',
+      features: pointFeatures,
+    },
+    spokes: {
+      type: 'FeatureCollection',
+      features: spokeFeatures,
+    },
+  } satisfies PersonPresenceGeojsonBundle;
+};
+
+const buildAtlasGeoJson = (entities: CanonicalHistoricalEntity[]) => ({
+  type: 'FeatureCollection',
+  features: entities
+    .filter(hasCoordinates)
+    .map((entity) => ({
+      type: 'Feature',
+      properties: {
+        id: entity.id,
+        kind: entity.kind,
+        title: entity.title,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [entity.longitude, entity.latitude],
+      },
+    })),
+});
+
+const getAtlasYearBounds = (entities: CanonicalHistoricalEntity[]) => {
+  const years = entities.flatMap((entity) =>
+    [entity.startYear, entity.endYear].filter((value): value is number => value !== undefined)
+  );
+
+  if (years.length === 0) {
+    return null;
+  }
+
+  return {
+    minYear: Math.min(...years),
+    maxYear: Math.max(...years),
+  };
+};
+
+const getBasemapLabel = (feature?: BasemapFeature | null) =>
+  feature?.properties?.atlasLabel ??
+  feature?.properties?.NAME ??
+  feature?.properties?.SUBJECTO ??
+  feature?.properties?.PARTOF ??
+  'Unnamed region';
+
+const isGeneratedRegionLabel = (value: string) => /^Region \d+$/.test(value);
+
+const isNamedBasemapFeature = (feature?: BasemapFeature | null) =>
+  Boolean(feature?.properties?.atlasIsNamed);
+
+const isBuiltInPolityReferenceEntity = (entity: Pick<ReferenceEntity, 'kind' | 'metadata'>) =>
+  entity.kind === 'polity' &&
+  entity.metadata?.atlasSource === 'historical-basemaps' &&
+  entity.metadata?.builtIn === true;
+
+const normalizeSearchText = (value?: string | null) => value?.trim().toLowerCase() ?? '';
+
+const normalizeEntityLabel = (value?: string | null) =>
+  value
+    ?.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/['’]/g, '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim() ?? '';
+
+const getAtlasVisibilityBounds = (
+  entity: CanonicalHistoricalEntity,
+  linkedReferenceEntity: ReferenceEntity | null
+) => {
+  if (linkedReferenceEntity?.kind === 'polity') {
+    return {
+      startYear: linkedReferenceEntity.startYear,
+      endYear: linkedReferenceEntity.endYear,
+    };
+  }
+
+  return {
+    startYear: entity.startYear,
+    endYear: entity.endYear,
+  };
+};
+
+const isAtlasEntityVisibleInYear = (
+  entity: CanonicalHistoricalEntity,
+  year: number,
+  linkedReferenceEntity: ReferenceEntity | null
+) => isVisibleInYear(getAtlasVisibilityBounds(entity, linkedReferenceEntity), year);
+
+const formatAtlasEntityTimespan = (
+  entity: CanonicalHistoricalEntity,
+  linkedReferenceEntity: ReferenceEntity | null
+) => formatEntityBounds(getAtlasVisibilityBounds(entity, linkedReferenceEntity));
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const WorldHistoryPage: React.FC = () => {
-  const [year, setYear] = useState(465);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [atlasEntities, setAtlasEntities] = useState<CanonicalHistoricalEntity[]>([]);
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
+  const [searchKind, setSearchKind] = useState<HistoricalAtlasKind>(() => {
+    const requestedKind = searchParams.get('kind');
+    return atlasKindOptions.includes(requestedKind as HistoricalAtlasKind)
+      ? (requestedKind as HistoricalAtlasKind)
+      : 'all';
+  });
+  const [searchResults, setSearchResults] = useState<CanonicalHistoricalSearchMatch[]>([]);
+  const [referenceEntities, setReferenceEntities] = useState<ReferenceEntity[]>([]);
+  const [subjects, setSubjects] = useState<SubjectSummary[]>([]);
+  const [isLoadingAtlas, setIsLoadingAtlas] = useState(true);
+  const [isLoadingReferenceEntities, setIsLoadingReferenceEntities] = useState(true);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
+  const [isLoadingBasemapManifest, setIsLoadingBasemapManifest] = useState(true);
+  const [isLoadingBasemapLayer, setIsLoadingBasemapLayer] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [atlasError, setAtlasError] = useState<string | null>(null);
+  const [referenceEntitiesError, setReferenceEntitiesError] = useState<string | null>(null);
+  const [subjectsError, setSubjectsError] = useState<string | null>(null);
+  const [basemapError, setBasemapError] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [pendingSaveAuthorityId, setPendingSaveAuthorityId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [pendingPromoteId, setPendingPromoteId] = useState<number | null>(null);
+  const [historicalBasemapManifest, setHistoricalBasemapManifest] =
+    useState<HistoricalBasemapManifestResponse | null>(null);
+  const [historicalBasemapLayer, setHistoricalBasemapLayer] =
+    useState<HistoricalBasemapLayerResponse | null>(null);
+  const [selectedGeometry, setSelectedGeometry] = useState<GeoJsonLike | null>(null);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
+  const [selectedAtlasEntityId, setSelectedAtlasEntityId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('selected'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
+  const [activeFormationId, setActiveFormationId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('formation'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
+  const [focusedPolityId, setFocusedPolityId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('polity'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
+  const [selectedSubjectFilterId, setSelectedSubjectFilterId] = useState<number | null>(() => {
+    const parsed = Number(searchParams.get('subject'));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  });
+  const [selectedFormationOverlayId, setSelectedFormationOverlayId] = useState<number | null>(null);
+  const [selectedBasemapFeatureId, setSelectedBasemapFeatureId] = useState<string | null>(null);
+  const [hoveredBasemapFeatureId, setHoveredBasemapFeatureId] = useState<string | null>(null);
+  const [resolvedPolityMatch, setResolvedPolityMatch] =
+    useState<HistoricalBasemapPolityMatchResponse | null>(null);
+  const [resolvedPolityMatchError, setResolvedPolityMatchError] = useState<string | null>(null);
+  const [showPersonPlacementComposer, setShowPersonPlacementComposer] = useState(false);
+  const [showFormationPlacementComposer, setShowFormationPlacementComposer] = useState(false);
+  const [personPlacementForm, setPersonPlacementForm] = useState({
+    personEntityId: '',
+    startYear: '',
+    endYear: '',
+    note: '',
+  });
+  const [formationPlacementForm, setFormationPlacementForm] = useState({
+    formationEntityId: '',
+    startYear: '',
+    endYear: '',
+    note: '',
+  });
+  const [atlasMembershipError, setAtlasMembershipError] = useState<string | null>(null);
+  const [atlasMembershipMessage, setAtlasMembershipMessage] = useState<string | null>(null);
+  const [activeFormationMemberships, setActiveFormationMemberships] = useState<FormationMembershipDetail[]>([]);
+  const [selectedPolitySnapshots, setSelectedPolitySnapshots] = useState<PolitySnapshot[]>([]);
+  const [selectedPolityFormationMemberships, setSelectedPolityFormationMemberships] = useState<
+    FormationMembershipDetail[]
+  >([]);
+  const [selectedPolityPersonMemberships, setSelectedPolityPersonMemberships] = useState<
+    PersonPolityMembershipDetail[]
+  >([]);
+  const [formationPolitySnapshotCache, setFormationPolitySnapshotCache] = useState<
+    Record<number, PolitySnapshot[]>
+  >({});
+  const [formationPolityPersonMembershipCache, setFormationPolityPersonMembershipCache] = useState<
+    Record<number, PersonPolityMembershipDetail[]>
+  >({});
+  const [personSubjectMembershipCache, setPersonSubjectMembershipCache] = useState<
+    Record<number, PersonSubjectMembershipDetail[]>
+  >({});
+  const [formationWorkspaceError, setFormationWorkspaceError] = useState<string | null>(null);
+  const [selectedPolityContextError, setSelectedPolityContextError] = useState<string | null>(null);
+  const [formationOverlayError, setFormationOverlayError] = useState<string | null>(null);
+  const [personSubjectMembershipsError, setPersonSubjectMembershipsError] = useState<string | null>(null);
+  const [isLoadingFormationWorkspace, setIsLoadingFormationWorkspace] = useState(false);
+  const [isLoadingSelectedPolityContext, setIsLoadingSelectedPolityContext] = useState(false);
+  const [isLoadingFormationOverlay, setIsLoadingFormationOverlay] = useState(false);
+  const [isLoadingPersonSubjectMemberships, setIsLoadingPersonSubjectMemberships] = useState(false);
+  const [savingPersonPlacement, setSavingPersonPlacement] = useState(false);
+  const [savingFormationPlacement, setSavingFormationPlacement] = useState(false);
+  const [removingFormationMembershipId, setRemovingFormationMembershipId] = useState<number | null>(null);
+  const [basemapQuery, setBasemapQuery] = useState('');
+  const [year, setYear] = useState(() => {
+    const parsed = Number(searchParams.get('year'));
+    return Number.isInteger(parsed) ? parsed : DEFAULT_YEAR;
+  });
+  const [projectedPersonLabels, setProjectedPersonLabels] = useState<ProjectedPersonLabel[]>([]);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<import('@maptiler/sdk').Map | null>(null);
-  const lastPeriodRef = useRef<string | null>(null);
-  const yearRef = useRef<number>(year);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const mapLoadedRef = useRef(false);
+  const basemapPopupRef = useRef<maplibregl.Popup | null>(null);
+  const personPopupRef = useRef<maplibregl.Popup | null>(null);
+  const selectedBasemapFeatureIdRef = useRef<string | null>(selectedBasemapFeatureId);
+  const activeFormationIdRef = useRef<number | null>(activeFormationId);
 
-  const maptilerApiKey = (import.meta.env as { VITE_MAPTILER_API_KEY?: string })
-    .VITE_MAPTILER_API_KEY;
-
-  const activePeriod = useMemo(() => getActivePeriod(year), [year]);
-  const periodGeoJson = useMemo(() => buildPeriodGeoJson(), []);
-
+  const atlasYearBounds = useMemo(() => getAtlasYearBounds(atlasEntities), [atlasEntities]);
   const yearBounds = useMemo(() => {
-    const minYear = Math.min(...periods.map((period) => period.start));
-    const maxYear = Math.max(...periods.map((period) => period.end));
-    return { minYear, maxYear, span: maxYear - minYear };
-  }, []);
+    if (historicalBasemapManifest?.datasetPresent && historicalBasemapManifest.availableYears.length > 0) {
+      return {
+        minYear: historicalBasemapManifest.minYear,
+        maxYear: Math.max(
+          historicalBasemapManifest.maxYear,
+          atlasYearBounds?.maxYear ?? historicalBasemapManifest.maxYear
+        ),
+      };
+    }
+
+    if (atlasYearBounds) {
+      return {
+        minYear: Math.min(atlasYearBounds.minYear, DEFAULT_MIN_YEAR),
+        maxYear: Math.max(atlasYearBounds.maxYear, DEFAULT_MAX_YEAR),
+      };
+    }
+
+    return {
+      minYear: DEFAULT_MIN_YEAR,
+      maxYear: DEFAULT_MAX_YEAR,
+    };
+  }, [atlasYearBounds, historicalBasemapManifest]);
+
+  useEffect(() => {
+    setYear((currentYear) =>
+      Math.min(Math.max(currentYear, yearBounds.minYear), yearBounds.maxYear)
+    );
+  }, [yearBounds.maxYear, yearBounds.minYear]);
 
   const ticks = useMemo(() => {
     const tickCount = 6;
+    const span = Math.max(yearBounds.maxYear - yearBounds.minYear, 1);
     return Array.from({ length: tickCount }, (_, index) => {
-      const value = yearBounds.minYear + (yearBounds.span / (tickCount - 1)) * index;
+      const value = yearBounds.minYear + (span / (tickCount - 1)) * index;
       return Math.round(value);
     });
-  }, [yearBounds]);
+  }, [yearBounds.maxYear, yearBounds.minYear]);
 
-  const segments = useMemo(
+  const linkedPolityByAtlasEntityId = useMemo(() => {
+    const referenceEntityById = new Map(referenceEntities.map((entity) => [entity.id, entity] as const));
+    const builtInPolityByLabel = new Map(
+      referenceEntities
+        .filter(isBuiltInPolityReferenceEntity)
+        .map((entity) => [normalizeEntityLabel(entity.title), entity] as const)
+    );
+
+    return new Map(
+      atlasEntities.map((entity) => {
+        const linkedById =
+          typeof entity.referenceEntityId === 'number'
+            ? referenceEntityById.get(entity.referenceEntityId) ?? null
+            : null;
+        const linkedByLabel =
+          linkedById ??
+          (MATCHABLE_ATLAS_ENTITY_KINDS.has(entity.kind)
+            ? builtInPolityByLabel.get(normalizeEntityLabel(entity.title)) ?? null
+            : null);
+
+        return [entity.id, linkedByLabel] as const;
+      })
+    );
+  }, [atlasEntities, referenceEntities]);
+
+  const visibleAtlasEntities = useMemo(
     () =>
-      periods.map((period) => ({
-        ...period,
-        span: period.end - period.start,
-        midYear: Math.round((period.start + period.end) / 2),
-      })),
-    []
+      atlasEntities.filter((entity) =>
+        isAtlasEntityVisibleInYear(entity, year, linkedPolityByAtlasEntityId.get(entity.id) ?? null)
+      ),
+    [atlasEntities, linkedPolityByAtlasEntityId, year]
   );
 
-  const syncMapToYear = (targetYear: number) => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !map.getLayer('periods-fill')) return;
+  const mappableAtlasEntities = useMemo<CanonicalHistoricalEntityWithCoordinates[]>(
+    () => visibleAtlasEntities.filter(hasCoordinates),
+    [visibleAtlasEntities]
+  );
 
-    const filter = [
-      'all',
-      ['<=', ['get', 'start'], targetYear],
-      ['>=', ['get', 'end'], targetYear],
-    ] as any;
+  const savedAuthorityIds = useMemo(
+    () => new Set(atlasEntities.map((entity) => `${entity.authority}:${entity.authorityId}`)),
+    [atlasEntities]
+  );
 
-    map.setFilter('periods-fill', filter);
-    map.setFilter('periods-outline', filter);
-    map.setFilter('periods-label', filter);
+  const selectedAtlasEntity = useMemo(
+    () =>
+      atlasEntities.find((entity) => entity.id === selectedAtlasEntityId) ??
+      visibleAtlasEntities[0] ??
+      atlasEntities[0] ??
+      null,
+    [atlasEntities, selectedAtlasEntityId, visibleAtlasEntities]
+  );
 
-    const period = getActivePeriod(targetYear);
-    if (period && lastPeriodRef.current !== period.id) {
-      lastPeriodRef.current = period.id;
-      map.fitBounds(period.bounds, { padding: 90, duration: 900, maxZoom: 4.8 });
+  const selectedVisibleAtlasEntity = useMemo<CanonicalHistoricalEntityWithCoordinates | null>(
+    () =>
+      selectedAtlasEntity &&
+      isAtlasEntityVisibleInYear(
+        selectedAtlasEntity,
+        year,
+        linkedPolityByAtlasEntityId.get(selectedAtlasEntity.id) ?? null
+      ) &&
+      hasCoordinates(selectedAtlasEntity)
+        ? selectedAtlasEntity
+        : null,
+    [linkedPolityByAtlasEntityId, selectedAtlasEntity, year]
+  );
+
+  const topVisibleKinds = useMemo(() => {
+    const counts = visibleAtlasEntities.reduce<Record<string, number>>((accumulator, entity) => {
+      accumulator[entity.kind] = (accumulator[entity.kind] ?? 0) + 1;
+      return accumulator;
+    }, {});
+
+    return atlasKindOptions
+      .filter((kind) => kind !== 'all' && counts[kind] > 0)
+      .map((kind) => `${kindLabels[kind]} ${counts[kind]}`);
+  }, [visibleAtlasEntities]);
+
+  const visibleTimelineEntities = useMemo(
+    () =>
+      [...visibleAtlasEntities].sort((left, right) => {
+        const leftYear = left.startYear ?? left.endYear ?? Number.POSITIVE_INFINITY;
+        const rightYear = right.startYear ?? right.endYear ?? Number.POSITIVE_INFINITY;
+        return leftYear - rightYear || left.title.localeCompare(right.title);
+      }),
+    [visibleAtlasEntities]
+  );
+
+  const activeBasemapYear = useMemo(() => {
+    const availableYears = historicalBasemapManifest?.availableYears ?? [];
+    if (availableYears.length === 0) {
+      return null;
+    }
+
+    let resolved = availableYears[0];
+    for (const entry of availableYears) {
+      if (entry.year <= year) {
+        resolved = entry;
+        continue;
+      }
+      break;
+    }
+
+    return resolved;
+  }, [historicalBasemapManifest, year]);
+
+  const activeBasemapFeatures = useMemo<BasemapFeature[]>(
+    () =>
+      Array.isArray((historicalBasemapLayer?.geojson as { features?: unknown })?.features)
+        ? ((historicalBasemapLayer?.geojson as { features: BasemapFeature[] }).features ?? [])
+        : [],
+    [historicalBasemapLayer]
+  );
+
+  const selectedBasemapFeature = useMemo(
+    () =>
+      activeBasemapFeatures.find(
+        (feature) => feature.properties?.atlasFeatureId === selectedBasemapFeatureId
+      ) ?? null,
+    [activeBasemapFeatures, selectedBasemapFeatureId]
+  );
+
+  const hoveredBasemapFeature = useMemo(
+    () =>
+      activeBasemapFeatures.find(
+        (feature) => feature.properties?.atlasFeatureId === hoveredBasemapFeatureId
+      ) ?? null,
+    [activeBasemapFeatures, hoveredBasemapFeatureId]
+  );
+
+  const searchableBasemapFeatures = useMemo(() => {
+    const seen = new Set<string>();
+
+    return activeBasemapFeatures
+      .filter((feature) => {
+        if (!isNamedBasemapFeature(feature)) {
+          return false;
+        }
+
+        const label = getBasemapLabel(feature);
+        if (!label || isGeneratedRegionLabel(label)) {
+          return false;
+        }
+
+        const key = `${label}::${feature.properties?.atlasParent ?? ''}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .sort((left, right) => {
+        const leftLabel = getBasemapLabel(left);
+        const rightLabel = getBasemapLabel(right);
+        return leftLabel.localeCompare(rightLabel);
+      });
+  }, [activeBasemapFeatures]);
+
+  const filteredBasemapFeatures = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(basemapQuery);
+    if (!normalizedQuery) {
+      return searchableBasemapFeatures.slice(0, 18);
+    }
+
+    return searchableBasemapFeatures
+      .map((feature) => {
+        const label = normalizeSearchText(getBasemapLabel(feature));
+        const parent = normalizeSearchText(feature.properties?.atlasParent);
+        const subject = normalizeSearchText(feature.properties?.atlasSubject);
+        let score = 0;
+
+        if (label === normalizedQuery) score += 100;
+        else if (label.startsWith(normalizedQuery)) score += 60;
+        else if (label.includes(normalizedQuery)) score += 30;
+
+        if (parent.startsWith(normalizedQuery)) score += 16;
+        else if (parent.includes(normalizedQuery)) score += 8;
+
+        if (subject.startsWith(normalizedQuery)) score += 12;
+        else if (subject.includes(normalizedQuery)) score += 6;
+
+        return { feature, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          getBasemapLabel(left.feature).localeCompare(getBasemapLabel(right.feature))
+      )
+      .slice(0, 18)
+      .map((entry) => entry.feature);
+  }, [basemapQuery, searchableBasemapFeatures]);
+
+  const selectedBasemapLabel = useMemo(
+    () => normalizeEntityLabel(getBasemapLabel(selectedBasemapFeature)),
+    [selectedBasemapFeature]
+  );
+
+  const matchedAtlasEntities = useMemo(() => {
+    if (!selectedBasemapFeature || !selectedBasemapLabel) {
+      return [];
+    }
+
+    return atlasEntities
+      .filter(
+        (entity) =>
+          MATCHABLE_ATLAS_ENTITY_KINDS.has(entity.kind) &&
+          normalizeEntityLabel(entity.title) === selectedBasemapLabel
+      )
+      .sort((left, right) => left.title.localeCompare(right.title));
+  }, [atlasEntities, selectedBasemapFeature, selectedBasemapLabel]);
+
+  const matchedAtlasReferenceEntityIds = useMemo(
+    () =>
+      new Set(
+        matchedAtlasEntities
+          .map((entity) => entity.referenceEntityId)
+          .filter((value): value is number => typeof value === 'number')
+      ),
+    [matchedAtlasEntities]
+  );
+
+  const resolvedPolityReferenceEntityId = resolvedPolityMatch?.referenceEntity.id ?? null;
+
+  const matchedReferenceEntities = useMemo(() => {
+    if (!selectedBasemapFeature || !selectedBasemapLabel) {
+      return [];
+    }
+
+    return referenceEntities
+      .filter(
+        (entity) =>
+          MATCHABLE_REFERENCE_ENTITY_KINDS.has(entity.kind) &&
+          normalizeEntityLabel(entity.title) === selectedBasemapLabel &&
+          !matchedAtlasReferenceEntityIds.has(entity.id) &&
+          entity.id !== resolvedPolityReferenceEntityId
+      )
+      .sort((left, right) => left.title.localeCompare(right.title));
+  }, [
+    matchedAtlasReferenceEntityIds,
+    referenceEntities,
+    resolvedPolityReferenceEntityId,
+    selectedBasemapFeature,
+    selectedBasemapLabel,
+  ]);
+  const subjectById = useMemo(
+    () => new Map(subjects.map((subject) => [subject.id, subject] as const)),
+    [subjects]
+  );
+  const selectedSubjectFilter = useMemo(
+    () => (selectedSubjectFilterId ? subjectById.get(selectedSubjectFilterId) ?? null : null),
+    [selectedSubjectFilterId, subjectById]
+  );
+  const selectedSubjectFilterScope = useMemo(() => {
+    if (!selectedSubjectFilterId) {
+      return null;
+    }
+
+    const scope = new Set<number>([selectedSubjectFilterId]);
+    const queue = [selectedSubjectFilterId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      for (const subject of subjects) {
+        if (subject.parentSubjectId === currentId && !scope.has(subject.id)) {
+          scope.add(subject.id);
+          queue.push(subject.id);
+        }
+      }
+    }
+
+    return scope;
+  }, [selectedSubjectFilterId, subjects]);
+  const selectedSubjectFilterLabel = useMemo(
+    () =>
+      selectedSubjectFilter
+        ? buildSubjectPathLabel(selectedSubjectFilter, subjectById)
+        : selectedSubjectFilterId
+          ? 'Selected subject'
+        : 'All subjects',
+    [selectedSubjectFilter, selectedSubjectFilterId, subjectById]
+  );
+  const subjectFilterOptions = useMemo(
+    () =>
+      [...subjects]
+        .filter((subject) => subject.slug !== 'ontology')
+        .map((subject) => ({
+          id: subject.id,
+          label: buildSubjectPathLabel(subject, subjectById),
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    [subjectById, subjects]
+  );
+  const personEntities = useMemo(
+    () =>
+      [...referenceEntities]
+        .filter((entity) => entity.kind === 'person')
+        .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
+    [referenceEntities]
+  );
+  const formationEntities = useMemo(
+    () =>
+      [...referenceEntities]
+        .filter((entity) => entity.kind === 'formation')
+        .sort((left, right) => left.title.localeCompare(right.title) || left.id - right.id),
+    [referenceEntities]
+  );
+  const activeFormation = useMemo(
+    () => formationEntities.find((entity) => entity.id === activeFormationId) ?? null,
+    [activeFormationId, formationEntities]
+  );
+  const activeFormationUi = useMemo(
+    () => getFormationWorkspaceUi(activeFormation),
+    [activeFormation]
+  );
+  const activeFormationIsYearBound = shouldDefaultFormationMembershipToActiveYear(activeFormation);
+  const activeFormationVisibleNow = useMemo(
+    () => (activeFormation ? isVisibleInYear(activeFormation, year) : false),
+    [activeFormation, year]
+  );
+  const selectedPolityMatchingFormationMemberships = useMemo(() => {
+    if (!resolvedPolityMatch) return null;
+
+    return activeFormationMemberships.filter(
+      (membership) => membership.polityEntityId === resolvedPolityMatch.referenceEntity.id
+    );
+  }, [activeFormationMemberships, resolvedPolityMatch]);
+  const selectedPolityVisibleFormationMembership = useMemo(() => {
+    if (!selectedPolityMatchingFormationMemberships || !activeBasemapYear) return null;
+
+    return (
+      selectedPolityMatchingFormationMemberships.find((membership) =>
+        isMembershipVisibleInYear(membership, activeBasemapYear.year)
+      ) ?? null
+    );
+  }, [activeBasemapYear, selectedPolityMatchingFormationMemberships]);
+  const selectedPolityHistoricalFormationMembership = useMemo(() => {
+    if (!selectedPolityMatchingFormationMemberships || selectedPolityMatchingFormationMemberships.length === 0) {
+      return null;
+    }
+
+    return selectedPolityVisibleFormationMembership
+      ? null
+      : selectedPolityMatchingFormationMemberships[0] ?? null;
+  }, [selectedPolityMatchingFormationMemberships, selectedPolityVisibleFormationMembership]);
+  const visibleActiveFormationMemberships = useMemo(() => {
+    if (!activeBasemapYear) return [];
+
+    return activeFormationMemberships.filter((membership) =>
+      isMembershipVisibleInYear(membership, activeBasemapYear.year)
+    );
+  }, [activeBasemapYear, activeFormationMemberships]);
+  const selectedPolitySnapshotYears = useMemo(
+    () =>
+      selectedPolitySnapshots
+        .map((snapshot) => snapshot.snapshotYear)
+        .sort((left, right) => left - right),
+    [selectedPolitySnapshots]
+  );
+  const selectedPolitySnapshotRange = useMemo(() => {
+    if (selectedPolitySnapshotYears.length === 0) return 'No imported atlas snapshots yet.';
+
+    const first = selectedPolitySnapshotYears[0];
+    const last = selectedPolitySnapshotYears[selectedPolitySnapshotYears.length - 1];
+    if (first === last) return formatYear(first);
+    return `${formatYear(first)} - ${formatYear(last)}`;
+  }, [selectedPolitySnapshotYears]);
+  const selectedPolityVisiblePersonMemberships = useMemo(
+    () =>
+      filterPersonMembershipsBySubject(
+        [...selectedPolityPersonMemberships]
+          .filter((membership) => isMembershipVisibleInYear(membership, year))
+          .sort(
+            (left, right) =>
+              (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+                sensitivity: 'base',
+              }) || left.id - right.id
+          ),
+        selectedSubjectFilterScope,
+        personSubjectMembershipCache
+      ),
+    [personSubjectMembershipCache, selectedPolityPersonMemberships, selectedSubjectFilterScope, year]
+  );
+  const selectedPolityHistoricalPersonMemberships = useMemo(
+    () =>
+      filterPersonMembershipsBySubject(
+        [...selectedPolityPersonMemberships]
+          .filter((membership) => !isMembershipVisibleInYear(membership, year))
+          .sort(
+            (left, right) =>
+              (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+                sensitivity: 'base',
+              }) || left.id - right.id
+          ),
+        selectedSubjectFilterScope,
+        personSubjectMembershipCache
+      ),
+    [personSubjectMembershipCache, selectedPolityPersonMemberships, selectedSubjectFilterScope, year]
+  );
+  const selectedPolityVisiblePeoplePreview = useMemo(
+    () => selectedPolityVisiblePersonMemberships.slice(0, 4),
+    [selectedPolityVisiblePersonMemberships]
+  );
+  const selectedPolityHistoricalPeoplePreview = useMemo(
+    () => selectedPolityHistoricalPersonMemberships.slice(0, 4),
+    [selectedPolityHistoricalPersonMemberships]
+  );
+  const selectedPolityFormationPreview = useMemo(
+    () =>
+      [...selectedPolityFormationMemberships]
+        .sort(
+          (left, right) =>
+            (left.formationTitle || '').localeCompare(right.formationTitle || '', undefined, {
+              sensitivity: 'base',
+            }) || left.id - right.id
+        )
+        .slice(0, 6),
+    [selectedPolityFormationMemberships]
+  );
+  const activeFormationPersonSummary = useMemo(() => {
+    const visiblePeople = new Map<
+      string,
+      PersonPolityMembershipDetail & { polityTitle?: string }
+    >();
+    const historicalPeople = new Map<
+      string,
+      PersonPolityMembershipDetail & { polityTitle?: string }
+    >();
+
+    const allFormationMemberships = activeFormationMemberships.map((membership) => ({
+      formationMembership: membership,
+      personMemberships: formationPolityPersonMembershipCache[membership.polityEntityId] ?? [],
+    }));
+
+    for (const { formationMembership, personMemberships } of allFormationMemberships) {
+      const formationMembershipVisible =
+        activeBasemapYear !== null &&
+        activeBasemapYear !== undefined &&
+        isMembershipVisibleInYear(formationMembership, activeBasemapYear.year);
+
+      for (const personMembership of personMemberships) {
+        const key = getPersonMembershipKey(personMembership);
+        const entry = {
+          ...personMembership,
+          polityTitle: formationMembership.polityTitle,
+        };
+        const personVisibleNow =
+          formationMembershipVisible && isMembershipVisibleInYear(personMembership, year);
+
+        if (personVisibleNow) {
+          visiblePeople.set(key, entry);
+          historicalPeople.delete(key);
+          continue;
+        }
+
+        if (!visiblePeople.has(key) && !historicalPeople.has(key)) {
+          historicalPeople.set(key, entry);
+        }
+      }
+    }
+
+    const sortEntries = (
+      entries: Array<PersonPolityMembershipDetail & { polityTitle?: string }>
+    ) =>
+      entries.sort(
+        (left, right) =>
+          (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+            sensitivity: 'base',
+          }) || left.id - right.id
+      );
+
+    const visible = filterPersonMembershipsBySubject(
+      sortEntries([...visiblePeople.values()]),
+      selectedSubjectFilterScope,
+      personSubjectMembershipCache
+    );
+    const historical = filterPersonMembershipsBySubject(
+      sortEntries([...historicalPeople.values()]),
+      selectedSubjectFilterScope,
+      personSubjectMembershipCache
+    );
+
+    return {
+      visible,
+      historical,
+      visiblePreview: visible.slice(0, 4),
+      historicalPreview: historical.slice(0, 4),
+    };
+  }, [
+    activeBasemapYear,
+    activeFormationMemberships,
+    formationPolityPersonMembershipCache,
+    personSubjectMembershipCache,
+    selectedSubjectFilterScope,
+    year,
+  ]);
+  const relevantPersonEntityIds = useMemo(
+    () =>
+      [
+        ...selectedPolityPersonMemberships,
+        ...Object.values(formationPolityPersonMembershipCache).flat(),
+      ]
+        .map((membership) => membership.personEntityId)
+        .filter((value): value is number => Number.isInteger(value) && value > 0)
+        .filter((value, index, array) => array.indexOf(value) === index),
+    [formationPolityPersonMembershipCache, selectedPolityPersonMemberships]
+  );
+  const selectedPolityPeoplePresenceBundle = useMemo<PersonPresenceGeojsonBundle>(() => {
+    if (
+      !resolvedPolityMatch ||
+      !selectedBasemapFeature ||
+      selectedPolityVisiblePersonMemberships.length === 0
+    ) {
+      return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
+    }
+
+    const bounds = getGeoJsonBounds({
+      type: 'FeatureCollection',
+      features: [selectedBasemapFeature],
+    });
+    if (!bounds) {
+      return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
+    }
+
+    return buildPersonPresenceGeojsonBundle({
+      bounds,
+      memberships: selectedPolityVisiblePersonMemberships,
+      mode: 'polity',
+      mapProperties: () => ({
+        atlasPolityEntityId: resolvedPolityMatch.referenceEntity.id,
+        atlasPolityTitle: resolvedPolityMatch.referenceEntity.title,
+      }),
+    });
+  }, [
+    resolvedPolityMatch,
+    selectedBasemapFeature,
+    selectedPolityVisiblePersonMemberships,
+  ]);
+  const activeFormationMembersGeojson = useMemo<FeatureCollectionLike>(() => {
+    if (!activeFormationId || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
+      return EMPTY_FEATURE_COLLECTION;
+    }
+
+    const features = visibleActiveFormationMemberships.flatMap((membership) => {
+      const snapshots = formationPolitySnapshotCache[membership.polityEntityId] ?? [];
+      const snapshot = snapshots.find(
+        (entry) => entry.snapshotYear === activeBasemapYear.year
+      );
+      if (!snapshot) return [];
+
+      return getFeatureCollectionFeatures(snapshot.geometry).map((feature) => ({
+        ...feature,
+        properties: {
+          ...((feature as { properties?: Record<string, unknown> }).properties ?? {}),
+          atlasOverlayFormationId: membership.formationEntityId,
+          atlasOverlayFormationTitle: membership.formationTitle || activeFormation?.title || '',
+          atlasOverlayPolityId: membership.polityEntityId,
+          atlasOverlayPolityTitle: membership.polityTitle || snapshot.titleAtSnapshot,
+          atlasOverlayMembershipId: membership.id,
+        },
+      }));
+    });
+
+    return {
+      type: 'FeatureCollection',
+      features,
+    };
+  }, [
+    activeBasemapYear,
+    activeFormation?.title,
+    activeFormationId,
+    formationPolitySnapshotCache,
+    visibleActiveFormationMemberships,
+  ]);
+  const isActiveFormationOverlaySelected =
+    activeFormationId !== null &&
+    selectedFormationOverlayId === activeFormationId &&
+    activeFormationMembersGeojson.features.length > 0;
+  const selectedFormationOverlayGeojson = isActiveFormationOverlaySelected
+    ? activeFormationMembersGeojson
+    : EMPTY_FEATURE_COLLECTION;
+  const activeFormationPeoplePresenceBundle = useMemo<PersonPresenceGeojsonBundle>(() => {
+    if (!isActiveFormationOverlaySelected || !activeBasemapYear || visibleActiveFormationMemberships.length === 0) {
+      return EMPTY_PERSON_PRESENCE_GEOJSON_BUNDLE;
+    }
+
+    const pointFeatures: Array<Record<string, unknown>> = [];
+    const spokeFeatures: Array<Record<string, unknown>> = [];
+
+    for (const membership of visibleActiveFormationMemberships) {
+      const snapshots = formationPolitySnapshotCache[membership.polityEntityId] ?? [];
+      const snapshot = snapshots.find((entry) => entry.snapshotYear === activeBasemapYear.year);
+      if (!snapshot) continue;
+
+      const bounds = getGeoJsonBounds(snapshot.geometry);
+      if (!bounds) continue;
+
+      const visibleMemberships = [
+        ...(formationPolityPersonMembershipCache[membership.polityEntityId] ?? []),
+      ]
+        .filter((entry) => isMembershipVisibleInYear(entry, year))
+        .sort(
+          (left, right) =>
+            (left.personTitle || '').localeCompare(right.personTitle || '', undefined, {
+              sensitivity: 'base',
+            }) || left.id - right.id
+        );
+      const filteredMemberships = filterPersonMembershipsBySubject(
+        visibleMemberships,
+        selectedSubjectFilterScope,
+        personSubjectMembershipCache
+      );
+      if (filteredMemberships.length === 0) continue;
+
+      const bundle = buildPersonPresenceGeojsonBundle({
+        bounds,
+        memberships: filteredMemberships,
+        mode: 'formation',
+        mapProperties: () => ({
+          atlasFormationEntityId: membership.formationEntityId,
+          atlasFormationTitle: membership.formationTitle || activeFormation?.title || '',
+          atlasPolityEntityId: membership.polityEntityId,
+          atlasPolityTitle: membership.polityTitle || snapshot.titleAtSnapshot,
+        }),
+      });
+
+      pointFeatures.push(...bundle.points.features);
+      spokeFeatures.push(...bundle.spokes.features);
+    }
+
+    return {
+      points: {
+        type: 'FeatureCollection',
+        features: pointFeatures,
+      },
+      spokes: {
+        type: 'FeatureCollection',
+        features: spokeFeatures,
+      },
+    };
+  }, [
+    activeBasemapYear,
+    activeFormation?.title,
+    formationPolityPersonMembershipCache,
+    formationPolitySnapshotCache,
+    isActiveFormationOverlaySelected,
+    personSubjectMembershipCache,
+    selectedSubjectFilterScope,
+    visibleActiveFormationMemberships,
+    year,
+  ]);
+  const visiblePersonPresenceBundle = isActiveFormationOverlaySelected
+    ? activeFormationPeoplePresenceBundle
+    : selectedPolityPeoplePresenceBundle;
+  const visiblePersonPresenceCount = visiblePersonPresenceBundle.points.features.length;
+
+  const openEntityPage = (entityId: number) => {
+    navigate(`/entities/${entityId}`, {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+      },
+    });
+  };
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (query.trim()) nextParams.set('q', query.trim());
+    else nextParams.delete('q');
+
+    if (searchKind !== 'all') nextParams.set('kind', searchKind);
+    else nextParams.delete('kind');
+
+    nextParams.set('year', String(year));
+
+    if (selectedAtlasEntityId) nextParams.set('selected', String(selectedAtlasEntityId));
+    else nextParams.delete('selected');
+
+    if (activeFormationId) nextParams.set('formation', String(activeFormationId));
+    else nextParams.delete('formation');
+
+    if (focusedPolityId) nextParams.set('polity', String(focusedPolityId));
+    else nextParams.delete('polity');
+
+    if (selectedSubjectFilterId) nextParams.set('subject', String(selectedSubjectFilterId));
+    else nextParams.delete('subject');
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [
+    activeFormationId,
+    focusedPolityId,
+    query,
+    searchKind,
+    selectedAtlasEntityId,
+    selectedSubjectFilterId,
+    year,
+    searchParams,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
+    selectedBasemapFeatureIdRef.current = selectedBasemapFeatureId;
+  }, [selectedBasemapFeatureId]);
+
+  useEffect(() => {
+    activeFormationIdRef.current = activeFormationId;
+  }, [activeFormationId]);
+
+  useEffect(() => {
+    const loadHistoricalBasemapManifest = async () => {
+      setIsLoadingBasemapManifest(true);
+      setBasemapError(null);
+
+      try {
+        const manifest = await fetchHistoricalBasemapManifest(DEFAULT_BASEMAP_CUTOFF_YEAR);
+        setHistoricalBasemapManifest(manifest);
+      } catch (error) {
+        setHistoricalBasemapManifest(null);
+        setBasemapError(
+          error instanceof Error ? error.message : 'Failed to load the historical basemap index.'
+        );
+      } finally {
+        setIsLoadingBasemapManifest(false);
+      }
+    };
+
+    void loadHistoricalBasemapManifest();
+  }, []);
+
+  useEffect(() => {
+    const loadAtlas = async () => {
+      setIsLoadingAtlas(true);
+      setAtlasError(null);
+      try {
+        const entities = await fetchHistoricalAtlasEntities();
+        setAtlasEntities(entities);
+        if (entities[0]) {
+          setSelectedAtlasEntityId((current) => current ?? entities[0].id);
+        }
+      } catch (error) {
+        setAtlasError(error instanceof Error ? error.message : 'Failed to load the atlas shelf.');
+      } finally {
+        setIsLoadingAtlas(false);
+      }
+    };
+
+    void loadAtlas();
+  }, []);
+
+  useEffect(() => {
+    const loadReferenceEntities = async () => {
+      setIsLoadingReferenceEntities(true);
+      setReferenceEntitiesError(null);
+
+      try {
+        const entities = await fetchReferenceEntities();
+        setReferenceEntities(entities);
+      } catch (error) {
+        setReferenceEntities([]);
+        setReferenceEntitiesError(
+          error instanceof Error ? error.message : 'Failed to load local encyclopedia entities.'
+        );
+      } finally {
+        setIsLoadingReferenceEntities(false);
+      }
+    };
+
+    void loadReferenceEntities();
+  }, []);
+
+  useEffect(() => {
+    const loadSubjects = async () => {
+      setIsLoadingSubjects(true);
+      setSubjectsError(null);
+
+      try {
+        setSubjects(await fetchSubjects());
+      } catch (error) {
+        setSubjects([]);
+        setSubjectsError(error instanceof Error ? error.message : 'Failed to load subjects.');
+      } finally {
+        setIsLoadingSubjects(false);
+      }
+    };
+
+    void loadSubjects();
+  }, []);
+
+  useEffect(() => {
+    if (!focusedPolityId) return;
+
+    if (
+      referenceEntities.length > 0 &&
+      !referenceEntities.some((entity) => entity.id === focusedPolityId && entity.kind === 'polity')
+    ) {
+      setFocusedPolityId(null);
+    }
+  }, [focusedPolityId, referenceEntities]);
+
+  useEffect(() => {
+    if (!selectedSubjectFilterId) return;
+
+    if (subjects.length > 0 && !subjects.some((subject) => subject.id === selectedSubjectFilterId)) {
+      setSelectedSubjectFilterId(null);
+    }
+  }, [selectedSubjectFilterId, subjects]);
+
+  useEffect(() => {
+    if (!activeFormationId && formationEntities[0]) {
+      setActiveFormationId(formationEntities[0].id);
+    }
+  }, [activeFormationId, formationEntities]);
+
+  useEffect(() => {
+    if (activeFormationId && !formationEntities.some((entity) => entity.id === activeFormationId)) {
+      setActiveFormationId(formationEntities[0]?.id ?? null);
+    }
+  }, [activeFormationId, formationEntities]);
+
+  useEffect(() => {
+    if (!activeFormationId || activeFormationMembersGeojson.features.length === 0) {
+      if (selectedFormationOverlayId !== null) {
+        setSelectedFormationOverlayId(null);
+      }
+      return;
+    }
+
+    if (selectedFormationOverlayId !== null && selectedFormationOverlayId !== activeFormationId) {
+      setSelectedFormationOverlayId(null);
+    }
+  }, [
+    activeFormationId,
+    activeFormationMembersGeojson.features.length,
+    selectedFormationOverlayId,
+  ]);
+
+  useEffect(() => {
+    if (selectedAtlasEntityId !== null && selectedFormationOverlayId !== null) {
+      setSelectedFormationOverlayId(null);
+    }
+  }, [selectedAtlasEntityId, selectedFormationOverlayId]);
+
+  useEffect(() => {
+    const loadFormationWorkspace = async () => {
+      if (!activeFormationId) {
+        setActiveFormationMemberships([]);
+        setFormationWorkspaceError(null);
+        return;
+      }
+
+      setIsLoadingFormationWorkspace(true);
+      setFormationWorkspaceError(null);
+      try {
+        const memberships = await fetchReferenceEntityFormationMemberships(activeFormationId);
+        setActiveFormationMemberships(memberships);
+      } catch (error) {
+        setActiveFormationMemberships([]);
+        setFormationWorkspaceError(
+          error instanceof Error ? error.message : 'Failed to load the active formation.'
+        );
+      } finally {
+        setIsLoadingFormationWorkspace(false);
+      }
+    };
+
+    void loadFormationWorkspace();
+  }, [activeFormationId]);
+
+  useEffect(() => {
+    const loadHistoricalBasemapLayer = async () => {
+      if (!activeBasemapYear) {
+        setHistoricalBasemapLayer(null);
+        return;
+      }
+
+      setIsLoadingBasemapLayer(true);
+      setBasemapError(null);
+      try {
+        const layer = await fetchHistoricalBasemapLayer(
+          activeBasemapYear.year,
+          DEFAULT_BASEMAP_CUTOFF_YEAR
+        );
+        setHistoricalBasemapLayer(layer);
+      } catch (error) {
+        setHistoricalBasemapLayer(null);
+        setBasemapError(
+          error instanceof Error ? error.message : 'Failed to load the historical basemap layer.'
+        );
+      } finally {
+        setIsLoadingBasemapLayer(false);
+      }
+    };
+
+    void loadHistoricalBasemapLayer();
+  }, [activeBasemapYear]);
+
+  useEffect(() => {
+    if (!selectedBasemapFeatureId) return;
+
+    const stillPresent = activeBasemapFeatures.some(
+      (feature) => feature.properties?.atlasFeatureId === selectedBasemapFeatureId
+    );
+    if (!stillPresent) {
+      setSelectedBasemapFeatureId(null);
+    }
+  }, [activeBasemapFeatures, selectedBasemapFeatureId]);
+
+  useEffect(() => {
+    const loadResolvedPolityMatch = async () => {
+      if (!activeBasemapYear || !selectedBasemapFeatureId || !selectedBasemapFeature) {
+        setResolvedPolityMatch(null);
+        setResolvedPolityMatchError(null);
+        return;
+      }
+
+      try {
+        setResolvedPolityMatchError(null);
+        const match = await fetchHistoricalBasemapPolityMatch(
+          activeBasemapYear.year,
+          selectedBasemapFeatureId
+        );
+        setResolvedPolityMatch(match);
+      } catch (error) {
+        setResolvedPolityMatch(null);
+        setResolvedPolityMatchError(
+          error instanceof Error ? error.message : 'Failed to resolve the selected region to a polity.'
+        );
+      }
+    };
+
+    void loadResolvedPolityMatch();
+  }, [activeBasemapYear, selectedBasemapFeature, selectedBasemapFeatureId]);
+
+  useEffect(() => {
+    const loadSelectedPolityContext = async () => {
+      if (!resolvedPolityReferenceEntityId) {
+        setSelectedPolitySnapshots([]);
+        setSelectedPolityFormationMemberships([]);
+        setSelectedPolityPersonMemberships([]);
+        setSelectedPolityContextError(null);
+        return;
+      }
+
+      setIsLoadingSelectedPolityContext(true);
+      setSelectedPolityContextError(null);
+      try {
+        const [snapshots, formationMemberships, personMemberships] = await Promise.all([
+          fetchReferenceEntityPolitySnapshots(resolvedPolityReferenceEntityId),
+          fetchReferenceEntityFormationMemberships(resolvedPolityReferenceEntityId),
+          fetchReferenceEntityPersonPolityMemberships(resolvedPolityReferenceEntityId),
+        ]);
+        setSelectedPolitySnapshots(snapshots);
+        setSelectedPolityFormationMemberships(formationMemberships);
+        setSelectedPolityPersonMemberships(personMemberships);
+      } catch (error) {
+        setSelectedPolitySnapshots([]);
+        setSelectedPolityFormationMemberships([]);
+        setSelectedPolityPersonMemberships([]);
+        setSelectedPolityContextError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to load the selected polity context.'
+        );
+      } finally {
+        setIsLoadingSelectedPolityContext(false);
+      }
+    };
+
+    void loadSelectedPolityContext();
+  }, [resolvedPolityReferenceEntityId]);
+
+  useEffect(() => {
+    const focusPolityFromUrl = async () => {
+      if (!focusedPolityId || !activeBasemapYear) return;
+
+      const focusedPolity = referenceEntities.find(
+        (entity) => entity.id === focusedPolityId && entity.kind === 'polity'
+      );
+      if (!focusedPolity) return;
+
+      if (resolvedPolityReferenceEntityId === focusedPolityId && selectedBasemapFeatureId) {
+        return;
+      }
+
+      try {
+        const snapshots = await fetchReferenceEntityPolitySnapshots(focusedPolityId);
+        const targetSnapshot =
+          snapshots.find((snapshot) => snapshot.snapshotYear === activeBasemapYear.year) ??
+          snapshots.reduce<PolitySnapshot | null>((closest, snapshot) => {
+            if (!closest) return snapshot;
+
+            return Math.abs(snapshot.snapshotYear - activeBasemapYear.year) <
+              Math.abs(closest.snapshotYear - activeBasemapYear.year)
+              ? snapshot
+              : closest;
+          }, null);
+
+        if (!targetSnapshot) return;
+
+        const sourceFeatureIds = Array.isArray(targetSnapshot.metadata?.sourceFeatureIds)
+          ? targetSnapshot.metadata.sourceFeatureIds.filter(
+              (value): value is string => typeof value === 'string' && value.length > 0
+            )
+          : [];
+
+        const matchingFeatureId =
+          sourceFeatureIds.find((featureId) =>
+            activeBasemapFeatures.some((feature) => feature.properties?.atlasFeatureId === featureId)
+          ) ?? null;
+
+        if (!matchingFeatureId) return;
+
+        setSelectedAtlasEntityId(null);
+        setSelectedFormationOverlayId(null);
+        setSelectedBasemapFeatureId(matchingFeatureId);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    void focusPolityFromUrl();
+  }, [
+    activeBasemapFeatures,
+    activeBasemapYear,
+    focusedPolityId,
+    referenceEntities,
+    resolvedPolityReferenceEntityId,
+    selectedBasemapFeatureId,
+  ]);
+
+  useEffect(() => {
+    const polityIds = [...new Set(activeFormationMemberships.map((membership) => membership.polityEntityId))]
+      .filter((value): value is number => Number.isInteger(value) && value > 0);
+    const missingPolityIds = polityIds.filter(
+      (polityId) =>
+        !formationPolitySnapshotCache[polityId] || !formationPolityPersonMembershipCache[polityId]
+    );
+
+    if (missingPolityIds.length === 0) {
+      setIsLoadingFormationOverlay(false);
+      setFormationOverlayError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingFormationOverlay(true);
+
+    const loadFormationOverlaySnapshots = async () => {
+      try {
+        const entries = await Promise.all(
+          missingPolityIds.map(async (polityId) => [
+            polityId,
+            {
+              snapshots: await fetchReferenceEntityPolitySnapshots(polityId),
+              personMemberships: await fetchReferenceEntityPersonPolityMemberships(polityId),
+            },
+          ] as const)
+        );
+
+        if (cancelled) return;
+
+        setFormationPolitySnapshotCache((current) => ({
+          ...current,
+          ...Object.fromEntries(entries.map(([polityId, entry]) => [polityId, entry.snapshots])),
+        }));
+        setFormationPolityPersonMembershipCache((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            entries.map(([polityId, entry]) => [polityId, entry.personMemberships])
+          ),
+        }));
+        setFormationOverlayError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setFormationOverlayError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load formation atlas context for the map overlay.'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingFormationOverlay(false);
+        }
+      }
+    };
+
+    void loadFormationOverlaySnapshots();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeFormationMemberships,
+    formationPolityPersonMembershipCache,
+    formationPolitySnapshotCache,
+  ]);
+
+  useEffect(() => {
+    const missingPersonEntityIds = relevantPersonEntityIds.filter(
+      (personEntityId) => personSubjectMembershipCache[personEntityId] === undefined
+    );
+
+    if (missingPersonEntityIds.length === 0) {
+      setIsLoadingPersonSubjectMemberships(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingPersonSubjectMemberships(true);
+    setPersonSubjectMembershipsError(null);
+
+    const loadPersonSubjectMemberships = async () => {
+      try {
+        const memberships = await fetchWorldHistoryPersonSubjectMemberships(missingPersonEntityIds);
+        if (cancelled) return;
+
+        setPersonSubjectMembershipCache((current) => {
+          const next: Record<number, PersonSubjectMembershipDetail[]> = { ...current };
+          for (const personEntityId of missingPersonEntityIds) {
+            next[personEntityId] = [];
+          }
+
+          for (const membership of memberships) {
+            if (!membership.personEntityId) continue;
+            if (!next[membership.personEntityId]) {
+              next[membership.personEntityId] = [];
+            }
+            next[membership.personEntityId].push(membership);
+          }
+
+          return next;
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setPersonSubjectMembershipsError(
+            error instanceof Error
+              ? error.message
+              : 'Failed to load subject memberships for the atlas people layer.'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPersonSubjectMemberships(false);
+        }
+      }
+    };
+
+    void loadPersonSubjectMemberships();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [personSubjectMembershipCache, relevantPersonEntityIds]);
+
+  useEffect(() => {
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+    setShowPersonPlacementComposer(false);
+    setShowFormationPlacementComposer(false);
+    setPersonPlacementForm({
+      personEntityId: '',
+      startYear: '',
+      endYear: '',
+      note: '',
+    });
+    setFormationPlacementForm({
+      formationEntityId: activeFormationId ? String(activeFormationId) : '',
+      startYear:
+        activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
+      endYear:
+        activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
+      note: '',
+    });
+  }, [activeBasemapYear, activeFormationId, activeFormationIsYearBound, resolvedPolityReferenceEntityId]);
+
+  useEffect(() => {
+    if (!activeFormationId) return;
+
+    setFormationPlacementForm((current) =>
+      current.formationEntityId
+        ? current
+        : {
+            ...current,
+            formationEntityId: String(activeFormationId),
+          }
+    );
+  }, [activeFormationId]);
+
+  useEffect(() => {
+    if (!hoveredBasemapFeatureId) return;
+
+    const stillPresent = activeBasemapFeatures.some(
+      (feature) => feature.properties?.atlasFeatureId === hoveredBasemapFeatureId
+    );
+    if (!stillPresent) {
+      setHoveredBasemapFeatureId(null);
+    }
+  }, [activeBasemapFeatures, hoveredBasemapFeatureId]);
+
+  useEffect(() => {
+    if (!query.trim()) return;
+
+    void runSearch();
+    // Seed once from URL-backed initial state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const loadGeometry = async () => {
+      if (!selectedAtlasEntity || !hasBoundaryGeometry(selectedAtlasEntity)) {
+        setSelectedGeometry(null);
+        setGeometryError(null);
+        return;
+      }
+
+      try {
+        setGeometryError(null);
+        const geometry = await fetchHistoricalAtlasGeometry(selectedAtlasEntity.id);
+        setSelectedGeometry(geometry.geojson);
+      } catch (error) {
+        setSelectedGeometry(null);
+        setGeometryError(
+          error instanceof Error ? error.message : 'Failed to load boundary geometry.'
+        );
+      }
+    };
+
+    void loadGeometry();
+  }, [selectedAtlasEntity]);
+
+  const runSearch = async () => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      setSearchResults([]);
+      setSearchError('Enter a name, region, ruler, battle, or period to search.');
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+    setStatusMessage(null);
+
+    try {
+      const results = await searchHistoricalAtlas(trimmedQuery, searchKind, 12);
+      setSearchResults(results);
+      if (results.length === 0) {
+        setSearchError('No matching authority records came back for that search.');
+      }
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : 'Failed to search the history atlas.');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSaveAtlasEntity = async (match: CanonicalHistoricalSearchMatch) => {
+    setPendingSaveAuthorityId(match.authorityId);
+    setStatusMessage(null);
+
+    try {
+      const saved = await saveHistoricalAtlasEntity(match);
+      setAtlasEntities((current) => {
+        const remaining = current.filter(
+          (entity) => !(entity.authority === saved.authority && entity.authorityId === saved.authorityId)
+        );
+        return [...remaining, saved].sort((left, right) => left.title.localeCompare(right.title));
+      });
+      setSelectedAtlasEntityId(saved.id);
+      setStatusMessage(`Saved "${saved.title}" to the atlas shelf.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to save atlas entity.');
+    } finally {
+      setPendingSaveAuthorityId(null);
+    }
+  };
+
+  const handleDeleteAtlasEntity = async (entity: CanonicalHistoricalEntity) => {
+    setPendingDeleteId(entity.id);
+    setStatusMessage(null);
+
+    try {
+      await deleteHistoricalAtlasEntity(entity.id);
+      setAtlasEntities((current) => current.filter((entry) => entry.id !== entity.id));
+      setSelectedAtlasEntityId((current) => (current === entity.id ? null : current));
+      setStatusMessage(`Removed "${entity.title}" from the atlas shelf.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to remove atlas entity.');
+    } finally {
+      setPendingDeleteId(null);
+    }
+  };
+
+  const handlePromoteToEntity = async (entity: CanonicalHistoricalEntity) => {
+    setPendingPromoteId(entity.id);
+    setStatusMessage(null);
+
+    try {
+      const promoted = await promoteHistoricalAtlasEntity(entity.id);
+      setAtlasEntities((current) =>
+        current.map((entry) => (entry.id === promoted.atlasEntity.id ? promoted.atlasEntity : entry))
+      );
+      openEntityPage(promoted.referenceEntity.id);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to create a local entity.');
+    } finally {
+      setPendingPromoteId(null);
+    }
+  };
+
+  const handleCreatePersonPlacement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resolvedPolityMatch || !personPlacementForm.personEntityId) return;
+
+    setSavingPersonPlacement(true);
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+
+    try {
+      const personEntity = personEntities.find(
+        (entry) => String(entry.id) === personPlacementForm.personEntityId
+      );
+      await createPersonPolityMembership(Number(personPlacementForm.personEntityId), {
+        polityEntityId: resolvedPolityMatch.referenceEntity.id,
+        startYear: parseOptionalYearInput(personPlacementForm.startYear),
+        endYear: parseOptionalYearInput(personPlacementForm.endYear),
+        note: personPlacementForm.note.trim() || undefined,
+      });
+      setAtlasMembershipMessage(
+        `Placed "${personEntity?.title || 'Selected person'}" in "${resolvedPolityMatch.referenceEntity.title}".`
+      );
+      setPersonPlacementForm({
+        personEntityId: '',
+        startYear: '',
+        endYear: '',
+        note: '',
+      });
+      setShowPersonPlacementComposer(false);
+    } catch (error) {
+      setAtlasMembershipError(
+        error instanceof Error ? error.message : 'Failed to place the person in this polity.'
+      );
+    } finally {
+      setSavingPersonPlacement(false);
+    }
+  };
+
+  const handleCreateFormationPlacement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resolvedPolityMatch || !formationPlacementForm.formationEntityId) return;
+
+    setSavingFormationPlacement(true);
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+
+    try {
+      const formationEntity = formationEntities.find(
+        (entry) => String(entry.id) === formationPlacementForm.formationEntityId
+      );
+      const membership = await createFormationMembership(Number(formationPlacementForm.formationEntityId), {
+        polityEntityId: resolvedPolityMatch.referenceEntity.id,
+        startYear: parseOptionalYearInput(formationPlacementForm.startYear),
+        endYear: parseOptionalYearInput(formationPlacementForm.endYear),
+        note: formationPlacementForm.note.trim() || undefined,
+      });
+      if (Number(formationPlacementForm.formationEntityId) === activeFormationId) {
+        setActiveFormationMemberships((current) => {
+          const existingIndex = current.findIndex((entry) => entry.id === membership.id);
+          if (existingIndex >= 0) {
+            const next = [...current];
+            next[existingIndex] = membership;
+            return next;
+          }
+          return [...current, membership];
+        });
+      }
+      setAtlasMembershipMessage(
+        `Added "${resolvedPolityMatch.referenceEntity.title}" to "${formationEntity?.title || 'Selected formation'}".`
+      );
+      setFormationPlacementForm({
+        formationEntityId: '',
+        startYear:
+          activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
+        endYear:
+          activeFormationIsYearBound && activeBasemapYear ? String(activeBasemapYear.year) : '',
+        note: '',
+      });
+      setShowFormationPlacementComposer(false);
+    } catch (error) {
+      setAtlasMembershipError(
+        error instanceof Error ? error.message : 'Failed to add this polity to the active formation scope.'
+      );
+    } finally {
+      setSavingFormationPlacement(false);
+    }
+  };
+
+  const handleRemoveFormationPlacement = async (membership: FormationMembershipDetail) => {
+    setRemovingFormationMembershipId(membership.id);
+    setAtlasMembershipError(null);
+    setAtlasMembershipMessage(null);
+
+    try {
+      await deleteFormationMembership(membership.formationEntityId, membership.id);
+      setActiveFormationMemberships((current) =>
+        current.filter((entry) => entry.id !== membership.id)
+      );
+      setAtlasMembershipMessage(
+        `Removed "${membership.polityTitle || 'Selected polity'}" from "${membership.formationTitle || 'the active formation'}".`
+      );
+    } catch (error) {
+      setAtlasMembershipError(
+        error instanceof Error ? error.message : 'Failed to remove this polity from the active formation scope.'
+      );
+    } finally {
+      setRemovingFormationMembershipId(null);
     }
   };
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current || !maptilerApiKey) return;
+    if (!mapContainerRef.current || mapRef.current) return;
 
     let disposed = false;
-    let localMap: import('@maptiler/sdk').Map | null = null;
+    let localMap: MapLibreMap | null = null;
 
     const loadMap = async () => {
-      const maptilersdk = await import('@maptiler/sdk');
-      await import('@maptiler/sdk/dist/maptiler-sdk.css');
+      try {
+        if (disposed || !mapContainerRef.current) return;
 
-      if (disposed || !mapContainerRef.current) return;
-
-      maptilersdk.config.apiKey = maptilerApiKey;
-
-      const map = new maptilersdk.Map({
-        container: mapContainerRef.current,
-        style: maptilersdk.MapStyle.STREETS,
-        center: [15, 28],
-        zoom: 1.6,
-        minZoom: 1,
-        maxZoom: 6,
-      });
-
-      localMap = map;
-      mapRef.current = map;
-
-      map.addControl(new maptilersdk.NavigationControl({ visualizePitch: false }), 'top-right');
-
-      map.on('load', () => {
-        map.addSource('periods', {
-          type: 'geojson',
-          data: periodGeoJson as any,
+        const map = new maplibregl.Map({
+          container: mapContainerRef.current,
+          style: LOCAL_ATLAS_MAP_STYLE as any,
+          center: [10, 28],
+          zoom: 1.9,
+          minZoom: 1,
+          maxZoom: 8,
         });
 
-        map.addLayer({
-          id: 'periods-fill',
-          type: 'fill',
-          source: 'periods',
-          paint: {
-            'fill-color': ['get', 'color'],
-            'fill-opacity': 0.25,
-          },
+        localMap = map;
+        mapRef.current = map;
+        setMapError(null);
+
+        map.addControl(new NavigationControl({ visualizePitch: false }), 'top-right');
+
+        map.on('error', () => {
+          setMapError('The local atlas map failed to render.');
         });
 
+        map.on('load', () => {
+          mapLoadedRef.current = true;
+
+          map.addSource('atlas-historical-basemap', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-entities', {
+            type: 'geojson',
+            data: buildAtlasGeoJson([]) as any,
+          });
+
+          map.addSource('atlas-selected-geometry', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-active-formation-members', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-selected-formation-overlay', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-selected-basemap-feature', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-hovered-basemap-feature', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-person-presence', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addSource('atlas-person-presence-spokes', {
+            type: 'geojson',
+            data: EMPTY_FEATURE_COLLECTION as any,
+          });
+
+          map.addLayer({
+            id: 'atlas-historical-basemap-fill',
+            type: 'fill',
+            source: 'atlas-historical-basemap',
+            paint: {
+              'fill-color': '#a8855c',
+              'fill-opacity': 0.28,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-historical-basemap-outline',
+            type: 'line',
+            source: 'atlas-historical-basemap',
+            paint: {
+              'line-color': '#54381f',
+              'line-width': 1.25,
+              'line-opacity': 0.9,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-active-formation-members-fill',
+            type: 'fill',
+            source: 'atlas-active-formation-members',
+            paint: {
+              'fill-color': '#4f7a52',
+              'fill-opacity': 0.18,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-active-formation-members-outline',
+            type: 'line',
+            source: 'atlas-active-formation-members',
+            paint: {
+              'line-color': '#35573a',
+              'line-width': 1.8,
+              'line-opacity': 0.92,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-formation-overlay-fill',
+            type: 'fill',
+            source: 'atlas-selected-formation-overlay',
+            paint: {
+              'fill-color': '#3f6a45',
+              'fill-opacity': 0.24,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-formation-overlay-outline',
+            type: 'line',
+            source: 'atlas-selected-formation-overlay',
+            paint: {
+              'line-color': '#26462b',
+              'line-width': 2.5,
+              'line-opacity': 0.98,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-basemap-feature-fill',
+            type: 'fill',
+            source: 'atlas-selected-basemap-feature',
+            paint: {
+              'fill-color': '#b64b2f',
+              'fill-opacity': 0.18,
+            },
+          });
+
         map.addLayer({
-          id: 'periods-outline',
+          id: 'atlas-selected-basemap-feature-outline',
           type: 'line',
-          source: 'periods',
-          paint: {
-            'line-color': ['get', 'color'],
-            'line-width': 2,
+          source: 'atlas-selected-basemap-feature',
+            paint: {
+              'line-color': '#8d3118',
+              'line-width': 2.2,
+              'line-opacity': 0.96,
           },
         });
 
         map.addLayer({
-          id: 'periods-label',
-          type: 'symbol',
-          source: 'periods',
-          layout: {
-            'text-field': ['get', 'name'],
-            'text-size': 12,
-            'text-allow-overlap': true,
-          },
+          id: 'atlas-hovered-basemap-feature-fill',
+          type: 'fill',
+          source: 'atlas-hovered-basemap-feature',
           paint: {
-            'text-color': '#3e2f22',
-            'text-halo-color': '#fdf6ea',
-            'text-halo-width': 1,
+            'fill-color': '#f5f0dd',
+            'fill-opacity': 0.12,
           },
         });
 
-        syncMapToYear(yearRef.current);
+          map.addLayer({
+            id: 'atlas-hovered-basemap-feature-outline',
+            type: 'line',
+            source: 'atlas-hovered-basemap-feature',
+            paint: {
+            'line-color': '#f8f1e5',
+            'line-width': 1.4,
+            'line-opacity': 0.95,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-person-presence-spokes',
+            type: 'line',
+            source: 'atlas-person-presence-spokes',
+            paint: {
+              'line-color': [
+                'match',
+                ['get', 'atlasPresenceMode'],
+                'formation',
+                '#6e5a8e',
+                '#8f6e43',
+              ],
+              'line-opacity': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                0.26,
+                3.5,
+                0.46,
+                6,
+                0.7,
+              ],
+              'line-width': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                0.7,
+                4,
+                1,
+                7,
+                1.4,
+              ],
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-person-presence',
+            type: 'circle',
+            source: 'atlas-person-presence',
+            paint: {
+              'circle-radius': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                4.5,
+                4,
+                6.2,
+                7,
+                8.5,
+              ],
+              'circle-color': [
+                'match',
+                ['get', 'atlasPresenceMode'],
+                'formation',
+                '#7a5b9e',
+                '#b57b36',
+              ],
+              'circle-opacity': 0.95,
+              'circle-stroke-width': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                1,
+                1.1,
+                5,
+                1.6,
+                7,
+                2,
+              ],
+              'circle-stroke-color': '#fff6ea',
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-entities-points',
+            type: 'circle',
+            source: 'atlas-entities',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': [
+                'match',
+                ['get', 'kind'],
+                'battle',
+                '#a0462d',
+                'ruler',
+                '#8c4f1f',
+                'person',
+                '#a0762b',
+                'nation',
+                '#376b6d',
+                'civilization',
+                '#91593a',
+                'era',
+                '#6d5f88',
+                'region',
+                '#5a6d48',
+                '#2f5b86',
+              ],
+              'circle-stroke-width': 1.5,
+              'circle-stroke-color': '#f9f0df',
+              'circle-opacity': 0.94,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-entities-selected',
+            type: 'circle',
+            source: 'atlas-entities',
+            paint: {
+              'circle-radius': 11,
+              'circle-color': 'rgba(255, 255, 255, 0)',
+              'circle-stroke-width': 2.5,
+              'circle-stroke-color': '#3a2a1b',
+            },
+            filter: ['==', ['get', 'id'], -1],
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-geometry-fill',
+            type: 'fill',
+            source: 'atlas-selected-geometry',
+            paint: {
+              'fill-color': '#8d5d35',
+              'fill-opacity': 0.18,
+            },
+          });
+
+          map.addLayer({
+            id: 'atlas-selected-geometry-outline',
+            type: 'line',
+            source: 'atlas-selected-geometry',
+            paint: {
+              'line-color': '#5b3822',
+              'line-width': 2,
+              'line-opacity': 0.82,
+            },
+          });
+
+          map.on('click', 'atlas-entities-points', (event) => {
+            const feature = event.features?.[0];
+            const id = feature?.properties?.id;
+            const parsedId = typeof id === 'number' ? id : Number(id);
+            if (Number.isInteger(parsedId) && parsedId > 0) {
+              setFocusedPolityId(null);
+              setSelectedAtlasEntityId(parsedId);
+            }
+          });
+
+          map.on('mouseenter', 'atlas-entities-points', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mouseleave', 'atlas-entities-points', () => {
+            map.getCanvas().style.cursor = '';
+          });
+
+          map.on('click', 'atlas-active-formation-members-fill', (event) => {
+            const feature = event.features?.[0] as BasemapFeature | undefined;
+            const featureId = feature?.properties?.atlasFeatureId;
+            if (typeof featureId === 'string' && featureId) {
+              if (
+                activeFormationIdRef.current &&
+                selectedBasemapFeatureIdRef.current === featureId
+              ) {
+                setSelectedFormationOverlayId((current) =>
+                  current === activeFormationIdRef.current ? null : activeFormationIdRef.current
+                );
+                return;
+              }
+
+              setSelectedFormationOverlayId(null);
+              setFocusedPolityId(null);
+              setSelectedBasemapFeatureId(featureId);
+            }
+          });
+
+          map.on('mouseenter', 'atlas-active-formation-members-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mouseleave', 'atlas-active-formation-members-fill', () => {
+            map.getCanvas().style.cursor = '';
+          });
+
+          map.on('click', 'atlas-person-presence', (event) => {
+            const feature = event.features?.[0] as { properties?: Record<string, unknown> } | undefined;
+            const personEntityId = feature?.properties?.atlasPersonEntityId;
+            const parsedId =
+              typeof personEntityId === 'number' ? personEntityId : Number(personEntityId);
+            if (Number.isInteger(parsedId) && parsedId > 0) {
+              navigate(`/entities/${parsedId}`, {
+                state: {
+                  returnTo: `${window.location.pathname}${window.location.search}`,
+                },
+              });
+            }
+          });
+
+          map.on('mouseenter', 'atlas-person-presence', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+
+          map.on('mousemove', 'atlas-person-presence', (event) => {
+            const feature = event.features?.[0] as { properties?: Record<string, unknown> } | undefined;
+            if (!feature?.properties) return;
+
+            if (!personPopupRef.current) {
+              personPopupRef.current = new maplibregl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                offset: 14,
+                className: 'world-history-map-popup',
+              });
+            }
+
+            const personTitle = String(feature.properties.atlasPersonTitle ?? 'Untitled person');
+            const polityTitle = String(feature.properties.atlasPolityTitle ?? 'Unknown polity');
+            const timespan = String(feature.properties.atlasMembershipTimespan ?? 'Undated');
+            const formationTitle = feature.properties.atlasFormationTitle
+              ? String(feature.properties.atlasFormationTitle)
+              : null;
+
+            personPopupRef.current
+              .setLngLat(event.lngLat)
+              .setHTML(
+                `<div class="world-history-map-popup__content">
+                  <strong>${escapeHtml(personTitle)}</strong>
+                  <span>${escapeHtml(polityTitle)}</span>
+                  ${formationTitle ? `<span>${escapeHtml(formationTitle)}</span>` : ''}
+                  <span>${escapeHtml(timespan)}</span>
+                </div>`
+              )
+              .addTo(map);
+          });
+
+          map.on('mouseleave', 'atlas-person-presence', () => {
+            map.getCanvas().style.cursor = '';
+            personPopupRef.current?.remove();
+          });
+
+        map.on('click', 'atlas-historical-basemap-fill', (event) => {
+          const feature = event.features?.[0] as BasemapFeature | undefined;
+          if (!isNamedBasemapFeature(feature)) {
+            return;
+          }
+          const featureId = feature?.properties?.atlasFeatureId;
+          if (typeof featureId === 'string' && featureId) {
+            setSelectedFormationOverlayId(null);
+            setFocusedPolityId(null);
+            setSelectedBasemapFeatureId(featureId);
+          }
+        });
+
+        map.on('mouseenter', 'atlas-historical-basemap-fill', () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+
+        map.on('mousemove', 'atlas-historical-basemap-fill', (event) => {
+          const feature = event.features?.[0] as BasemapFeature | undefined;
+          if (!isNamedBasemapFeature(feature)) {
+            setHoveredBasemapFeatureId(null);
+            basemapPopupRef.current?.remove();
+            map.getCanvas().style.cursor = '';
+            return;
+          }
+          const featureId = feature?.properties?.atlasFeatureId;
+          if (typeof featureId === 'string' && featureId) {
+            setHoveredBasemapFeatureId(featureId);
+          } else {
+            setHoveredBasemapFeatureId(null);
+          }
+
+          if (!feature) return;
+          map.getCanvas().style.cursor = 'pointer';
+
+          const label = getBasemapLabel(feature);
+          const parent = feature.properties?.atlasParent;
+          const subject = feature.properties?.atlasSubject;
+          const precision = feature.properties?.atlasBorderPrecision;
+
+          if (!basemapPopupRef.current) {
+            basemapPopupRef.current = new maplibregl.Popup({
+              closeButton: false,
+              closeOnClick: false,
+              offset: 14,
+              className: 'world-history-map-popup',
+            });
+          }
+
+          const detail = parent || subject || 'Standalone region';
+          basemapPopupRef.current
+            .setLngLat(event.lngLat)
+            .setHTML(
+              `<div class="world-history-map-popup__content">
+                <strong>${escapeHtml(label)}</strong>
+                <span>${escapeHtml(detail)}</span>
+                <span>Border precision: ${escapeHtml(String(precision ?? 'Unknown'))}</span>
+              </div>`
+            )
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'atlas-historical-basemap-fill', () => {
+          map.getCanvas().style.cursor = '';
+          setHoveredBasemapFeatureId(null);
+          basemapPopupRef.current?.remove();
+        });
       });
+      } catch (error) {
+        setMapError(error instanceof Error ? error.message : 'Failed to initialize the atlas map.');
+      }
     };
 
     void loadMap();
 
     return () => {
       disposed = true;
+      mapLoadedRef.current = false;
+      basemapPopupRef.current?.remove();
+      personPopupRef.current?.remove();
       localMap?.remove();
       mapRef.current = null;
-      lastPeriodRef.current = null;
     };
-  }, [maptilerApiKey, periodGeoJson]);
+  }, []);
 
   useEffect(() => {
-    yearRef.current = year;
-    syncMapToYear(year);
-  }, [year]);
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+
+    const basemapSource = map.getSource('atlas-historical-basemap') as GeoJSONSource | undefined;
+    const formationMembersSource = map.getSource('atlas-active-formation-members') as GeoJSONSource | undefined;
+    const selectedFormationOverlaySource = map.getSource(
+      'atlas-selected-formation-overlay'
+    ) as GeoJSONSource | undefined;
+    const selectedBasemapSource = map.getSource('atlas-selected-basemap-feature') as GeoJSONSource | undefined;
+    const hoveredBasemapSource = map.getSource('atlas-hovered-basemap-feature') as GeoJSONSource | undefined;
+    const personPresenceSource = map.getSource('atlas-person-presence') as GeoJSONSource | undefined;
+    const personPresenceSpokesSource = map.getSource(
+      'atlas-person-presence-spokes'
+    ) as GeoJSONSource | undefined;
+    const source = map.getSource('atlas-entities') as GeoJSONSource | undefined;
+    const geometrySource = map.getSource('atlas-selected-geometry') as GeoJSONSource | undefined;
+    if (
+      !basemapSource ||
+      !formationMembersSource ||
+      !selectedFormationOverlaySource ||
+      !selectedBasemapSource ||
+      !hoveredBasemapSource ||
+      !personPresenceSource ||
+      !personPresenceSpokesSource ||
+      !source ||
+      !geometrySource
+    ) {
+      return;
+    }
+
+    basemapSource.setData((historicalBasemapLayer?.geojson ?? EMPTY_FEATURE_COLLECTION) as any);
+    formationMembersSource.setData(activeFormationMembersGeojson as any);
+    selectedFormationOverlaySource.setData(selectedFormationOverlayGeojson as any);
+    selectedBasemapSource.setData(
+      selectedBasemapFeature
+        ? ({
+            type: 'FeatureCollection',
+            features: [selectedBasemapFeature],
+          } as any)
+        : (EMPTY_FEATURE_COLLECTION as any)
+    );
+    hoveredBasemapSource.setData(
+      hoveredBasemapFeature && hoveredBasemapFeature.properties?.atlasFeatureId !== selectedBasemapFeatureId
+        ? ({
+            type: 'FeatureCollection',
+            features: [hoveredBasemapFeature],
+          } as any)
+        : (EMPTY_FEATURE_COLLECTION as any)
+    );
+    source.setData(buildAtlasGeoJson(visibleAtlasEntities) as any);
+    personPresenceSource.setData(visiblePersonPresenceBundle.points as any);
+    personPresenceSpokesSource.setData(visiblePersonPresenceBundle.spokes as any);
+    geometrySource.setData(
+      (selectedGeometry ?? EMPTY_FEATURE_COLLECTION) as any
+    );
+
+    const selectedId =
+      selectedVisibleAtlasEntity && hasCoordinates(selectedVisibleAtlasEntity)
+        ? selectedVisibleAtlasEntity.id
+        : -1;
+    if (map.getLayer('atlas-entities-selected')) {
+      map.setFilter('atlas-entities-selected', ['==', ['get', 'id'], selectedId] as any);
+    }
+  }, [
+    activeFormationMembersGeojson,
+    historicalBasemapLayer,
+    hoveredBasemapFeature,
+    selectedBasemapFeature,
+    selectedBasemapFeatureId,
+    selectedFormationOverlayGeojson,
+    selectedGeometry,
+    visiblePersonPresenceBundle,
+    selectedVisibleAtlasEntity,
+    visibleAtlasEntities,
+  ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) {
+      setProjectedPersonLabels([]);
+      return;
+    }
+
+    let frameId = 0;
+
+    const updateLabels = () => {
+      frameId = 0;
+
+      const pointFeatures = visiblePersonPresenceBundle.points.features as PointFeatureLike[];
+      const zoom = map.getZoom();
+      if (zoom < 3.55 || pointFeatures.length === 0) {
+        setProjectedPersonLabels((current) => (current.length === 0 ? current : []));
+        return;
+      }
+
+      const container = map.getContainer();
+      const viewportWidth = container.clientWidth;
+      const viewportHeight = container.clientHeight;
+      const maxLabels = zoom >= 5.4 ? 24 : zoom >= 4.6 ? 16 : 9;
+      const collisionBoxes: Array<{
+        bottom: number;
+        left: number;
+        right: number;
+        top: number;
+      }> = [];
+
+      const orderedFeatures = [...pointFeatures].sort((left, right) => {
+        const leftMode = left.properties?.atlasPresenceMode === 'polity' ? 0 : 1;
+        const rightMode = right.properties?.atlasPresenceMode === 'polity' ? 0 : 1;
+        return (
+          leftMode - rightMode ||
+          String(left.properties?.atlasPersonTitle ?? '').localeCompare(
+            String(right.properties?.atlasPersonTitle ?? ''),
+            undefined,
+            { sensitivity: 'base' }
+          )
+        );
+      });
+
+      const nextLabels: ProjectedPersonLabel[] = [];
+
+      for (const feature of orderedFeatures) {
+        if (nextLabels.length >= maxLabels) break;
+
+        const title = String(feature.properties?.atlasPersonTitle ?? '').trim();
+        const coordinates = feature.geometry?.coordinates;
+        if (!title || !coordinates || coordinates.length < 2) continue;
+
+        const projected = map.project([coordinates[0], coordinates[1]]);
+        if (
+          projected.x < 20 ||
+          projected.y < 18 ||
+          projected.x > viewportWidth - 20 ||
+          projected.y > viewportHeight - 16
+        ) {
+          continue;
+        }
+
+        const width = Math.min(188, Math.max(72, title.length * 7.1 + 24));
+        const height = 24;
+        const box = {
+          left: projected.x - width / 2,
+          right: projected.x + width / 2,
+          top: projected.y - 34,
+          bottom: projected.y - 34 + height,
+        };
+        const overlaps = collisionBoxes.some(
+          (entry) =>
+            box.left < entry.right &&
+            box.right > entry.left &&
+            box.top < entry.bottom &&
+            box.bottom > entry.top
+        );
+        if (overlaps) continue;
+
+        collisionBoxes.push(box);
+        nextLabels.push({
+          key: String(
+            feature.properties?.atlasPresenceId ??
+              `${feature.properties?.atlasPresenceMode ?? 'presence'}-${title}`
+          ),
+          left: Math.round(projected.x),
+          top: Math.round(projected.y),
+          mode: feature.properties?.atlasPresenceMode === 'formation' ? 'formation' : 'polity',
+          title,
+        });
+      }
+
+      setProjectedPersonLabels((current) =>
+        areProjectedLabelsEqual(current, nextLabels) ? current : nextLabels
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(updateLabels);
+    };
+
+    scheduleUpdate();
+    map.on('move', scheduleUpdate);
+    map.on('zoom', scheduleUpdate);
+    map.on('resize', scheduleUpdate);
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      map.off('move', scheduleUpdate);
+      map.off('zoom', scheduleUpdate);
+      map.off('resize', scheduleUpdate);
+    };
+  }, [visiblePersonPresenceBundle]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+
+    if (isActiveFormationOverlaySelected) {
+      const bounds = getGeoJsonBounds(selectedFormationOverlayGeojson);
+      if (bounds) {
+        map.fitBounds(
+          [
+            [bounds.west, bounds.south],
+            [bounds.east, bounds.north],
+          ],
+          { padding: 78, duration: 900, maxZoom: 4.9 }
+        );
+        return;
+      }
+    }
+
+    if (selectedGeometry) {
+      const bounds = getGeoJsonBounds(selectedGeometry);
+      if (bounds) {
+        map.fitBounds(
+          [
+            [bounds.west, bounds.south],
+            [bounds.east, bounds.north],
+          ],
+          { padding: 70, duration: 900, maxZoom: 5.2 }
+        );
+        return;
+      }
+    }
+
+    if (selectedBasemapFeature) {
+      const bounds = getGeoJsonBounds({
+        type: 'FeatureCollection',
+        features: [selectedBasemapFeature],
+      });
+      if (bounds) {
+        map.fitBounds(
+          [
+            [bounds.west, bounds.south],
+            [bounds.east, bounds.north],
+          ],
+          { padding: 70, duration: 900, maxZoom: 5.2 }
+        );
+        return;
+      }
+    }
+
+    if (selectedVisibleAtlasEntity) {
+      map.flyTo({
+        center: [selectedVisibleAtlasEntity.longitude, selectedVisibleAtlasEntity.latitude],
+        zoom: 4.5,
+        duration: 900,
+      });
+      return;
+    }
+
+    if (mappableAtlasEntities.length === 1) {
+      map.flyTo({
+        center: [mappableAtlasEntities[0].longitude, mappableAtlasEntities[0].latitude],
+        zoom: 3.8,
+        duration: 900,
+      });
+      return;
+    }
+
+    if (mappableAtlasEntities.length > 1) {
+      const west = Math.min(...mappableAtlasEntities.map((entity) => entity.longitude));
+      const east = Math.max(...mappableAtlasEntities.map((entity) => entity.longitude));
+      const south = Math.min(...mappableAtlasEntities.map((entity) => entity.latitude));
+      const north = Math.max(...mappableAtlasEntities.map((entity) => entity.latitude));
+      map.fitBounds(
+        [
+          [west, south],
+          [east, north],
+        ],
+        { padding: 80, duration: 900, maxZoom: 4.8 }
+      );
+    }
+  }, [
+    isActiveFormationOverlaySelected,
+    mappableAtlasEntities,
+    selectedBasemapFeature,
+    selectedFormationOverlayGeojson,
+    selectedGeometry,
+    selectedVisibleAtlasEntity,
+  ]);
 
   return (
     <div className="world-history-page">
@@ -254,74 +3068,1376 @@ const WorldHistoryPage: React.FC = () => {
         <header className="world-history-header">
           <div className="world-history-title">
             <span className="world-history-eyebrow">World History</span>
-            <h1>World History Atlas</h1>
+            <h1>Canonical Atlas</h1>
             <p>
-              Drag through time and watch each era focus the map. This layout mirrors the historic atlas
-              timeline experience, ready for real datasets.
+              Local historical boundaries below, with atlas tools layered on top.
             </p>
           </div>
+
           <div className="world-history-meta">
             <div className="world-history-meta-card">
               <span className="world-history-meta-label">Year</span>
               <span className="world-history-meta-value">{formatYear(year)}</span>
             </div>
             <div className="world-history-meta-card">
-              <span className="world-history-meta-label">Active Period</span>
-              <span className="world-history-meta-value">{activePeriod.name}</span>
+              <span className="world-history-meta-label">Boundary snapshot</span>
+              <span className="world-history-meta-value">
+                {activeBasemapYear ? formatYear(activeBasemapYear.year) : 'Unavailable'}
+              </span>
               <span className="world-history-hint">
-                {formatYear(activePeriod.start)} to {formatYear(activePeriod.end)}
+                {historicalBasemapManifest?.datasetPresent
+                  ? `${activeBasemapYear?.countryCount ?? 0} regions from historical-basemaps`
+                  : 'Clone the local historical-basemaps dataset to enable polygon layers.'}
+              </span>
+            </div>
+            <div className="world-history-meta-card">
+              <span className="world-history-meta-label">Visible atlas entities</span>
+              <span className="world-history-meta-value">{visibleAtlasEntities.length}</span>
+              {topVisibleKinds[0] && <span className="world-history-hint">{topVisibleKinds.join(' · ')}</span>}
+            </div>
+            <div className="world-history-meta-card">
+              <span className="world-history-meta-label">Mapped right now</span>
+              <span className="world-history-meta-value">{mappableAtlasEntities.length}</span>
+              <span className="world-history-hint">
+                Overlay source: pinned authority records from Wikidata.
+                {visiblePersonPresenceCount > 0 ? ` People on map: ${visiblePersonPresenceCount}.` : ''}
+                {historicalBasemapLayer ? ` Snapshot regions: ${historicalBasemapLayer.featureCount}.` : ''}
               </span>
             </div>
           </div>
         </header>
 
-        <section className="world-history-map">
-          <div ref={mapContainerRef} className="world-history-map__canvas" />
-          {!maptilerApiKey && (
-            <div className="world-history-map__overlay">
-              <strong>MapTiler API key required</strong>
-              <span>Add <code>VITE_MAPTILER_API_KEY</code> in <code>client/.env.local</code> to load the map.</span>
-            </div>
-          )}
-        </section>
-
-        <section className="world-history-timeline">
-          <div className="world-history-range">
-            <input
-              type="range"
-              min={yearBounds.minYear}
-              max={yearBounds.maxYear}
-              step={1}
-              value={year}
-              onChange={(event) => setYear(Number(event.target.value))}
-            />
-            <div className="world-history-ticks">
-              {ticks.map((tick) => (
-                <span key={tick}>{formatYear(tick)}</span>
-              ))}
-            </div>
-          </div>
-          <div className="world-history-segments">
-            {segments.map((period) => (
-              <button
-                key={period.id}
-                type="button"
-                className={`timeline-segment ${activePeriod.id === period.id ? 'is-active' : ''}`}
-                onClick={() => setYear(period.midYear)}
-                style={{
-                  flex: period.span,
-                  ['--segment-color' as string]: period.color,
-                }}
-              >
-                <div className="timeline-segment-name">{period.name}</div>
-                <div className="timeline-segment-range">
-                  {formatYear(period.start)} - {formatYear(period.end)}
+        <div className="world-history-layout">
+          <section className="world-history-main">
+            <section className="world-history-map">
+              <div ref={mapContainerRef} className="world-history-map__canvas" />
+              {projectedPersonLabels.length > 0 && (
+                <div className="world-history-map__labels" aria-hidden="true">
+                  {projectedPersonLabels.map((label) => (
+                    <div
+                      key={label.key}
+                      className={`world-history-map__person-label world-history-map__person-label--${label.mode}`}
+                      style={{ left: label.left, top: label.top }}
+                    >
+                      {label.title}
+                    </div>
+                  ))}
                 </div>
-                <div className="world-history-hint">{period.summary}</div>
-              </button>
-            ))}
-          </div>
-        </section>
+              )}
+              <div className="world-history-map__float world-history-map__float--left">
+                <section className="world-history-panel world-history-panel--floating">
+                  <div className="world-history-panel__header">
+                    <div>
+                      <span className="world-history-panel__eyebrow">Search</span>
+                      <h2>Bring in canonical history</h2>
+                    </div>
+                  </div>
+
+                  <div className="world-history-search">
+                    <input
+                      type="text"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void runSearch();
+                        }
+                      }}
+                      placeholder="Hegel, Roman Empire, Battle of Actium..."
+                    />
+
+                    <div className="world-history-search__controls">
+                      <select value={searchKind} onChange={(event) => setSearchKind(event.target.value as HistoricalAtlasKind)}>
+                        {atlasKindOptions.map((kind) => (
+                          <option key={kind} value={kind}>
+                            {kindLabels[kind]}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => void runSearch()} disabled={isSearching}>
+                        {isSearching ? 'Searching…' : 'Search authority'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="world-history-filter-bar">
+                    <div className="world-history-filter-bar__head">
+                      <span className="world-history-panel__eyebrow">People Filter</span>
+                      {selectedSubjectFilterId ? (
+                        <span className="world-history-count-chip">{visiblePersonPresenceCount}</span>
+                      ) : null}
+                    </div>
+                    <div className="world-history-filter-controls">
+                      <select
+                        value={selectedSubjectFilterId ? String(selectedSubjectFilterId) : ''}
+                        onChange={(event) =>
+                          setSelectedSubjectFilterId(
+                            event.target.value ? Number(event.target.value) : null
+                          )
+                        }
+                        disabled={isLoadingSubjects || subjectFilterOptions.length === 0}
+                      >
+                        <option value="">All subjects</option>
+                        {subjectFilterOptions.map((subject) => (
+                          <option key={subject.id} value={subject.id}>
+                            {subject.label}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedSubjectFilterId ? (
+                        <button
+                          type="button"
+                          className="world-history-clear-button"
+                          onClick={() => setSelectedSubjectFilterId(null)}
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+                    {selectedSubjectFilterId ? (
+                      <div className="world-history-filter-meta">
+                        {isLoadingPersonSubjectMemberships
+                          ? `Filtering people for ${selectedSubjectFilterLabel}…`
+                          : `Showing people for ${selectedSubjectFilterLabel}.`}
+                      </div>
+                    ) : null}
+                    {subjectsError && <div className="world-history-feedback is-error">{subjectsError}</div>}
+                    {personSubjectMembershipsError && (
+                      <div className="world-history-feedback is-error">{personSubjectMembershipsError}</div>
+                    )}
+                  </div>
+
+                  {searchError && <div className="world-history-feedback is-error">{searchError}</div>}
+                  {statusMessage && <div className="world-history-feedback">{statusMessage}</div>}
+
+                  <div className="world-history-results">
+                    {searchResults.length === 0 ? (
+                      <div className="world-history-empty">
+                        Search first, then pin the records that should live in your atlas shelf.
+                      </div>
+                    ) : (
+                      searchResults.map((result) => {
+                        const saveKey = `${result.authority}:${result.authorityId}`;
+                        const isSaved = savedAuthorityIds.has(saveKey);
+                        return (
+                          <article key={saveKey} className="world-history-result-card">
+                            <div className="world-history-result-card__head">
+                              <div>
+                                <span className="world-history-kind-chip">{kindLabels[result.kind]}</span>
+                                <h3>{result.title}</h3>
+                              </div>
+                              {result.imageUrl && (
+                                <img
+                                  src={result.imageUrl}
+                                  alt=""
+                                  className="world-history-result-card__thumb"
+                                />
+                              )}
+                            </div>
+                            <p>{result.summary || 'No authority summary was returned for this record.'}</p>
+                            <div className="world-history-result-card__meta">
+                              <span>{formatTimespan(result)}</span>
+                              <span>{hasCoordinates(result) ? 'Mapped point available' : 'No coordinates yet'}</span>
+                              <span>{result.metadata?.hasGeoshape ? 'Boundary available' : 'Point only'}</span>
+                            </div>
+                            <div className="world-history-result-card__actions">
+                              <button
+                                type="button"
+                                className="is-primary"
+                                onClick={() => void handleSaveAtlasEntity(result)}
+                                disabled={isSaved || pendingSaveAuthorityId === result.authorityId}
+                              >
+                                {isSaved
+                                  ? 'Pinned'
+                                  : pendingSaveAuthorityId === result.authorityId
+                                    ? 'Pinning…'
+                                    : 'Pin to atlas'}
+                              </button>
+                              {result.sourceUrl && (
+                                <a href={result.sourceUrl} target="_blank" rel="noreferrer">
+                                  Source
+                                </a>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              </div>
+              {mapError && (
+                <div className="world-history-map__overlay">
+                  <strong>Map unavailable</strong>
+                  <span>
+                    {mapError}
+                  </span>
+                </div>
+              )}
+            </section>
+
+            {basemapError ? (
+              <div className="world-history-feedback is-error">{basemapError}</div>
+            ) : null}
+
+            <section className="world-history-timeline">
+              <div className="world-history-range">
+                <input
+                  type="range"
+                  min={yearBounds.minYear}
+                  max={yearBounds.maxYear}
+                  step={1}
+                  value={year}
+                  onChange={(event) => setYear(Number(event.target.value))}
+                />
+                <div className="world-history-ticks">
+                  {ticks.map((tick) => (
+                    <span key={tick}>{formatYear(tick)}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="world-history-timeline__meta">
+                <span>
+                  Basemap snaps to the nearest available year from {formatYear(DEFAULT_BASEMAP_CUTOFF_YEAR)} onward.
+                </span>
+                <strong>
+                  {isLoadingBasemapManifest || isLoadingBasemapLayer
+                    ? 'Loading boundary snapshot…'
+                    : activeBasemapYear
+                      ? `Showing ${formatYear(activeBasemapYear.year)}`
+                      : 'No basemap snapshot loaded'}
+                </strong>
+              </div>
+            </section>
+
+            <div className="world-history-details-grid">
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Selected</span>
+                    <h2>{selectedAtlasEntity ? selectedAtlasEntity.title : 'No atlas entity selected'}</h2>
+                  </div>
+                </div>
+
+                {!selectedAtlasEntity ? (
+                  <div className="world-history-empty">Pin an authority record and select it to inspect it here.</div>
+                ) : (
+                  <div className="world-history-selected-card">
+                    <div className="world-history-selected-card__head">
+                      <div>
+                        <span className="world-history-kind-chip">{kindLabels[selectedAtlasEntity.kind]}</span>
+                        <p className="world-history-selected-card__timespan">
+                          {formatAtlasEntityTimespan(
+                            selectedAtlasEntity,
+                            linkedPolityByAtlasEntityId.get(selectedAtlasEntity.id) ?? null
+                          )}
+                        </p>
+                      </div>
+                      {selectedAtlasEntity.imageUrl && (
+                        <img
+                          src={selectedAtlasEntity.imageUrl}
+                          alt=""
+                          className="world-history-selected-card__thumb"
+                        />
+                      )}
+                    </div>
+
+                    <p>{selectedAtlasEntity.summary || 'No authority summary is stored for this atlas entity yet.'}</p>
+
+                    <div className="world-history-selected-card__facts">
+                      <div>
+                        <span className="world-history-panel__eyebrow">Map state</span>
+                        <strong>
+                          {hasCoordinates(selectedAtlasEntity)
+                            ? `${selectedAtlasEntity.latitude.toFixed(2)}, ${selectedAtlasEntity.longitude.toFixed(2)}`
+                            : 'No coordinates yet'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Visible at {formatYear(year)}</span>
+                        <strong>
+                          {isAtlasEntityVisibleInYear(
+                            selectedAtlasEntity,
+                            year,
+                            linkedPolityByAtlasEntityId.get(selectedAtlasEntity.id) ?? null
+                          )
+                            ? 'Yes'
+                            : 'No'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Local encyclopedia</span>
+                        <strong>{selectedAtlasEntity.referenceEntityId ? 'Linked' : 'Not linked yet'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Boundary layer</span>
+                        <strong>{hasBoundaryGeometry(selectedAtlasEntity) ? 'Available' : 'Point only'}</strong>
+                      </div>
+                    </div>
+
+                    <div className="world-history-selected-card__actions">
+                      {typeof selectedAtlasEntity.referenceEntityId === 'number' ? (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() => openEntityPage(selectedAtlasEntity.referenceEntityId!)}
+                        >
+                          Open linked entity
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() => void handlePromoteToEntity(selectedAtlasEntity)}
+                          disabled={pendingPromoteId === selectedAtlasEntity.id}
+                        >
+                          {pendingPromoteId === selectedAtlasEntity.id ? 'Opening…' : 'Create local entity'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="is-destructive"
+                        onClick={() => void handleDeleteAtlasEntity(selectedAtlasEntity)}
+                        disabled={pendingDeleteId === selectedAtlasEntity.id}
+                      >
+                        {pendingDeleteId === selectedAtlasEntity.id ? 'Removing…' : 'Remove from atlas'}
+                      </button>
+                      {selectedAtlasEntity.sourceUrl && (
+                        <a href={selectedAtlasEntity.sourceUrl} target="_blank" rel="noreferrer">
+                          Authority record
+                        </a>
+                      )}
+                    </div>
+                    {geometryError ? (
+                      <div className="world-history-feedback is-error">{geometryError}</div>
+                    ) : null}
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Snapshot</span>
+                    <h2>
+                      {resolvedPolityMatch
+                        ? resolvedPolityMatch.referenceEntity.title
+                        : selectedBasemapFeature
+                          ? getBasemapLabel(selectedBasemapFeature)
+                          : 'Select a region'}
+                    </h2>
+                  </div>
+                  {selectedBasemapFeature ? (
+                    <button
+                      type="button"
+                      className="world-history-clear-button"
+                      onClick={() => {
+                        setFocusedPolityId(null);
+                        setSelectedBasemapFeatureId(null);
+                      }}
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+
+                {!selectedBasemapFeature ? (
+                  <div className="world-history-empty">
+                    Click a boundary on the active historical basemap to inspect the region for this snapshot year.
+                  </div>
+                ) : (
+                  <div className="world-history-selected-card">
+                    {resolvedPolityMatch ? (
+                      <div className="world-history-selected-card__summary">
+                        <span className="world-history-panel__eyebrow">Resolved polity</span>
+                        <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+                        <span className="world-history-hint">
+                          Snapshot region: {getBasemapLabel(selectedBasemapFeature)}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="world-history-selected-card__facts">
+                      <div>
+                        <span className="world-history-panel__eyebrow">Snapshot year</span>
+                        <strong>{activeBasemapYear ? formatYear(activeBasemapYear.year) : 'Unavailable'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Part of</span>
+                        <strong>{selectedBasemapFeature.properties?.atlasParent || 'Standalone region'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Subject</span>
+                        <strong>{selectedBasemapFeature.properties?.atlasSubject || 'No subject note'}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Border precision</span>
+                        <strong>
+                          {selectedBasemapFeature.properties?.atlasBorderPrecision ?? 'Unknown'}
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="world-history-reconciliation">
+                      <div className="world-history-reconciliation__header">
+                        <div>
+                          <span className="world-history-panel__eyebrow">Reconciliation</span>
+                          <strong>Known matches for this region</strong>
+                        </div>
+                        <span className="world-history-count-chip">
+                          {matchedAtlasEntities.length +
+                            matchedReferenceEntities.length +
+                            (resolvedPolityMatch ? 1 : 0)}
+                        </span>
+                      </div>
+
+                      {isLoadingReferenceEntities ? (
+                        <div className="world-history-empty">
+                          Checking the local encyclopedia for matching region records…
+                        </div>
+                      ) : resolvedPolityMatchError ? (
+                        <div className="world-history-feedback is-error">{resolvedPolityMatchError}</div>
+                      ) : referenceEntitiesError ? (
+                        <div className="world-history-feedback is-error">{referenceEntitiesError}</div>
+                      ) : !resolvedPolityMatch &&
+                        matchedAtlasEntities.length === 0 &&
+                        matchedReferenceEntities.length === 0 ? (
+                        <div className="world-history-empty">
+                          No pinned atlas record or local encyclopedia entity matches this region name yet.
+                        </div>
+                      ) : (
+                        <div className="world-history-reconciliation__groups">
+                          {resolvedPolityMatch ? (
+                            <div className="world-history-reconciliation__group">
+                              <div className="world-history-reconciliation__group-header">
+                                <span className="world-history-panel__eyebrow">Built-in polity</span>
+                                <span className="world-history-count-chip">1</span>
+                              </div>
+                              <div className="world-history-reconciliation__list">
+                                <article className="world-history-reconciliation-card">
+                                  <div className="world-history-reconciliation-card__head">
+                                    <div className="world-history-shelf-card__chips">
+                                      <span className="world-history-kind-chip">
+                                        {referenceEntityKindLabels[resolvedPolityMatch.referenceEntity.kind]}
+                                      </span>
+                                      {isBuiltInPolityReferenceEntity(resolvedPolityMatch.referenceEntity) ? (
+                                        <span className="world-history-linked-chip">Built-in</span>
+                                      ) : null}
+                                    </div>
+                                    <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+                                  </div>
+                                  <span className="world-history-hint">
+                                    Snapshot {formatYear(resolvedPolityMatch.snapshot.snapshotYear)}
+                                    {resolvedPolityMatch.snapshot.parentLabel
+                                      ? ` · ${resolvedPolityMatch.snapshot.parentLabel}`
+                                      : ''}
+                                  </span>
+                                  <div className="world-history-reconciliation-card__actions">
+                                    <button
+                                      type="button"
+                                      className="is-primary"
+                                      onClick={() => openEntityPage(resolvedPolityMatch.referenceEntity.id)}
+                                    >
+                                      Open polity
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowPersonPlacementComposer((current) => !current)
+                                      }
+                                    >
+                                      {showPersonPlacementComposer ? 'Close person placement' : 'Place person here'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowFormationPlacementComposer((current) => !current)
+                                      }
+                                    >
+                                      {showFormationPlacementComposer ? 'Close formation link' : 'Add to formation'}
+                                    </button>
+                                  </div>
+                                  {showPersonPlacementComposer ? (
+                                    <form
+                                      className="world-history-inline-form"
+                                      onSubmit={handleCreatePersonPlacement}
+                                    >
+                                      <div className="world-history-inline-form__grid">
+                                        <select
+                                          value={personPlacementForm.personEntityId}
+                                          onChange={(event) =>
+                                            setPersonPlacementForm((current) => ({
+                                              ...current,
+                                              personEntityId: event.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value="">Choose a person</option>
+                                          {personEntities.map((entry) => (
+                                            <option key={entry.id} value={entry.id}>
+                                              {entry.title}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="number"
+                                          value={personPlacementForm.startYear}
+                                          onChange={(event) =>
+                                            setPersonPlacementForm((current) => ({
+                                              ...current,
+                                              startYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="Start year"
+                                        />
+                                        <input
+                                          type="number"
+                                          value={personPlacementForm.endYear}
+                                          onChange={(event) =>
+                                            setPersonPlacementForm((current) => ({
+                                              ...current,
+                                              endYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="End year"
+                                        />
+                                      </div>
+                                      <input
+                                        value={personPlacementForm.note}
+                                        onChange={(event) =>
+                                          setPersonPlacementForm((current) => ({
+                                            ...current,
+                                            note: event.target.value,
+                                          }))
+                                        }
+                                        placeholder="Optional note about this polity membership"
+                                      />
+                                      <div className="world-history-inline-form__actions">
+                                        <button
+                                          type="submit"
+                                          className="is-primary"
+                                          disabled={
+                                            savingPersonPlacement ||
+                                            !personPlacementForm.personEntityId
+                                          }
+                                        >
+                                          {savingPersonPlacement ? 'Placing…' : 'Confirm placement'}
+                                        </button>
+                                      </div>
+                                      {personEntities.length === 0 ? (
+                                        <span className="world-history-hint">
+                                          Create a person in the atlas first, then place them here.
+                                        </span>
+                                      ) : null}
+                                    </form>
+                                  ) : null}
+                                  {showFormationPlacementComposer ? (
+                                    <form
+                                      className="world-history-inline-form"
+                                      onSubmit={handleCreateFormationPlacement}
+                                    >
+                                      <div className="world-history-inline-form__grid">
+                                        <select
+                                          value={formationPlacementForm.formationEntityId}
+                                          onChange={(event) =>
+                                            setFormationPlacementForm((current) => ({
+                                              ...current,
+                                              formationEntityId: event.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value="">Choose a formation</option>
+                                          {formationEntities.map((entry) => (
+                                            <option key={entry.id} value={entry.id}>
+                                              {entry.title}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="number"
+                                          value={formationPlacementForm.startYear}
+                                          onChange={(event) =>
+                                            setFormationPlacementForm((current) => ({
+                                              ...current,
+                                              startYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="Start year"
+                                        />
+                                        <input
+                                          type="number"
+                                          value={formationPlacementForm.endYear}
+                                          onChange={(event) =>
+                                            setFormationPlacementForm((current) => ({
+                                              ...current,
+                                              endYear: event.target.value,
+                                            }))
+                                          }
+                                          placeholder="End year"
+                                        />
+                                      </div>
+                                      <input
+                                        value={formationPlacementForm.note}
+                                        onChange={(event) =>
+                                          setFormationPlacementForm((current) => ({
+                                            ...current,
+                                            note: event.target.value,
+                                          }))
+                                        }
+                                        placeholder="Optional note about this formation membership"
+                                      />
+                                      <div className="world-history-inline-form__actions">
+                                        <button
+                                          type="submit"
+                                          className="is-primary"
+                                          disabled={
+                                            savingFormationPlacement ||
+                                            !formationPlacementForm.formationEntityId
+                                          }
+                                        >
+                                          {savingFormationPlacement ? 'Adding…' : 'Add membership'}
+                                        </button>
+                                      </div>
+                                      {formationEntities.length === 0 ? (
+                                        <span className="world-history-hint">
+                                          Create a formation first, then add this polity into it.
+                                        </span>
+                                      ) : null}
+                                    </form>
+                                  ) : null}
+                                  {isLoadingSelectedPolityContext ? (
+                                    <div className="world-history-empty">
+                                      Loading polity context…
+                                    </div>
+                                  ) : selectedPolityContextError ? (
+                                    <div className="world-history-feedback is-error">
+                                      {selectedPolityContextError}
+                                    </div>
+                                  ) : (
+                                    <div className="world-history-context-grid">
+                                      <article className="world-history-context-card">
+                                        <span className="world-history-panel__eyebrow">Atlas history</span>
+                                        <strong>{selectedPolitySnapshots.length} snapshots</strong>
+                                        <span>{selectedPolitySnapshotRange}</span>
+                                        {selectedPolitySnapshotYears.length > 0 ? (
+                                          <div className="world-history-context-card__chips">
+                                            {selectedPolitySnapshotYears
+                                              .slice(
+                                                Math.max(
+                                                  selectedPolitySnapshotYears.length - 5,
+                                                  0
+                                                )
+                                              )
+                                              .map((snapshotYear) => (
+                                                <span key={snapshotYear} className="world-history-count-chip">
+                                                  {formatYear(snapshotYear)}
+                                                </span>
+                                              ))}
+                                          </div>
+                                        ) : null}
+                                      </article>
+
+                                      <article className="world-history-context-card">
+                                        <span className="world-history-panel__eyebrow">People here</span>
+                                        <strong>{selectedPolityVisiblePersonMemberships.length} visible now</strong>
+                                        <span>
+                                          {selectedPolityPersonMemberships.length === 0
+                                            ? 'No people are placed in this polity yet.'
+                                            : selectedPolityHistoricalPersonMemberships.length > 0
+                                              ? `${selectedPolityHistoricalPersonMemberships.length} more belong to this polity outside the current atlas year.`
+                                              : 'All recorded people here are visible in the current atlas year.'}
+                                        </span>
+                                        {selectedPolityVisiblePeoplePreview.length > 0 ? (
+                                          <div className="world-history-context-list">
+                                            {selectedPolityVisiblePeoplePreview.map((membership) => (
+                                              <button
+                                                key={`polity-person-${membership.id}`}
+                                                type="button"
+                                                className="world-history-context-list__item"
+                                                onClick={() =>
+                                                  membership.personEntityId
+                                                    ? openEntityPage(membership.personEntityId)
+                                                    : undefined
+                                                }
+                                              >
+                                                <strong>{membership.personTitle || 'Untitled person'}</strong>
+                                                <span>{formatMembershipTimespan(membership)}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                        {selectedPolityHistoricalPeoplePreview.length > 0 ? (
+                                          <div className="world-history-context-list">
+                                            {selectedPolityHistoricalPeoplePreview.map((membership) => (
+                                              <button
+                                                key={`polity-person-historical-${membership.id}`}
+                                                type="button"
+                                                className="world-history-context-list__item"
+                                                onClick={() =>
+                                                  membership.personEntityId
+                                                    ? openEntityPage(membership.personEntityId)
+                                                    : undefined
+                                                }
+                                              >
+                                                <strong>{membership.personTitle || 'Untitled person'}</strong>
+                                                <span>{`${formatMembershipTimespan(membership)} · broader history`}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </article>
+
+                                      <article className="world-history-context-card">
+                                        <span className="world-history-panel__eyebrow">Formations</span>
+                                        <strong>{selectedPolityFormationMemberships.length}</strong>
+                                        <span>
+                                          {selectedPolityFormationMemberships.length === 0
+                                            ? 'No formations include this polity yet.'
+                                            : 'Formations currently built from this polity.'}
+                                        </span>
+                                        {selectedPolityFormationPreview.length > 0 ? (
+                                          <div className="world-history-context-list">
+                                            {selectedPolityFormationPreview.map((membership) => (
+                                              <button
+                                                key={`polity-formation-${membership.id}`}
+                                                type="button"
+                                                className="world-history-context-list__item"
+                                                onClick={() =>
+                                                  membership.formationEntityId
+                                                    ? openEntityPage(membership.formationEntityId)
+                                                    : undefined
+                                                }
+                                              >
+                                                <strong>{membership.formationTitle || 'Untitled formation'}</strong>
+                                                <span>{formatMembershipTimespan(membership)}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </article>
+                                    </div>
+                                  )}
+                                </article>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {matchedAtlasEntities.length > 0 ? (
+                            <div className="world-history-reconciliation__group">
+                              <div className="world-history-reconciliation__group-header">
+                                <span className="world-history-panel__eyebrow">Atlas shelf</span>
+                                <span className="world-history-count-chip">{matchedAtlasEntities.length}</span>
+                              </div>
+                              <div className="world-history-reconciliation__list">
+                                {matchedAtlasEntities.map((entity) => (
+                                  <article
+                                    key={`atlas-match-${entity.id}`}
+                                    className="world-history-reconciliation-card"
+                                  >
+                                    <div className="world-history-reconciliation-card__head">
+                                      <div className="world-history-shelf-card__chips">
+                                        <span className="world-history-kind-chip">
+                                          {kindLabels[entity.kind]}
+                                        </span>
+                                        {entity.referenceEntityId ? (
+                                          <span className="world-history-linked-chip">Linked</span>
+                                        ) : null}
+                                        {hasBoundaryGeometry(entity) ? (
+                                          <span className="world-history-boundary-chip">Boundary</span>
+                                        ) : null}
+                                      </div>
+                                      <strong>{entity.title}</strong>
+                                    </div>
+                                    <span className="world-history-hint">
+                                      {formatAtlasEntityTimespan(
+                                        entity,
+                                        linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                                      )}
+                                    </span>
+                                    <div className="world-history-reconciliation-card__actions">
+                                      <button
+                                        type="button"
+                                        className="is-primary"
+                                        onClick={() => {
+                                          setFocusedPolityId(null);
+                                          setSelectedAtlasEntityId(entity.id);
+                                        }}
+                                      >
+                                        Focus atlas record
+                                      </button>
+                                      {typeof entity.referenceEntityId === 'number' ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openEntityPage(entity.referenceEntityId!)}
+                                        >
+                                          Open linked entity
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handlePromoteToEntity(entity)}
+                                          disabled={pendingPromoteId === entity.id}
+                                        >
+                                          {pendingPromoteId === entity.id ? 'Creating…' : 'Create local entity'}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {matchedReferenceEntities.length > 0 ? (
+                            <div className="world-history-reconciliation__group">
+                              <div className="world-history-reconciliation__group-header">
+                                <span className="world-history-panel__eyebrow">Local encyclopedia</span>
+                                <span className="world-history-count-chip">{matchedReferenceEntities.length}</span>
+                              </div>
+                              <div className="world-history-reconciliation__list">
+                                {matchedReferenceEntities.map((entity) => (
+                                  <article
+                                    key={`reference-match-${entity.id}`}
+                                    className="world-history-reconciliation-card"
+                                  >
+                                    <div className="world-history-reconciliation-card__head">
+                                      <div className="world-history-shelf-card__chips">
+                                        <span className="world-history-kind-chip">
+                                          {referenceEntityKindLabels[entity.kind]}
+                                        </span>
+                                      </div>
+                                      <strong>{entity.title}</strong>
+                                    </div>
+                                    <span className="world-history-hint">
+                                      {entity.startYear !== undefined || entity.endYear !== undefined
+                                        ? formatTimespan(entity)
+                                        : 'No local date range recorded'}
+                                    </span>
+                                    <div className="world-history-reconciliation-card__actions">
+                                      <button
+                                        type="button"
+                                        className="is-primary"
+                                        onClick={() => openEntityPage(entity.id)}
+                                      >
+                                        Open local entity
+                                      </button>
+                                    </div>
+                                  </article>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                    {atlasMembershipError ? (
+                      <div className="world-history-feedback is-error">{atlasMembershipError}</div>
+                    ) : null}
+                    {atlasMembershipMessage ? (
+                      <div className="world-history-feedback">{atlasMembershipMessage}</div>
+                    ) : null}
+                    <p>
+                      This region comes from the local historical-basemaps snapshot, not from your pinned authority
+                      shelf. Use it as the geographic frame for the current year.
+                    </p>
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">{activeFormationUi.workspaceEyebrow}</span>
+                    <h2>{activeFormation ? activeFormation.title : 'Choose a formation'}</h2>
+                  </div>
+                  {activeFormation ? (
+                    <button
+                      type="button"
+                      className="world-history-clear-button"
+                      onClick={() => openEntityPage(activeFormation.id)}
+                    >
+                      Open formation
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="world-history-inline-form">
+                  <div className="world-history-inline-form__grid">
+                    <select
+                      value={activeFormationId ? String(activeFormationId) : ''}
+                      onChange={(event) => {
+                        const nextValue = Number(event.target.value);
+                        setActiveFormationId(Number.isInteger(nextValue) && nextValue > 0 ? nextValue : null);
+                      }}
+                    >
+                      <option value="">Choose a formation</option>
+                      {formationEntities.map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.kind === 'formation' && entry.formationSubtype
+                            ? `${entry.title} · ${formationSubtypeLabels[entry.formationSubtype]}`
+                            : entry.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {formationEntities.length === 0 ? (
+                  <div className="world-history-empty">
+                    Create a formation in the atlas, then use the map to compose it from built-in polities.
+                  </div>
+                ) : isLoadingFormationWorkspace ? (
+                  <div className="world-history-empty">Loading the active formation workspace…</div>
+                ) : formationWorkspaceError ? (
+                  <div className="world-history-feedback is-error">{formationWorkspaceError}</div>
+                ) : !activeFormation ? (
+                  <div className="world-history-empty">
+                    Pick a formation here to make map-based composition the active workflow.
+                  </div>
+                ) : (
+                  <div className="world-history-selected-card">
+                    <div className="world-history-selected-card__facts">
+                      <div>
+                        <span className="world-history-panel__eyebrow">Chronology</span>
+                        <strong>{formatTimespan(activeFormation)}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">{activeFormationUi.memberCountLabel}</span>
+                        <strong>{activeFormationMemberships.length}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Visible now</span>
+                        <strong>{visibleActiveFormationMemberships.length}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">People now</span>
+                        <strong>{activeFormationPersonSummary.visible.length}</strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">Map overlay</span>
+                        <strong>
+                          {formationOverlayError
+                            ? 'Unavailable'
+                            : isLoadingFormationOverlay
+                              ? 'Loading…'
+                              : activeFormationMembersGeojson.features.length > 0
+                                ? `${activeFormationMembersGeojson.features.length} shapes`
+                                : 'No shapes yet'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="world-history-panel__eyebrow">
+                          {activeFormationIsYearBound ? 'Current year' : 'Selected region'}
+                        </span>
+                        <strong>
+                          {activeFormationIsYearBound
+                            ? activeFormationVisibleNow
+                              ? `${formatYear(year)} is inside scope`
+                              : `${formatYear(year)} is outside scope`
+                            : isActiveFormationOverlaySelected
+                            ? 'Formation overlay focused'
+                            : selectedPolityVisibleFormationMembership
+                            ? 'Already included'
+                            : selectedPolityHistoricalFormationMembership
+                              ? 'Recorded elsewhere'
+                            : resolvedPolityMatch
+                              ? 'Ready to add'
+                              : 'Choose a polity'}
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="world-history-selected-card__actions">
+                      {activeFormationMembersGeojson.features.length > 0 ? (
+                        <button
+                          type="button"
+                          className="is-primary"
+                          onClick={() =>
+                            setSelectedFormationOverlayId((current) =>
+                              current === activeFormationId ? null : activeFormationId
+                            )
+                          }
+                        >
+                          {isActiveFormationOverlaySelected ? 'Release overlay' : 'Select overlay'}
+                        </button>
+                      ) : null}
+                    </div>
+                    <span className="world-history-hint">
+                      Click a member region once to inspect that polity. Click the same member again, or use
+                      “Select overlay,” to focus the whole formation footprint for the active snapshot.
+                    </span>
+                    {activeFormationPersonSummary.historical.length > 0 ? (
+                      <span className="world-history-hint">
+                        {activeFormationPersonSummary.historical.length} more people belong somewhere in this
+                        formation’s broader history but are outside the current atlas year.
+                      </span>
+                    ) : null}
+                    {formationOverlayError ? (
+                      <div className="world-history-feedback is-error">{formationOverlayError}</div>
+                    ) : null}
+
+                    {resolvedPolityMatch ? (
+                      <div className="world-history-selected-card__summary">
+                        <span className="world-history-panel__eyebrow">Selected polity</span>
+                        <strong>{resolvedPolityMatch.referenceEntity.title}</strong>
+                        <span className="world-history-hint">
+                          {selectedPolityVisibleFormationMembership
+                            ? selectedPolityVisibleFormationMembership.startYear !== undefined ||
+                              selectedPolityVisibleFormationMembership.endYear !== undefined
+                              ? `${selectedPolityVisibleFormationMembership.startYear !== undefined ? formatYear(selectedPolityVisibleFormationMembership.startYear) : 'Open'} - ${selectedPolityVisibleFormationMembership.endYear !== undefined ? formatYear(selectedPolityVisibleFormationMembership.endYear) : 'Open'}`
+                              : activeFormationUi.alreadyIncludedMessage
+                            : selectedPolityHistoricalFormationMembership
+                              ? `${formatMembershipTimespan(selectedPolityHistoricalFormationMembership)} · Recorded, but outside the current atlas year.`
+                            : activeFormationUi.selectedRegionReadyMessage}
+                        </span>
+                        <div className="world-history-selected-card__actions">
+                          {selectedPolityVisibleFormationMembership ? (
+                            <button
+                              type="button"
+                              className="is-destructive"
+                              onClick={() => void handleRemoveFormationPlacement(selectedPolityVisibleFormationMembership)}
+                              disabled={removingFormationMembershipId === selectedPolityVisibleFormationMembership.id}
+                            >
+                              {removingFormationMembershipId === selectedPolityVisibleFormationMembership.id
+                                ? 'Removing…'
+                                : activeFormationUi.removeActionLabel}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="is-primary"
+                              onClick={() => setShowFormationPlacementComposer(true)}
+                            >
+                              {activeFormationUi.addActionLabel}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="world-history-empty">
+                        Select a named snapshot region that resolves to a built-in polity to compose this formation.
+                      </div>
+                    )}
+
+                    {showFormationPlacementComposer && resolvedPolityMatch && !selectedPolityVisibleFormationMembership ? (
+                      <form
+                        className="world-history-inline-form"
+                        onSubmit={handleCreateFormationPlacement}
+                      >
+                        <div className="world-history-inline-form__grid">
+                          <input
+                            value={resolvedPolityMatch.referenceEntity.title}
+                            disabled
+                            aria-label="Selected polity"
+                          />
+                          <input
+                            type="number"
+                            value={formationPlacementForm.startYear}
+                            onChange={(event) =>
+                              setFormationPlacementForm((current) => ({
+                                ...current,
+                                startYear: event.target.value,
+                              }))
+                            }
+                            placeholder="Start year"
+                          />
+                          <input
+                            type="number"
+                            value={formationPlacementForm.endYear}
+                            onChange={(event) =>
+                              setFormationPlacementForm((current) => ({
+                                ...current,
+                                endYear: event.target.value,
+                              }))
+                            }
+                            placeholder="End year"
+                          />
+                        </div>
+                        {activeFormationIsYearBound ? (
+                          <span className="world-history-hint">
+                            Year-bounded formations default new memberships to the current atlas year.
+                          </span>
+                        ) : null}
+                        <input
+                          value={formationPlacementForm.note}
+                          onChange={(event) =>
+                            setFormationPlacementForm((current) => ({
+                              ...current,
+                              note: event.target.value,
+                            }))
+                          }
+                          placeholder="Optional note about this formation membership"
+                        />
+                        <div className="world-history-inline-form__actions">
+                          <button
+                            type="submit"
+                            className="is-primary"
+                            disabled={savingFormationPlacement || !activeFormationId}
+                          >
+                            {savingFormationPlacement ? 'Adding…' : activeFormationUi.confirmActionLabel}
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+
+                    {activeFormationMemberships.length === 0 ? (
+                      <div className="world-history-empty">
+                        {activeFormationUi.emptyMessage}
+                      </div>
+                    ) : (
+                      <div className="world-history-shelf">
+                        {activeFormationMemberships.slice(0, 8).map((membership) => (
+                          <button
+                            key={`formation-member-${membership.id}`}
+                            type="button"
+                            className={`world-history-shelf-card ${
+                              membership.polityEntityId === resolvedPolityMatch?.referenceEntity.id ? 'is-selected' : ''
+                            }`}
+                            onClick={() => openEntityPage(membership.polityEntityId)}
+                          >
+                            <div className="world-history-shelf-card__head">
+                              <div className="world-history-shelf-card__chips">
+                                <span className="world-history-kind-chip">Polity</span>
+                              </div>
+                            </div>
+                            <strong>{membership.polityTitle || 'Untitled polity'}</strong>
+                            <span>
+                              {membership.startYear !== undefined || membership.endYear !== undefined
+                                ? `${membership.startYear !== undefined ? formatYear(membership.startYear) : 'Open'} - ${membership.endYear !== undefined ? formatYear(membership.endYear) : 'Open'}`
+                                : 'Undated membership'}
+                            </span>
+                            {activeBasemapYear ? (
+                              <span className="world-history-hint">
+                                {isMembershipVisibleInYear(membership, activeBasemapYear.year)
+                                  ? `Visible in ${formatYear(activeBasemapYear.year)}`
+                                  : `Outside ${formatYear(activeBasemapYear.year)}`}
+                              </span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {activeFormationPersonSummary.visiblePreview.length > 0 ? (
+                      <div className="world-history-context-list">
+                        {activeFormationPersonSummary.visiblePreview.map((membership) => (
+                          <button
+                            key={`formation-visible-person-${membership.id}`}
+                            type="button"
+                            className="world-history-context-list__item"
+                            onClick={() =>
+                              membership.personEntityId
+                                ? openEntityPage(membership.personEntityId)
+                                : undefined
+                            }
+                          >
+                            <strong>{membership.personTitle || 'Untitled person'}</strong>
+                            <span>
+                              {membership.polityTitle
+                                ? `${membership.polityTitle} · ${formatMembershipTimespan(membership)}`
+                                : formatMembershipTimespan(membership)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {activeFormationPersonSummary.historicalPreview.length > 0 ? (
+                      <div className="world-history-context-list">
+                        {activeFormationPersonSummary.historicalPreview.map((membership) => (
+                          <button
+                            key={`formation-historical-person-${membership.id}`}
+                            type="button"
+                            className="world-history-context-list__item"
+                            onClick={() =>
+                              membership.personEntityId
+                                ? openEntityPage(membership.personEntityId)
+                                : undefined
+                            }
+                          >
+                            <strong>{membership.personTitle || 'Untitled person'}</strong>
+                            <span>
+                              {membership.polityTitle
+                                ? `${membership.polityTitle} · broader history`
+                                : 'Broader history'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Jump</span>
+                    <h2>Regions in this snapshot</h2>
+                  </div>
+                  <span className="world-history-count-chip">{searchableBasemapFeatures.length}</span>
+                </div>
+
+                <div className="world-history-region-search">
+                  <input
+                    type="text"
+                    value={basemapQuery}
+                    onChange={(event) => setBasemapQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && filteredBasemapFeatures[0]) {
+                        event.preventDefault();
+                        setFocusedPolityId(null);
+                        setSelectedBasemapFeatureId(
+                          filteredBasemapFeatures[0].properties?.atlasFeatureId ?? null
+                        );
+                      }
+                    }}
+                    placeholder={`Search ${activeBasemapYear ? formatYear(activeBasemapYear.year) : 'snapshot'} regions`}
+                  />
+                  <span className="world-history-hint">
+                    Search works against the currently active basemap year only.
+                  </span>
+                </div>
+
+                {filteredBasemapFeatures.length === 0 ? (
+                  <div className="world-history-empty">
+                    No named regions in this snapshot match that search.
+                  </div>
+                ) : (
+                  <div className="world-history-region-results">
+                    {filteredBasemapFeatures.map((feature) => {
+                      const featureId = feature.properties?.atlasFeatureId;
+                      const isSelected = featureId === selectedBasemapFeatureId;
+                      return (
+                        <button
+                          key={featureId}
+                          type="button"
+                          className={`world-history-region-result ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            setFocusedPolityId(null);
+                            setSelectedBasemapFeatureId(featureId ?? null);
+                          }}
+                        >
+                          <strong>{getBasemapLabel(feature)}</strong>
+                          <span>
+                            {feature.properties?.atlasParent || feature.properties?.atlasSubject || 'Standalone region'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Shelf</span>
+                    <h2>Atlas entities</h2>
+                  </div>
+                  <span className="world-history-count-chip">{atlasEntities.length}</span>
+                </div>
+
+                {isLoadingAtlas ? (
+                  <div className="world-history-empty">Loading your atlas shelf…</div>
+                ) : atlasError ? (
+                  <div className="world-history-feedback is-error">{atlasError}</div>
+                ) : atlasEntities.length === 0 ? (
+                  <div className="world-history-empty">
+                    Your atlas shelf is empty. Search on the left and pin canonical records here first.
+                  </div>
+                ) : (
+                  <div className="world-history-shelf">
+                    {atlasEntities.map((entity) => {
+                      const isSelected = entity.id === selectedAtlasEntity?.id;
+                      const isVisible = isAtlasEntityVisibleInYear(
+                        entity,
+                        year,
+                        linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                      );
+                      return (
+                        <button
+                          key={entity.id}
+                          type="button"
+                          className={`world-history-shelf-card ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            setFocusedPolityId(null);
+                            setSelectedAtlasEntityId(entity.id);
+                          }}
+                        >
+                          <div className="world-history-shelf-card__head">
+                            <div className="world-history-shelf-card__chips">
+                              <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
+                              {hasBoundaryGeometry(entity) ? (
+                                <span className="world-history-boundary-chip">Boundary</span>
+                              ) : null}
+                            </div>
+                            <span className={`world-history-visibility-dot ${isVisible ? 'is-visible' : ''}`} />
+                          </div>
+                          <strong>{entity.title}</strong>
+                              <span>
+                                {formatAtlasEntityTimespan(
+                                  entity,
+                                  linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                                )}
+                              </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section className="world-history-panel">
+                <div className="world-history-panel__header">
+                  <div>
+                    <span className="world-history-panel__eyebrow">Timeline</span>
+                    <h2>Visible in {formatYear(year)}</h2>
+                  </div>
+                  <span className="world-history-count-chip">{visibleTimelineEntities.length}</span>
+                </div>
+
+                {visibleTimelineEntities.length === 0 ? (
+                  <div className="world-history-empty">
+                    No pinned atlas entities are visible at this year yet.
+                  </div>
+                ) : (
+                  <div className="world-history-shelf">
+                    {visibleTimelineEntities.map((entity) => {
+                      const isSelected = entity.id === selectedAtlasEntity?.id;
+                      return (
+                        <button
+                          key={`visible-${entity.id}`}
+                          type="button"
+                          className={`world-history-shelf-card ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            setFocusedPolityId(null);
+                            setSelectedAtlasEntityId(entity.id);
+                          }}
+                        >
+                          <div className="world-history-shelf-card__head">
+                            <div className="world-history-shelf-card__chips">
+                              <span className="world-history-kind-chip">{kindLabels[entity.kind]}</span>
+                              {hasBoundaryGeometry(entity) ? (
+                                <span className="world-history-boundary-chip">Boundary</span>
+                              ) : null}
+                              {entity.referenceEntityId ? (
+                                <span className="world-history-linked-chip">Linked</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <strong>{entity.title}</strong>
+                          <span>
+                            {formatAtlasEntityTimespan(
+                              entity,
+                              linkedPolityByAtlasEntityId.get(entity.id) ?? null
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );

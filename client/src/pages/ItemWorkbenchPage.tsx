@@ -14,7 +14,6 @@ import {
   type BookSearchFilters,
   type BookSearchProvider,
   createKnowledgeItem,
-  createKnowledgeRelation,
   createReferenceEntity,
   deleteKnowledgeItem,
   fetchKnowledgeItemTopics,
@@ -23,6 +22,7 @@ import {
   fetchReferenceEntities,
   type BookSearchMatch,
   searchBookCatalog,
+  updateKnowledgeItem,
 } from '../api';
 import { summarizeKnowledgeProgress } from '../utils/knowledgeProgress';
 import './ItemWorkbenchPage.css';
@@ -56,6 +56,12 @@ type SearchProviderOption = {
   description: string;
   label: string;
   value: BookSearchProvider;
+};
+type ItemWorkbenchFormState = ReturnType<typeof createInitialFormState>;
+type StoredItemWorkbenchDraft = {
+  captureMode: 'manual';
+  formState: ItemWorkbenchFormState;
+  showAdvancedDetails: boolean;
 };
 
 const kindOptions: ItemWorkbenchKind[] = ['book', 'lecture'];
@@ -94,6 +100,7 @@ const searchSortOptions: Array<{ label: string; value: SearchResultSort }> = [
   { label: 'Oldest first', value: 'oldest' },
   { label: 'Title A-Z', value: 'title' },
 ];
+const itemWorkbenchDraftStorageKey = 'enzyklopaedie:item-workbench-draft';
 
 const itemWorkbenchPresets: Record<ItemWorkbenchKind, ItemWorkbenchPreset> = {
   book: {
@@ -133,6 +140,44 @@ const createInitialFormState = (kind: ItemWorkbenchKind = 'book') => ({
   durationMinutes: '',
   status: 'inbox' as KnowledgeItemStatus,
 });
+
+const hasMeaningfulManualDraft = (formState: ItemWorkbenchFormState) =>
+  formState.kind !== 'book' ||
+  formState.status !== 'inbox' ||
+  [
+    formState.title,
+    formState.creator,
+    formState.sourceName,
+    formState.sourceUrl,
+    formState.summary,
+    formState.publishedYear,
+    formState.pageCount,
+    formState.durationMinutes,
+  ].some((value) => value.trim().length > 0);
+
+const readStoredItemWorkbenchDraft = (): StoredItemWorkbenchDraft | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(itemWorkbenchDraftStorageKey);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<StoredItemWorkbenchDraft> | null;
+    if (!parsed || parsed.captureMode !== 'manual' || !parsed.formState) return null;
+
+    return {
+      captureMode: 'manual',
+      formState: {
+        ...createInitialFormState(),
+        ...parsed.formState,
+      },
+      showAdvancedDetails: Boolean(parsed.showAdvancedDetails),
+    };
+  } catch (error) {
+    console.error('Failed to restore the item workbench draft.', error);
+    return null;
+  }
+};
 
 const sortPeople = (values: ReferenceEntity[]) =>
   [...values].sort((left, right) => left.title.localeCompare(right.title));
@@ -305,6 +350,7 @@ const FieldLabel: React.FC<FieldLabelProps> = ({ htmlFor, hint, label, required 
 
 const ItemWorkbenchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [restoredDraft] = useState<StoredItemWorkbenchDraft | null>(() => readStoredItemWorkbenchDraft());
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [people, setPeople] = useState<ReferenceEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -316,13 +362,16 @@ const ItemWorkbenchPage: React.FC = () => {
   const [creatingCreatorEntity, setCreatingCreatorEntity] = useState(false);
   const [searchingBooks, setSearchingBooks] = useState(false);
   const [importingBooks, setImportingBooks] = useState(false);
+  const [updatingStatusIds, setUpdatingStatusIds] = useState<number[]>([]);
   const [bookSearchError, setBookSearchError] = useState<string | null>(null);
-  const [captureMode, setCaptureMode] = useState<CaptureMode>('search');
-  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  const [captureMode, setCaptureMode] = useState<CaptureMode>(restoredDraft ? 'manual' : 'search');
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(restoredDraft?.showAdvancedDetails ?? false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [groupBy, setGroupBy] = useState<ItemListGroupBy>('none');
   const [itemContexts, setItemContexts] = useState<Record<number, ItemListContext>>({});
-  const [formState, setFormState] = useState(createInitialFormState());
+  const [formState, setFormState] = useState<ItemWorkbenchFormState>(
+    restoredDraft?.formState ?? createInitialFormState()
+  );
   const [bookSearchProvider, setBookSearchProvider] = useState<BookSearchProvider>('library_of_congress');
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAuthor, setBookSearchAuthor] = useState('');
@@ -459,6 +508,7 @@ const ItemWorkbenchPage: React.FC = () => {
   const workbenchPreset = itemWorkbenchPresets[workbenchKind];
   const extraFieldValue =
     workbenchPreset.extraFieldName === 'pageCount' ? formState.pageCount : formState.durationMinutes;
+  const hasManualDraft = useMemo(() => hasMeaningfulManualDraft(formState), [formState]);
 
   const selectedBooks = useMemo(
     () => bookSearchResults.filter((book) => selectedBookIds.includes(book.id)),
@@ -589,6 +639,29 @@ const ItemWorkbenchPage: React.FC = () => {
     };
   }, [groupBy, itemContexts, items, viewMode]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!hasManualDraft) {
+      window.localStorage.removeItem(itemWorkbenchDraftStorageKey);
+      return;
+    }
+
+    window.localStorage.setItem(
+      itemWorkbenchDraftStorageKey,
+      JSON.stringify({
+        captureMode: 'manual',
+        formState,
+        showAdvancedDetails,
+      } satisfies StoredItemWorkbenchDraft)
+    );
+  }, [formState, hasManualDraft, showAdvancedDetails]);
+
+  useEffect(() => {
+    if (!restoredDraft) return;
+    setNotice('Restored your unfinished manual draft.');
+  }, [restoredDraft]);
+
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
@@ -603,31 +676,6 @@ const ItemWorkbenchPage: React.FC = () => {
         : {}),
       [name]: value,
     }));
-  };
-
-  const saveItemWithCreatorLink = async (payload: NewKnowledgeItem, creatorLabel?: string) => {
-    const createdItem = await createKnowledgeItem(payload);
-    const normalized = creatorLabel?.trim() ?? '';
-    const matchedCreator =
-      normalized
-        ? people.find((person) => person.title.trim().toLowerCase() === normalized.toLowerCase()) ?? null
-        : null;
-    let relationFailed = false;
-
-    if (matchedCreator) {
-      try {
-        await createKnowledgeRelation(createdItem.id, {
-          toEntityType: 'reference_entity',
-          toEntityId: matchedCreator.id,
-          relationType: 'created_by',
-        });
-      } catch (relationError) {
-        console.error(relationError);
-        relationFailed = true;
-      }
-    }
-
-    return { createdItem, relationFailed };
   };
 
   const handleCreateCreatorEntity = async () => {
@@ -683,6 +731,7 @@ const ItemWorkbenchPage: React.FC = () => {
       kind: formState.kind,
       title: formState.title.trim(),
       creator: normalizedCreator || undefined,
+      creatorEntityId: matchedPerson?.id ?? undefined,
       sourceName: formState.sourceName.trim() || undefined,
       sourceUrl: formState.sourceUrl.trim() || undefined,
       summary: formState.summary.trim() || undefined,
@@ -693,14 +742,14 @@ const ItemWorkbenchPage: React.FC = () => {
 
     try {
       const savedKind = workbenchKind;
-      const { createdItem, relationFailed } = await saveItemWithCreatorLink(payload, normalizedCreator);
+      const createdItem = await createKnowledgeItem(payload);
 
       startTransition(() => {
         setItems((current) => [createdItem, ...current]);
       });
       setFormState(createInitialFormState(savedKind));
       setShowAdvancedDetails(false);
-      setNotice(relationFailed ? 'Item was created, but the creator entity link could not be saved.' : 'Item added.');
+      setNotice('Item added.');
     } catch (submitError) {
       console.error(submitError);
       setError('Failed to create item.');
@@ -783,21 +832,25 @@ const ItemWorkbenchPage: React.FC = () => {
       const savedEntries = await Promise.all(
         selectedBooks.map(async (book) => {
           const payload = buildKnowledgeItemFromSearchMatch(book);
-          return saveItemWithCreatorLink(payload, payload.creator);
+          return createKnowledgeItem({
+            ...payload,
+            creatorEntityId:
+              people.find(
+                (person) =>
+                  person.title.trim().toLowerCase() === (payload.creator?.trim().toLowerCase() ?? '')
+              )?.id ?? undefined,
+          });
         })
       );
 
-      const createdItems = savedEntries.map((entry) => entry.createdItem);
-      const relationFailures = savedEntries.some((entry) => entry.relationFailed);
+      const createdItems = savedEntries;
 
       startTransition(() => {
         setItems((current) => [...createdItems.reverse(), ...current]);
       });
       setSelectedBookIds([]);
       setNotice(
-        relationFailures
-          ? `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'}, but some creator links could not be saved.`
-          : `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchProvider)}.`
+        `Imported ${createdItems.length} book${createdItems.length === 1 ? '' : 's'} from ${formatProviderLabel(bookSearchProvider)}.`
       );
     } catch (importError) {
       console.error(importError);
@@ -816,6 +869,27 @@ const ItemWorkbenchPage: React.FC = () => {
     } catch (deleteError) {
       console.error(deleteError);
       setError('Failed to delete item.');
+    }
+  };
+
+  const handleQuickStatusChange = async (itemId: number, nextStatus: KnowledgeItemStatus) => {
+    const currentItem = items.find((item) => item.id === itemId);
+    if (!currentItem || currentItem.status === nextStatus) return;
+
+    setUpdatingStatusIds((current) => (current.includes(itemId) ? current : [...current, itemId]));
+    setError(null);
+    setNotice(null);
+
+    try {
+      const updatedItem = await updateKnowledgeItem(itemId, { status: nextStatus });
+      startTransition(() => {
+        setItems((current) => current.map((item) => (item.id === itemId ? updatedItem : item)));
+      });
+    } catch (statusError) {
+      console.error(statusError);
+      setError('Failed to update item status.');
+    } finally {
+      setUpdatingStatusIds((current) => current.filter((id) => id !== itemId));
     }
   };
 
@@ -876,6 +950,12 @@ const ItemWorkbenchPage: React.FC = () => {
               </button>
             ) : null}
           </div>
+
+          {captureMode === 'manual' && hasManualDraft ? (
+            <div className="knowledge-inline-note knowledge-draft-note">
+              This manual entry is being saved locally on this device until you add the item.
+            </div>
+          ) : null}
 
           {captureMode === 'search' && workbenchKind === 'book' ? (
             <section className="knowledge-search-panel">
@@ -1367,16 +1447,35 @@ const ItemWorkbenchPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="knowledge-item-actions">
-                            <Link
-                              to={`/knowledge/${item.id}`}
-                              state={{ returnTo: '/knowledge?view=list' }}
-                              className="knowledge-item-link"
-                            >
-                              Open
-                            </Link>
-                            <button type="button" onClick={() => handleDelete(item.id)}>
-                              Remove
-                            </button>
+                            <label className="knowledge-item-status-picker">
+                              <span>Status</span>
+                              <select
+                                value={item.status}
+                                onChange={(event) =>
+                                  void handleQuickStatusChange(item.id, event.target.value as KnowledgeItemStatus)
+                                }
+                                disabled={updatingStatusIds.includes(item.id)}
+                                aria-label={`Change status for ${item.title}`}
+                              >
+                                {statusOptions.map((status) => (
+                                  <option key={status} value={status}>
+                                    {status}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="knowledge-item-action-links">
+                              <Link
+                                to={`/knowledge/${item.id}`}
+                                state={{ returnTo: '/knowledge?view=list' }}
+                                className="knowledge-item-link"
+                              >
+                                Open
+                              </Link>
+                              <button type="button" onClick={() => handleDelete(item.id)}>
+                                Remove
+                              </button>
+                            </div>
                           </div>
                         </div>
                         {item.summary ? <p>{item.summary}</p> : null}
